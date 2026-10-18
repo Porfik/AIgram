@@ -1,0 +1,3 @@
+data: {"id":"gen-1792338999-err0rTQlkUvJ2b","object":"chat.completion.chunk","created":1792338999,"model":"z-ai/glm-5.3-flash","provider":"OpenInference","choices":[{"index":0,"delta":{"content":"Hi","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"error":{"message":"Provider returned an error","code":429}}

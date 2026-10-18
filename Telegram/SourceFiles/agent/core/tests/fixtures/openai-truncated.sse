@@ -1,0 +1,3 @@
+data: {"id":"gen-1792338999-trUnc4t3dXyz","object":"chat.completion.chunk","created":1792338999,"model":"z-ai/glm-5.3-flash","provider":"BaseTen","choices":[{"index":0,"delta":{"content":"Partial","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338999-trUnc4t3dXyz","object":"chat.completion.chunk","created":1792338999,"model":"z-ai/glm-5.3-flash","provider":"BaseTen","choices":[{"index":0,"delta":{"content":" text","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
