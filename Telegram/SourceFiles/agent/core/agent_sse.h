@@ -24,11 +24,13 @@ public:
 	[[nodiscard]] std::vector<SseEvent> finish();
 
 private:
+	void processLine(std::vector<SseEvent> &to, const QByteArray &line);
+	void processLines(std::vector<SseEvent> &to, bool final);
+
 	QByteArray _buffer;
 	QByteArray _event;
 	QByteArray _data;
 	bool _hasData = false;
-	bool _skipLeadingNewLine = false;
 
 };
 
