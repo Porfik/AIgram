@@ -641,7 +641,7 @@ namespace {
 	return request;
 }
 
-[[nodiscard]] std::vector<Check> RequestChecks() {
+[[nodiscard]] std::vector<Check> OpenAiRequestChecks() {
 	return {
 		{ u"openai_serialize_request_golden"_q, [] {
 			const auto serialized = OpenAi::SerializeRequest(GoldenRequest());
@@ -780,7 +780,7 @@ std::vector<Check> OpenAiChecks() {
 	for (const auto &check : ResponseChecks()) {
 		checks.push_back(check);
 	}
-	for (const auto &check : RequestChecks()) {
+	for (const auto &check : OpenAiRequestChecks()) {
 		checks.push_back(check);
 	}
 	return checks;
