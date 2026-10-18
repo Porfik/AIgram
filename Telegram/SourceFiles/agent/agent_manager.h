@@ -9,6 +9,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_providers.h"
 #include "agent/core/agent_record.h"
+#include "base/flat_map.h"
+#include "base/flat_set.h"
 #include "base/weak_ptr.h"
 
 #include <rpl/event_stream.h>
@@ -54,6 +56,18 @@ public:
 	void save(not_null<Session*> session);
 
 private:
+	void refresh();
+	void updateEnabled();
+	void learnContextWindow();
+	void finishModels(
+		const QString &key,
+		const QString &model,
+		const QByteArray &body,
+		const QString &error);
+	[[nodiscard]] Session *findOpen(const QString &id) const;
+	void upsertIndex(const SessionInfo &info);
+	void sortIndex();
+
 	const not_null<Main::Session*> _session;
 	const std::unique_ptr<SessionStore> _store;
 	const std::unique_ptr<HttpTransport> _transport;
@@ -61,6 +75,8 @@ private:
 	rpl::variable<bool> _enabled = false;
 	std::vector<SessionInfo> _index;
 	std::vector<std::unique_ptr<Session>> _sessions;
+	base::flat_map<QString, int> _learnedContext;
+	base::flat_set<QString> _learning;
 	rpl::event_stream<Scope> _listChanges;
 	rpl::lifetime _lifetime;
 

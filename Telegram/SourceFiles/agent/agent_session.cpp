@@ -8,15 +8,54 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 
 #include "agent/agent_manager.h"
+#include "agent/core/agent_context.h"
 #include "agent/core/agent_loop.h"
 #include "agent/core/agent_policy.h"
+#include "agent/core/agent_prompts.h"
+#include "agent/core/agent_request.h"
 #include "agent/tools/agent_tools.h"
+#include "base/algorithm.h"
+#include "base/unixtime.h"
+#include "crl/crl_on_main.h"
+#include "data/data_peer.h"
+#include "data/data_session.h"
+#include "main/main_session.h"
+
+#include <rpl/producer.h>
 
 namespace Agent {
+namespace {
+
+constexpr auto kProvisionalTitleLimit = 60;
+
+[[nodiscard]] QString ProvisionalTitle(const QString &text) {
+	for (const auto &line : text.split('\n')) {
+		const auto trimmed = line.trimmed();
+		if (!trimmed.isEmpty()) {
+			return trimmed.left(kProvisionalTitleLimit);
+		}
+	}
+	return {};
+}
+
+} // namespace
 
 Session::Session(not_null<Manager*> manager, SessionRecord record)
 : _manager(manager)
-, _record(std::move(record)) {
+, _record(std::move(record))
+, _gate(std::make_unique<PolicyGate>(
+	_record.info.scope,
+	nullptr,
+	_record.tainted))
+, _tools(std::make_unique<ToolRegistry>(
+	&manager->session(),
+	_gate.get())) {
+	_tools->touched(
+	) | rpl::on_next([=](PeerKey peer) {
+		if (!ranges::contains(_record.info.touched, peer)) {
+			_record.info.touched.push_back(peer);
+		}
+	}, _lifetime);
 }
 
 Session::~Session() = default;
@@ -54,12 +93,389 @@ rpl::producer<> Session::stateChanges() const {
 }
 
 void Session::send(SendRequest request) {
+	if (_state.status == SessionStatus::Working
+		|| _state.status == SessionStatus::Compacting) {
+		_queue.push_back(std::move(request));
+		_state.queued.push_back(_queue.back().text);
+		const auto weak = base::make_weak(this);
+		_stateChanges.fire({});
+		return;
+	}
+	dispatch(std::move(request));
 }
 
 void Session::stop() {
+	const auto weak = base::make_weak(this);
+	_queue.clear();
+	_state.queued.clear();
+	_compaction = nullptr;
+	_titleRequest = nullptr;
+	if (_loop && _loop->busy()) {
+		_loop->interrupt();
+		if (!weak) {
+			return;
+		}
+	}
+	if (_state.status != SessionStatus::Idle) {
+		_state.status = SessionStatus::Idle;
+		_stateChanges.fire({});
+	}
 }
 
 void Session::retry() {
+	if (_state.status != SessionStatus::Failed) {
+		return;
+	}
+	if (_record.messages.empty()
+		|| _record.messages.back().role != Role::User) {
+		return;
+	}
+	_overflowRetried = false;
+	const auto provider = ActiveProvider(_manager->providers());
+	if (!provider) {
+		failWithoutProvider();
+		return;
+	}
+	const auto until = planCompaction(*provider);
+	if (until != _record.summaryUntil) {
+		startCompaction(until);
+	} else {
+		runTurn();
+	}
+}
+
+void Session::dispatch(SendRequest request) {
+	Expects(!request.text.isEmpty() || !request.hint.isEmpty());
+
+	auto message = Message{ .role = Role::User, .blocks = {} };
+	if (!request.text.isEmpty()) {
+		message.blocks.push_back(TextBlock{ request.text });
+	}
+	if (!request.hint.isEmpty()) {
+		message.blocks.push_back(TextBlock{ HintText(request.hint), true });
+	}
+	Expects(!message.blocks.empty());
+
+	if (_record.messages.empty()) {
+		_record.info.title = ProvisionalTitle(request.text);
+	}
+	auto named = request.mentions;
+	for (const auto &peer : FindNamedPeers(
+			request.text,
+			NameCandidates(&_manager->session()))) {
+		if (!ranges::contains(named, peer)) {
+			named.push_back(peer);
+		}
+	}
+	_gate->beginTurn(std::move(named));
+	_overflowRetried = false;
+	_state.error.reset();
+	_state.lastEnd.reset();
+
+	const auto weak = base::make_weak(this);
+	_record.messages.push_back(std::move(message));
+	_recordChanges.fire({});
+	if (!weak) {
+		return;
+	}
+	publishRecord();
+	if (!weak) {
+		return;
+	}
+	const auto provider = ActiveProvider(_manager->providers());
+	if (!provider) {
+		failWithoutProvider();
+		return;
+	}
+	const auto until = planCompaction(*provider);
+	if (until != _record.summaryUntil) {
+		startCompaction(until);
+	} else {
+		runTurn();
+	}
+}
+
+void Session::failWithoutProvider() {
+	applyState(
+		SessionStatus::Failed,
+		Error{
+			ErrorKind::BadRequest,
+			0,
+			u"No AI provider is set up."_q,
+		},
+		TurnEnd::Failed);
+}
+
+QString Session::buildSystem() const {
+	auto brief = std::optional<ChatBrief>();
+	if (_record.info.scope.kind == ScopeKind::Chat) {
+		if (const auto peer = _manager->session().data().peerLoaded(
+				PeerId(_record.info.scope.peer))) {
+			brief = MakeChatBrief(peer);
+		}
+	}
+	return SystemPrompt({
+		.scope = _record.info.scope,
+		.account = AccountLine(&_manager->session()),
+		.instructions = _manager->providers().instructions,
+		.memory = QString(),
+		.chat = brief,
+	});
+}
+
+int Session::planCompaction(
+		const ProviderSettings &provider,
+		bool force) const {
+	auto request = Request{
+		.model = provider.model,
+		.system = buildSystem(),
+		.messages = {},
+		.tools = _tools->tools(),
+		.maxOutputTokens = 0,
+	};
+	const auto fixed = EstimateTokens(request);
+	auto window = _manager->contextWindow();
+	if (force) {
+		request.messages = ContextMessages(_record);
+		window = std::min(window, EstimateTokens(request));
+	}
+	return PlanCompaction(_record, fixed, window);
+}
+
+void Session::startCompaction(int until) {
+	const auto provider = ActiveProvider(_manager->providers());
+	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
+	if (!provider || !adapter) {
+		failWithoutProvider();
+		return;
+	}
+	if (!applyState(SessionStatus::Compacting)) {
+		return;
+	}
+	_compaction = std::make_unique<SingleRequest>(
+		std::move(adapter),
+		&_manager->transport(),
+		CompactionRequest(_record, until, provider->model),
+		[=](Response response) {
+			base::take(_compaction);
+			const auto weak = base::make_weak(this);
+			if (response.error) {
+				LOG(("Agent Warning: session compaction failed."));
+			} else {
+				const auto text = ResponseText(response.message);
+				if (!text.isEmpty()) {
+					_record.summary = text;
+					_record.summaryUntil = until;
+					publishRecord();
+				}
+			}
+			if (!weak) {
+				return;
+			}
+			runTurn();
+		});
+}
+
+void Session::runTurn() {
+	const auto provider = ActiveProvider(_manager->providers());
+	if (!provider) {
+		failWithoutProvider();
+		return;
+	}
+	runLoop(*provider);
+}
+
+void Session::runLoop(const ProviderSettings &provider) {
+	auto adapter = CreateAdapter(provider);
+	if (!adapter) {
+		failWithoutProvider();
+		return;
+	}
+	if (!applyState(SessionStatus::Working)) {
+		return;
+	}
+	_loopLifetime.destroy();
+	_loop = nullptr;
+	_loop = std::make_unique<Loop>(
+		std::move(adapter),
+		&_manager->transport(),
+		_tools.get(),
+		LoopOptions{
+			.model = provider.model,
+			.system = buildSystem(),
+			.maxOutputTokens = 0,
+			.maxSteps = 25,
+		},
+		ContextMessages(_record));
+	_loopContext = int(_loop->history().size());
+	_loopBase = int(_record.messages.size());
+	_loop->events(
+	) | rpl::on_next([=](EngineEvent event) {
+		handleEvent(std::move(event));
+	}, _loopLifetime);
+	_loop->resume();
+}
+
+void Session::handleEvent(EngineEvent event) {
+	const auto weak = base::make_weak(this);
+	if (std::get_if<ToolCallRequested>(&event)
+		|| std::get_if<ToolCallFinished>(&event)) {
+		copyLoopMessages();
+		_recordChanges.fire({});
+		if (!weak) {
+			return;
+		}
+	} else if (const auto usage = std::get_if<UsageReported>(&event)) {
+		_record.usage += usage->usage;
+	} else if (const auto finished = std::get_if<TurnFinished>(&event)) {
+		const auto turn = *finished;
+		if (!handleTurnFinished(turn)) {
+			return;
+		}
+		_live.fire(std::move(event));
+		if (!weak) {
+			return;
+		}
+		crl::on_main(this, [=] {
+			continueAfterTurn(turn);
+		});
+		return;
+	}
+	_live.fire(std::move(event));
+}
+
+bool Session::handleTurnFinished(const TurnFinished &turn) {
+	copyLoopMessages();
+	const auto failed = (turn.end == TurnEnd::Failed);
+	if (!applyState(
+			failed ? SessionStatus::Failed : SessionStatus::Idle,
+			turn.error,
+			turn.end)) {
+		return false;
+	}
+	return publishRecord();
+}
+
+void Session::continueAfterTurn(const TurnFinished &turn) {
+	if (turn.end == TurnEnd::Failed) {
+		if (_state.status == SessionStatus::Failed
+			&& turn.error
+			&& IsContextOverflow(*turn.error)
+			&& !_overflowRetried) {
+			_overflowRetried = true;
+			compactAndResume();
+		}
+		return;
+	}
+	if (turn.end == TurnEnd::Completed
+		&& !_record.info.titleFinal
+		&& !_titleRequested) {
+		startTitleRequest();
+	}
+	processQueue();
+}
+
+void Session::compactAndResume() {
+	const auto provider = ActiveProvider(_manager->providers());
+	if (!provider) {
+		return;
+	}
+	const auto until = planCompaction(*provider, true);
+	if (until != _record.summaryUntil) {
+		startCompaction(until);
+	}
+}
+
+void Session::processQueue() {
+	if (_queue.empty() || _state.status != SessionStatus::Idle) {
+		return;
+	}
+	auto request = std::move(_queue.front());
+	_queue.erase(_queue.begin());
+	Expects(!_state.queued.empty());
+	_state.queued.erase(_state.queued.begin());
+	const auto weak = base::make_weak(this);
+	_stateChanges.fire({});
+	if (!weak) {
+		return;
+	}
+	dispatch(std::move(request));
+}
+
+void Session::copyLoopMessages() {
+	if (!_loop) {
+		return;
+	}
+	const auto &history = _loop->history();
+	Expects(int(history.size()) >= _loopContext);
+	_record.messages.resize(_loopBase);
+	_record.messages.reserve(_loopBase + history.size() - _loopContext);
+	for (auto i = _loopContext; i < int(history.size()); ++i) {
+		_record.messages.push_back(history[i]);
+	}
+}
+
+bool Session::applyState(SessionStatus status) {
+	_state.status = status;
+	const auto weak = base::make_weak(this);
+	_stateChanges.fire({});
+	return static_cast<bool>(weak);
+}
+
+bool Session::applyState(
+		SessionStatus status,
+		std::optional<Error> error,
+		std::optional<TurnEnd> lastEnd) {
+	_state.status = status;
+	_state.error = std::move(error);
+	_state.lastEnd = lastEnd;
+	const auto weak = base::make_weak(this);
+	_stateChanges.fire({});
+	return static_cast<bool>(weak);
+}
+
+bool Session::publishRecord() {
+	_record.tainted = _gate->tainted();
+	_record.info.updated = base::unixtime::now();
+	const auto weak = base::make_weak(this);
+	_manager->save(this);
+	if (!weak) {
+		return false;
+	}
+	_recordChanges.fire({});
+	return true;
+}
+
+void Session::startTitleRequest() {
+	const auto provider = ActiveProvider(_manager->providers());
+	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
+	if (!provider || !adapter) {
+		return;
+	}
+	_titleRequested = true;
+	_titleRequest = std::make_unique<SingleRequest>(
+		std::move(adapter),
+		&_manager->transport(),
+		TitleRequest(_record, provider->model),
+		[=](Response response) {
+			base::take(_titleRequest);
+			if (response.error || _record.info.titleFinal) {
+				return;
+			}
+			const auto title = CleanTitle(ResponseText(response.message));
+			if (title.isEmpty()) {
+				return;
+			}
+			_record.info.title = title;
+			_record.info.titleFinal = true;
+			publishRecord();
+		});
+}
+
+void Session::applyRename(const QString &title) {
+	_record.info.title = title;
+	_record.info.titleFinal = true;
+	publishRecord();
 }
 
 } // namespace Agent
