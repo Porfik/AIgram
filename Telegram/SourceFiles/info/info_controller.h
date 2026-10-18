@@ -181,6 +181,7 @@ public:
 		Boosts,
 		ChannelEarn,
 		BotEarn,
+		Agent,
 	};
 	using SettingsType = ::Settings::Type;
 	using MediaType = Storage::SharedMediaType;

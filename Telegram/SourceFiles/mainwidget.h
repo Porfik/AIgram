@@ -230,6 +230,8 @@ public:
 	void dialogsCancelled();
 	void toggleFiltersMenu(bool value) const;
 
+	[[nodiscard]] bool thirdSectionIsAgentPanel(PeerData *peer) const;
+
 private:
 	void paintEvent(QPaintEvent *e) override;
 	void resizeEvent(QResizeEvent *e) override;

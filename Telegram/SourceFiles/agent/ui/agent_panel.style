@@ -7,3 +7,34 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 using "ui/basic.style";
 using "info/info.style";
+
+agentPanelEntryButton: IconButton(topBarSearch) {
+	icon: icon {{ "menu/ai_prompt", menuIconFg }};
+	iconOver: icon {{ "menu/ai_prompt", menuIconFgOver }};
+}
+
+agentPanelHeaderHeight: 56px;
+agentPanelHeaderPadding: margins(16px, 0px, 16px, 0px);
+agentPanelHeaderTitleStyle: TextStyle(defaultTextStyle) {
+	font: font(15px semibold);
+}
+agentPanelHeaderButton: IconButton {
+	width: 40px;
+	height: 40px;
+	rippleAreaPosition: point(0px, 0px);
+	rippleAreaSize: 40px;
+	ripple: defaultRippleAnimation;
+}
+agentPanelIconHistory: icon {{ "menu/all_media", windowFg }};
+agentPanelIconSession: icon {{ "menu/chats", windowFg }};
+agentPanelIconNewSession: icon {{ "menu/add", windowFg }};
+
+agentSessionListEmptyHeight: 120px;
+agentSessionListRowHeight: 60px;
+agentSessionListRowPadding: margins(16px, 12px, 16px, 12px);
+agentSessionListTitleStyle: TextStyle(defaultTextStyle) {
+	font: font(14px semibold);
+}
+agentSessionListDateStyle: TextStyle(defaultTextStyle) {
+	font: font(12px);
+}

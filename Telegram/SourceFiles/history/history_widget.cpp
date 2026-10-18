@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
 
+#include "agent/ui/agent_panel.h"
 #include "api/api_compose_with_ai.h"
 #include "api/api_editing.h"
 #include "api/api_bot.h"
@@ -2712,6 +2713,10 @@ void HistoryWidget::setupShortcuts() {
 		request->check(Command::ShowChatMenu, 1) && request->handle([=] {
 			Window::ActivateWindow(controller());
 			_topBar->showPeerMenu();
+			return true;
+		});
+		request->check(Command::AgentPanel, 1) && request->handle([=] {
+			Agent::Ui::TogglePanel(controller(), _history->peer);
 			return true;
 		});
 		_canSendMessages

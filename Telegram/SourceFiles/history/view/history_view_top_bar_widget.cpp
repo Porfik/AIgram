@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_top_bar_widget.h"
 
+#include "agent/agent_manager.h"
+#include "agent/ui/agent_panel.h"
 #include "history/history.h"
 #include "history/view/history_view_send_action.h"
 #include "boxes/add_contact_box.h"
@@ -65,6 +67,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "support/support_helper.h"
 #include "apiwrap.h"
 #include "api/api_chat_participants.h"
+#include "styles/style_agent_panel.h"
 #include "styles/style_window.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_chat.h"
@@ -126,6 +129,7 @@ TopBarWidget::TopBarWidget(
 , _call(this, st::topBarCall)
 , _groupCall(this, st::topBarGroupCall)
 , _search(this, st::topBarSearch)
+, _agentEntry(this, st::agentPanelEntryButton)
 , _infoToggle(this, st::topBarInfo)
 , _menuToggle(this, st::topBarMenuToggle)
 , _titlePeerText(st::windowMinWidth / 3)
@@ -159,6 +163,16 @@ TopBarWidget::TopBarWidget(
 	_groupCall->setClickedCallback([=] { groupCall(); });
 	_menuToggle->addClickHandler([=](auto) { showPeerMenu(); });
 	_menuToggle->setAcceptBoth(true, true);
+	_agentEntry->setToolTip(tr::lng_agent_title(tr::now));
+	_agentEntry->setClickedCallback([=] {
+		if (const auto peer = _activeChat.key.peer()) {
+			Agent::Ui::TogglePanel(_controller, peer);
+		}
+	});
+	_controller->session().agent().enabledValue(
+	) | rpl::on_next([=] {
+		updateControlsVisibility();
+	}, lifetime());
 	_infoToggle->setClickedCallback([=] { toggleInfoSection(); });
 	_back->setAcceptBoth();
 	_back->addClickHandler([=](Qt::MouseButton) {
@@ -1302,6 +1316,10 @@ void TopBarWidget::updateControlsGeometry() {
 	if (!_search->isHidden()) {
 		_rightTaken += _search->width() + st::topBarCallSkip;
 	}
+	_agentEntry->moveToRight(_rightTaken, otherButtonsTop);
+	if (!_agentEntry->isHidden()) {
+		_rightTaken += _agentEntry->width() + st::topBarCallSkip;
+	}
 
 	updateMembersShowArea();
 }
@@ -1347,6 +1365,13 @@ void TopBarWidget::updateControlsVisibility() {
 	if (_unreadBadge) {
 		_unreadBadge->setVisible(!_chooseForReportReason
 			&& !rootChatsListBar());
+	}
+	if (const auto agentPeer = _activeChat.key.peer()) {
+		_agentEntry->setVisible(
+			!_chooseForReportReason
+			&& Agent::Ui::PanelAvailable(agentPeer));
+	} else {
+		_agentEntry->setVisible(false);
 	}
 	const auto topic = _activeChat.key.topic();
 	const auto section = _activeChat.section;

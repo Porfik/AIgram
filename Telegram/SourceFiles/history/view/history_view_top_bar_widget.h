@@ -255,6 +255,7 @@ private:
 	object_ptr<Ui::IconButton> _call;
 	object_ptr<Ui::IconButton> _groupCall;
 	object_ptr<Ui::IconButton> _search;
+	object_ptr<Ui::IconButton> _agentEntry;
 	object_ptr<Ui::IconButton> _infoToggle;
 	object_ptr<Ui::IconButton> _menuToggle;
 	base::unique_qptr<Ui::PopupMenu> _menu;

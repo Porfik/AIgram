@@ -7,22 +7,53 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_panel.h"
 
+#include "agent/agent_manager.h"
+#include "agent/ui/agent_panel_widget.h"
+#include "data/data_peer.h"
 #include "info/info_content_widget.h"
+#include "info/info_controller.h"
+#include "info/info_memento.h"
+#include "main/main_session.h"
+#include "mainwindow.h"
+#include "mainwidget.h"
+#include "window/window_controller.h"
+#include "window/window_session_controller.h"
+
+#include "styles/style_agent_panel.h"
 
 namespace Agent::Ui {
 
 std::shared_ptr<Info::ContentMemento> MakePanelMemento(
 		not_null<PeerData*> peer) {
-	return nullptr;
+	return std::make_shared<PanelMemento>(peer);
 }
 
 bool PanelAvailable(not_null<PeerData*> peer) {
-	return false;
+	return peer->session().agent().enabled();
 }
 
 void TogglePanel(
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer) {
+	auto memento = std::make_shared<Info::Memento>(
+		peer,
+		Info::Section(Info::Section::Type::Agent));
+	const auto params = Window::SectionShow();
+	auto &window = controller->window();
+	if (window.isLayerShown()
+		&& window.widget()->showSectionInExistingLayer(
+			memento.get(),
+			params)) {
+		window.hideLayer();
+		return;
+	}
+	if (controller->content()->thirdSectionIsAgentPanel(peer)) {
+		controller->showSection(
+			std::make_shared<Info::Memento>(peer),
+			params.withThirdColumn());
+		return;
+	}
+	controller->showSection(std::move(memento), params.withThirdColumn());
 }
 
 } // namespace Agent::Ui

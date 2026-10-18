@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_check.h"
 #include "agent/agent_settings.h"
 #include "lang/lang_keys.h"
+#include <rpl/map.h>
 #include "settings/sections/settings_main.h"
 #include "settings/settings_builder.h"
 #include "settings/settings_common_session.h"
@@ -389,6 +390,33 @@ void BuildCheckButton(
 	) | rpl::on_next(update, builder.container()->lifetime());
 }
 
+void BuildEntryPoints(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state) {
+	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/show-entry-points"_q,
+		.title = tr::lng_agent_show_entry_points(),
+		.toggled = state->changed.events_starting_with(
+			rpl::empty_value()
+		) | rpl::map([=](rpl::empty_value) {
+			return state->providers.showEntryPoints;
+		}),
+		.onClick = [=] {
+			state->providers.showEntryPoints
+				= !state->providers.showEntryPoints;
+			SaveState(state.get());
+		},
+		.keywords = { u"show"_q, u"agent"_q, u"chats"_q },
+	});
+	builder.add([=](const WidgetContext &ctx) {
+		Ui::AddDividerText(
+			ctx.container,
+			tr::lng_agent_show_entry_points_about());
+		return SectionBuilder::WidgetToAdd{};
+	}, nullptr);
+}
+
 Agent::Agent(QWidget *parent, not_null<Window::SessionController*> controller)
 : Section(parent, controller) {
 	setupContent();
@@ -417,6 +445,7 @@ void Agent::setupContent() {
 		BuildProviders(builder, state, controller);
 		BuildInstructions(builder, state);
 		BuildCheckButton(builder, state, controller);
+		BuildEntryPoints(builder, state);
 	};
 
 	build(content, buildMethod);

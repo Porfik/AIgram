@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "mainwidget.h"
 
+#include "agent/ui/agent_panel.h"
 #include "api/api_updates.h"
 #include "api/api_views.h"
 #include "data/components/scheduled_messages.h"
@@ -50,6 +51,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "chat_helpers/bot_command.h"
 #include "chat_helpers/tabbed_selector.h" // TabbedSelector::refreshStickers
 #include "chat_helpers/message_field.h"
+#include "info/info_content_widget.h"
 #include "info/info_memento.h"
 #include "apiwrap.h"
 #include "dialogs/dialogs_widget.h"
@@ -2977,9 +2979,25 @@ auto MainWidget::thirdSectionForCurrentMainSection(
 	Unexpected("Key in MainWidget::thirdSectionForCurrentMainSection().");
 }
 
+bool MainWidget::thirdSectionIsAgentPanel(PeerData *peer) const {
+	if (!_thirdSection) {
+		return false;
+	}
+	const auto memento = _thirdSection->createMemento();
+	if (const auto info = dynamic_cast<Info::Memento*>(memento.get())) {
+		const auto content = info->content();
+		if (content->section().type() != Info::Section::Type::Agent) {
+			return false;
+		}
+		return !peer || content->peer() == peer;
+	}
+	return false;
+}
+
 void MainWidget::updateThirdColumnToCurrentChat(
 		Dialogs::Key key,
 		bool canWrite) {
+	const auto wasAgentPanel = thirdSectionIsAgentPanel(nullptr);
 	auto saveOldThirdSection = [&] {
 		if (saveThirdSectionToStackBack()) {
 			_stack.back()->setThirdSectionMemento(
@@ -3004,8 +3022,19 @@ void MainWidget::updateThirdColumnToCurrentChat(
 			Core::App().saveSettingsDelayed();
 		}
 
+		auto memento = thirdSectionForCurrentMainSection(key);
+		if (wasAgentPanel) {
+			if (const auto peer = key.peer()) {
+				if (Agent::Ui::PanelAvailable(peer)) {
+					memento = std::make_shared<Info::Memento>(
+						peer,
+						Info::Section(Info::Section::Type::Agent));
+				}
+			}
+		}
+
 		_controller->showSection(
-			thirdSectionForCurrentMainSection(key),
+			std::move(memento),
 			params.withThirdColumn());
 	};
 	auto switchTabbedFast = [&](not_null<Data::Thread*> thread) {

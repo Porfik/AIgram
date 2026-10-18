@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/info_memento.h"
 
+#include "agent/ui/agent_panel.h"
 #include "info/global_media/info_global_media_widget.h"
 #include "info/profile/info_profile_widget.h"
 #include "info/profile/tabs/info_profile_tabs_host.h"
@@ -250,6 +251,8 @@ std::shared_ptr<ContentMemento> Memento::DefaultContent(
 		return std::make_shared<Members::Memento>(
 			peer,
 			migratedPeerId);
+	case Section::Type::Agent:
+		return Agent::Ui::MakePanelMemento(peer);
 	}
 	Unexpected("Wrong section type in Info::Memento::DefaultContent()");
 }
@@ -270,6 +273,8 @@ std::shared_ptr<ContentMemento> Memento::DefaultContent(
 		return std::make_shared<Media::Memento>(topic, section.mediaType());
 	case Section::Type::Members:
 		return std::make_shared<Members::Memento>(peer, migratedPeerId);
+	case Section::Type::Agent:
+		return Agent::Ui::MakePanelMemento(peer);
 	}
 	Unexpected("Wrong section type in Info::Memento::DefaultContent()");
 }

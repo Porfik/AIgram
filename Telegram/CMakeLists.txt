@@ -136,8 +136,12 @@ PRIVATE
     agent/ui/agent_feed_widget.h
     agent/ui/agent_panel.cpp
     agent/ui/agent_panel.h
+    agent/ui/agent_panel_widget.cpp
+    agent/ui/agent_panel_widget.h
     agent/ui/agent_session_view.cpp
     agent/ui/agent_session_view.h
+    agent/ui/agent_sessions_list.cpp
+    agent/ui/agent_sessions_list.h
     agent/agent_check.cpp
     agent/agent_check.h
     agent/agent_http_transport.cpp

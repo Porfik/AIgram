@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_chat_section.h"
 
+#include "agent/ui/agent_panel.h"
 #include "history/admin_log/history_admin_log_section.h"
 #include "history/view/controls/history_view_top_controls.h"
 #include "history/view/controls/history_view_bottom_controls.h"
@@ -6086,6 +6087,10 @@ void ChatWidget::setupShortcuts() {
 		request->check(Command::ShowChatMenu, 1) && request->handle([=] {
 			Window::ActivateWindow(controller());
 			_topBar->showPeerMenu();
+			return true;
+		});
+		request->check(Command::AgentPanel, 1) && request->handle([=] {
+			Agent::Ui::TogglePanel(controller(), _peer);
 			return true;
 		});
 		_canSendMessages
