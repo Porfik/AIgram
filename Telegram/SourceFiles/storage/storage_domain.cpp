@@ -79,6 +79,10 @@ constexpr auto kMaxWrapCount = quint32(2);
 	return u"wallet_keyring_"_q + dataName;
 }
 
+[[nodiscard]] QString ComputeAgentSettingsName(const QString &dataName) {
+	return u"agent_settings_"_q + dataName;
+}
+
 [[nodiscard]] QByteArray RandomSalt() {
 	auto result = QByteArray(LocalEncryptSaltSize, Qt::Uninitialized);
 	base::RandomFill(result.data(), result.size());
@@ -815,6 +819,55 @@ bool Domain::writeWalletKeyring(const QByteArray &bytes) const {
 
 bool Domain::removeWalletKeyring() {
 	const auto base = BaseGlobalPath() + ComputeWalletKeyringName(_dataName);
+	auto result = true;
+	for (const auto suffix : { 's', '0', '1' }) {
+		const auto path = base + suffix;
+		if (QFileInfo::exists(path) && !QFile::remove(path)) {
+			result = false;
+		}
+	}
+	return result;
+}
+
+std::optional<QByteArray> Domain::readAgentSettings() const {
+	const auto name = ComputeAgentSettingsName(_dataName);
+	const auto path = BaseGlobalPath();
+	const auto base = path + name;
+	if (!QFileInfo::exists(base + 's')
+		&& !QFileInfo::exists(base + '0')
+		&& !QFileInfo::exists(base + '1')) {
+		return std::nullopt;
+	} else if (!_localKey) {
+		return std::nullopt;
+	}
+	FileReadDescriptor file;
+	if (!ReadEncryptedFile(file, name, path, _localKey)) {
+		return std::nullopt;
+	}
+	auto bytes = QByteArray();
+	file.stream >> bytes;
+	if (!CheckStreamStatus(file.stream) || !file.stream.atEnd()) {
+		return std::nullopt;
+	}
+	return bytes;
+}
+
+bool Domain::writeAgentSettings(const QByteArray &bytes) const {
+	Expects(_localKey != nullptr);
+
+	const auto path = BaseGlobalPath();
+	if (!QDir().exists(path) && !QDir().mkpath(path)) {
+		return false;
+	}
+	EncryptedDescriptor data(Serialize::bytearraySize(bytes));
+	data.stream << bytes;
+	FileWriteDescriptor file(ComputeAgentSettingsName(_dataName), path, true);
+	file.writeEncrypted(data, _localKey);
+	return file.finish();
+}
+
+bool Domain::removeAgentSettings() {
+	const auto base = BaseGlobalPath() + ComputeAgentSettingsName(_dataName);
 	auto result = true;
 	for (const auto suffix : { 's', '0', '1' }) {
 		const auto path = base + suffix;

@@ -138,6 +138,10 @@ public:
 	[[nodiscard]] bool writeWalletKeyring(const QByteArray &bytes) const;
 	[[nodiscard]] bool removeWalletKeyring();
 
+	[[nodiscard]] std::optional<QByteArray> readAgentSettings() const;
+	[[nodiscard]] bool writeAgentSettings(const QByteArray &bytes) const;
+	[[nodiscard]] bool removeAgentSettings();
+
 	[[nodiscard]] PasscodeDerivation prepareOpen(
 		const QByteArray &passcode) const;
 	[[nodiscard]] PasscodeDerivation prepareNewWrap(
