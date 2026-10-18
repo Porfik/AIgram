@@ -1,0 +1,82 @@
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"The","reasoning_details":[{"type":"reasoning.text","text":"The","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" user","reasoning_details":[{"type":"reasoning.text","text":" user","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" wants","reasoning_details":[{"type":"reasoning.text","text":" wants","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" me","reasoning_details":[{"type":"reasoning.text","text":" me","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" to","reasoning_details":[{"type":"reasoning.text","text":" to","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" reply","reasoning_details":[{"type":"reasoning.text","text":" reply","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" with","reasoning_details":[{"type":"reasoning.text","text":" with","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" exactly","reasoning_details":[{"type":"reasoning.text","text":" exactly","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" \"","reasoning_details":[{"type":"reasoning.text","text":" \"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"Прив","reasoning_details":[{"type":"reasoning.text","text":"Прив","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"ет","reasoning_details":[{"type":"reasoning.text","text":"ет","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":",","reasoning_details":[{"type":"reasoning.text","text":",","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" мир","reasoning_details":[{"type":"reasoning.text","text":" мир","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"!\"","reasoning_details":[{"type":"reasoning.text","text":"!\"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" which","reasoning_details":[{"type":"reasoning.text","text":" which","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" is","reasoning_details":[{"type":"reasoning.text","text":" is","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" Russian","reasoning_details":[{"type":"reasoning.text","text":" Russian","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" for","reasoning_details":[{"type":"reasoning.text","text":" for","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" \"","reasoning_details":[{"type":"reasoning.text","text":" \"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"Hello","reasoning_details":[{"type":"reasoning.text","text":"Hello","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":",","reasoning_details":[{"type":"reasoning.text","text":",","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" world","reasoning_details":[{"type":"reasoning.text","text":" world","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"!\"\n\n","reasoning_details":[{"type":"reasoning.text","text":"!\"\n\n","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"They","reasoning_details":[{"type":"reasoning.text","text":"They","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" said","reasoning_details":[{"type":"reasoning.text","text":" said","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" \"","reasoning_details":[{"type":"reasoning.text","text":" \"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"Reply","reasoning_details":[{"type":"reasoning.text","text":"Reply","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" with","reasoning_details":[{"type":"reasoning.text","text":" with","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" exactly","reasoning_details":[{"type":"reasoning.text","text":" exactly","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":"\"","reasoning_details":[{"type":"reasoning.text","text":"\"","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" so","reasoning_details":[{"type":"reasoning.text","text":" so","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" I","reasoning_details":[{"type":"reasoning.text","text":" I","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" should","reasoning_details":[{"type":"reasoning.text","text":" should","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" just","reasoning_details":[{"type":"reasoning.text","text":" just","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" output","reasoning_details":[{"type":"reasoning.text","text":" output","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" that","reasoning_details":[{"type":"reasoning.text","text":" that","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":" text without any additional content.","reasoning_details":[{"type":"reasoning.text","text":" text without any additional content.","format":"unknown","index":0}]},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"Привет, мир!","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","choices":[{"index":0,"delta":{"content":"","role":"assistant","reasoning":null},"finish_reason":"stop","native_finish_reason":"stop"}]}
+
+data: {"id":"gen-1792338896-Ve0XJfusrrPAtUY1N8Dj","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Sail Research","service_tier":"asap","choices":[{"index":0,"delta":{"content":"","role":"assistant"},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":21,"completion_tokens":49,"total_tokens":70,"cost":0.00001634535,"is_byok":false,"prompt_tokens_details":{"cached_tokens":0,"cache_write_tokens":0,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":0.00001634535,"upstream_inference_prompt_cost":0.00000164535,"upstream_inference_completions_cost":0.0000147},"completion_tokens_details":{"reasoning_tokens":43,"image_tokens":0,"audio_tokens":0}}}
+
+data: [DONE]
+
