@@ -24,6 +24,8 @@ public:
 	~SingleRequest();
 
 private:
+	void finish(const QString &networkError);
+
 	const std::unique_ptr<Adapter> _adapter;
 	const not_null<Transport*> _transport;
 	Fn<void(Response)> _done;
