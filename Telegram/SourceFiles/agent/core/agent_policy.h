@@ -89,6 +89,13 @@ private:
 		std::vector<PeerKey> peers;
 	};
 
+	[[nodiscard]] const Allowance *findAllowance(const QString &tool) const;
+	[[nodiscard]] bool coversPeers(
+		const QString &tool,
+		const std::vector<PeerKey> &peers) const;
+	[[nodiscard]] bool hasUnnamedPeer(
+		const std::vector<PeerKey> &peers) const;
+
 	const Scope _scope;
 	const Fn<bool(PeerKey)> _excluded;
 	bool _tainted = false;
