@@ -1,0 +1,121 @@
+/*
+This file is part of Telegram Desktop,
+the official desktop application for the Telegram messaging service.
+
+For license and copyright information please follow this link:
+https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+*/
+#pragma once
+
+#include "base/basic_types.h"
+
+#include <crl/crl_time.h>
+
+#include <QtCore/QByteArray>
+#include <QtCore/QJsonObject>
+#include <QtCore/QString>
+
+#include <optional>
+#include <variant>
+#include <vector>
+
+namespace Agent {
+
+enum class Role : uchar {
+	User,
+	Assistant,
+};
+
+struct TextBlock {
+	QString text;
+};
+
+struct ImageBlock {
+	QByteArray bytes;
+	QString mimeType;
+};
+
+struct ThinkingBlock {
+	QString text;
+	QByteArray signature;
+};
+
+struct ToolUseBlock {
+	QString id;
+	QString name;
+	QJsonObject input;
+	QString inputError;
+	QByteArray rawInput;
+};
+
+struct ToolResultBlock {
+	QString toolUseId;
+	QString content;
+	bool error = false;
+};
+
+using Block = std::variant<
+	TextBlock,
+	ImageBlock,
+	ThinkingBlock,
+	ToolUseBlock,
+	ToolResultBlock>;
+
+struct Message {
+	Role role = Role::User;
+	std::vector<Block> blocks;
+};
+
+struct ToolSpec {
+	QString name;
+	QString description;
+	QJsonObject inputSchema;
+};
+
+struct Usage {
+	int inputTokens = 0;
+	int outputTokens = 0;
+	int cachedInputTokens = 0;
+
+	Usage &operator+=(const Usage &other) {
+		inputTokens += other.inputTokens;
+		outputTokens += other.outputTokens;
+		cachedInputTokens += other.cachedInputTokens;
+		return *this;
+	}
+};
+
+enum class StopReason : uchar {
+	EndTurn,
+	ToolUse,
+	MaxTokens,
+	Refusal,
+};
+
+struct Request {
+	QString model;
+	QString system;
+	std::vector<Message> messages;
+	std::vector<ToolSpec> tools;
+	int maxOutputTokens = 0;
+};
+
+enum class ErrorKind : uchar {
+	Network,
+	Auth,
+	RateLimited,
+	Overloaded,
+	BadRequest,
+	BadResponse,
+};
+
+struct Error {
+	ErrorKind kind = ErrorKind::Network;
+	int httpStatus = 0;
+	QString text;
+	crl::time retryAfter = 0;
+};
+
+[[nodiscard]] QString ErrorKindName(ErrorKind kind);
+
+} // namespace Agent

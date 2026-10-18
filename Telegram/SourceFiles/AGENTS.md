@@ -380,6 +380,12 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 - Paths: `SourceFiles/wallet/`
 - The card and balance, history, send and receive, collectible transfers, transaction details, collectibles, phrase backup, import and rotation, currency choice and the visuals reused by the chat transfer bubble. It must not own wallet state, keys or transport.
 
+## Features: AI agent
+
+### agent — AI agent
+- Paths: `SourceFiles/agent/`, `cmake/td_agent.cmake`
+- The provider-neutral conversation model, provider adapters and the agent loop in the pure `td_agent` library with its tests, plus the client transport, sessions, tools, policy and agent UI around it. Read `SourceFiles/agent/AGENTS.md` first. The core under `agent/core` must not include client headers.
+
 ## Platform
 
 ### platform — OS integration
