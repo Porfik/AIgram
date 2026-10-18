@@ -8,9 +8,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_scope.h"
+#include "agent/ui/agent_composer.h"
+#include "agent/ui/agent_feed_widget.h"
 #include "ui/rp_widget.h"
 
 #include <rpl/event_stream.h>
+#include <rpl/lifetime.h>
 
 namespace Window {
 class SessionController;
@@ -42,12 +45,37 @@ public:
 	void setInnerFocus();
 
 private:
+	enum class Mode {
+		Normal,
+		NoProvider,
+	};
+
+	void setupWidgets();
+	void refreshProviderState();
+	void applyMode(Mode mode);
+	void relayout();
+	void relayoutOverlay();
+	void rebuildFeed();
+	void applyState();
+	void sendCurrentText(const QString &text);
+	void sessionGone();
+	void resizeEvent(QResizeEvent *e) override;
+
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	Session *_session = nullptr;
+	Mode _mode = Mode::Normal;
 	Fn<QString()> _hint;
+	object_ptr<FeedWidget> _feed;
+	object_ptr<Composer> _composer;
+	object_ptr<RpWidget> _welcome;
+	object_ptr<Ui::FlatLabel> _welcomeLabel;
+	object_ptr<RpWidget> _noProvider;
+	object_ptr<Ui::FlatLabel> _noProviderLabel;
+	object_ptr<Ui::RoundButton> _openSettings;
 	rpl::event_stream<Session*> _sessionChanges;
+	rpl::lifetime _sessionLifetime;
 
 };
 

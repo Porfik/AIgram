@@ -128,6 +128,12 @@ PRIVATE
     agent/tools/agent_tools.h
     agent/tools/agent_tools_chat.cpp
     agent/tools/agent_tools_chat.h
+    agent/ui/agent_composer.cpp
+    agent/ui/agent_composer.h
+    agent/ui/agent_feed_items.cpp
+    agent/ui/agent_feed_items.h
+    agent/ui/agent_feed_widget.cpp
+    agent/ui/agent_feed_widget.h
     agent/ui/agent_panel.cpp
     agent/ui/agent_panel.h
     agent/ui/agent_session_view.cpp
