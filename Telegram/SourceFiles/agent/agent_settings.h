@@ -9,12 +9,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_providers.h"
 
+#include <rpl/producer.h>
+
 #include <QtCore/QString>
 
 namespace Agent {
 
 [[nodiscard]] ProvidersState LoadProviders();
 void SaveProviders(const ProvidersState &state);
+[[nodiscard]] rpl::producer<> ProvidersChanged();
 
 [[nodiscard]] QString GenerateProviderId();
 

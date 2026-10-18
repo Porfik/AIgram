@@ -13,11 +13,18 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_domain.h"
 #include "storage/storage_domain.h"
 
+#include <rpl/event_stream.h>
+
 namespace Agent {
 namespace {
 
 [[nodiscard]] QString FormatHexId(uint64 value) {
 	return u"%1"_q.arg(value, 16, 16, QChar('0'));
+}
+
+[[nodiscard]] rpl::event_stream<> &ProvidersChangedStream() {
+	static auto result = rpl::event_stream<>();
+	return result;
 }
 
 } // namespace
@@ -36,6 +43,11 @@ void SaveProviders(const ProvidersState &state) {
 			SerializeProviders(state))) {
 		LOG(("Agent Error: could not save the provider settings."));
 	}
+	ProvidersChangedStream().fire({});
+}
+
+rpl::producer<> ProvidersChanged() {
+	return ProvidersChangedStream().events();
 }
 
 QString GenerateProviderId() {

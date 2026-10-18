@@ -13,6 +13,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class ApiWrap;
 
+namespace Agent {
+class Manager;
+} // namespace Agent
+
 namespace Api {
 class Updates;
 class SendProgressManager;
@@ -245,6 +249,9 @@ public:
 	[[nodiscard]] Settings::RecentSearches &recentSettingsSearches() const {
 		return *_recentSettingsSearches;
 	}
+	[[nodiscard]] Agent::Manager &agent() const {
+		return *_agent;
+	}
 	[[nodiscard]] auto cachedReactionIconFactory() const
 	-> HistoryView::Reactions::CachedIconFactory & {
 		return *_cachedReactionIconFactory;
@@ -364,6 +371,7 @@ private:
 
 	const std::unique_ptr<Support::Helper> _supportHelper;
 	const std::unique_ptr<Support::FastButtonsBots> _fastButtonsBots;
+	std::unique_ptr<Agent::Manager> _agent;
 
 	std::shared_ptr<QImage> _selfUserpicView;
 	rpl::variable<bool> _premiumPossible = false;

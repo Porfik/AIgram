@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "main/main_session.h"
 
+#include "agent/agent_manager.h"
 #include "apiwrap.h"
 #include "api/api_peer_colors.h"
 #include "api/api_updates.h"
@@ -183,6 +184,7 @@ Session::Session(
 , _cachedReactionIconFactory(std::make_unique<ReactionIconFactory>())
 , _supportHelper(Support::Helper::Create(this))
 , _fastButtonsBots(std::make_unique<Support::FastButtonsBots>(this))
+, _agent(std::make_unique<Agent::Manager>(this))
 , _saveSettingsTimer([=] { saveSettings(); }) {
 	Expects(_settings != nullptr);
 
@@ -320,6 +322,7 @@ void Session::finishLogout() {
 }
 
 Session::~Session() {
+	_agent = nullptr;
 	unlockTerms();
 	data().clear();
 	ClickHandler::clearActive();

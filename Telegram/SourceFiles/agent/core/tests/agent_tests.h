@@ -34,5 +34,11 @@ struct Check {
 [[nodiscard]] std::vector<Check> OpenAiChecks();
 [[nodiscard]] std::vector<Check> ProvidersChecks();
 [[nodiscard]] std::vector<Check> LoopChecks();
+[[nodiscard]] std::vector<Check> PolicyChecks();
+[[nodiscard]] std::vector<Check> RecordChecks();
+[[nodiscard]] std::vector<Check> FeedChecks();
+[[nodiscard]] std::vector<Check> ContextChecks();
+[[nodiscard]] std::vector<Check> PromptsChecks();
+[[nodiscard]] std::vector<Check> RequestChecks();
 
 } // namespace Agent::Tests

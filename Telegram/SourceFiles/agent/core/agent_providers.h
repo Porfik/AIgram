@@ -40,6 +40,7 @@ struct ProvidersState {
 	std::vector<ProviderSettings> list;
 	QString activeId;
 	QString instructions;
+	bool showEntryPoints = true;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);

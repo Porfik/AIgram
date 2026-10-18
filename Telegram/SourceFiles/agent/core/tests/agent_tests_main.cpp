@@ -23,6 +23,12 @@ namespace {
 	append(OpenAiChecks());
 	append(ProvidersChecks());
 	append(LoopChecks());
+	append(PolicyChecks());
+	append(RecordChecks());
+	append(FeedChecks());
+	append(ContextChecks());
+	append(PromptsChecks());
+	append(RequestChecks());
 	return result;
 }
 

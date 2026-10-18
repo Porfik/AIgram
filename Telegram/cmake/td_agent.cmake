@@ -11,13 +11,26 @@ add_library(tdesktop::td_agent ALIAS td_agent)
 nice_target_sources(td_agent ${src_loc}
 PRIVATE
     agent/core/agent_adapter.h
+    agent/core/agent_context.cpp
+    agent/core/agent_context.h
     agent/core/agent_engine.h
+    agent/core/agent_feed.cpp
+    agent/core/agent_feed.h
     agent/core/agent_loop.cpp
     agent/core/agent_loop.h
     agent/core/agent_openai.cpp
     agent/core/agent_openai.h
+    agent/core/agent_policy.cpp
+    agent/core/agent_policy.h
+    agent/core/agent_prompts.cpp
+    agent/core/agent_prompts.h
     agent/core/agent_providers.cpp
     agent/core/agent_providers.h
+    agent/core/agent_record.cpp
+    agent/core/agent_record.h
+    agent/core/agent_request.cpp
+    agent/core/agent_request.h
+    agent/core/agent_scope.h
     agent/core/agent_sse.cpp
     agent/core/agent_sse.h
     agent/core/agent_transport.h
@@ -40,9 +53,15 @@ init_non_host_target(td_agent_test "(agent)")
 
 nice_target_sources(td_agent_test ${src_loc}
 PRIVATE
+    agent/core/tests/agent_context_tests.cpp
+    agent/core/tests/agent_feed_tests.cpp
     agent/core/tests/agent_loop_tests.cpp
     agent/core/tests/agent_openai_tests.cpp
+    agent/core/tests/agent_policy_tests.cpp
+    agent/core/tests/agent_prompts_tests.cpp
     agent/core/tests/agent_providers_tests.cpp
+    agent/core/tests/agent_record_tests.cpp
+    agent/core/tests/agent_request_tests.cpp
     agent/core/tests/agent_sse_tests.cpp
     agent/core/tests/agent_tests.h
     agent/core/tests/agent_tests_main.cpp

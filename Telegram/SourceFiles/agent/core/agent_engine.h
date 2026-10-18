@@ -69,6 +69,7 @@ public:
 	virtual ~Engine() = default;
 
 	virtual void send(Message message) = 0;
+	virtual void resume() = 0;
 	virtual void interrupt() = 0;
 	[[nodiscard]] virtual bool busy() const = 0;
 	[[nodiscard]] virtual const std::vector<Message> &history() const = 0;

@@ -122,10 +122,22 @@ nice_target_sources(Telegram ${src_loc}
 PRIVATE
     ${style_files}
 
+    agent/tools/agent_tools.cpp
+    agent/tools/agent_tools.h
+    agent/ui/agent_panel.cpp
+    agent/ui/agent_panel.h
+    agent/ui/agent_session_view.cpp
+    agent/ui/agent_session_view.h
     agent/agent_check.cpp
     agent/agent_check.h
     agent/agent_http_transport.cpp
     agent/agent_http_transport.h
+    agent/agent_manager.cpp
+    agent/agent_manager.h
+    agent/agent_session.cpp
+    agent/agent_session.h
+    agent/agent_session_store.cpp
+    agent/agent_session_store.h
     agent/agent_settings.cpp
     agent/agent_settings.h
     api/api_attached_stickers.cpp

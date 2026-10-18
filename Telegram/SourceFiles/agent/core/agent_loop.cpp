@@ -58,6 +58,15 @@ void Loop::send(Message message) {
 	step();
 }
 
+void Loop::resume() {
+	Expects(!_busy);
+	Expects(!_history.empty() && _history.back().role == Role::User);
+
+	_busy = true;
+	_steps = 0;
+	step();
+}
+
 void Loop::interrupt() {
 	if (!_busy) {
 		return;

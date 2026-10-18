@@ -36,6 +36,7 @@ public:
 	~Loop();
 
 	void send(Message message) override;
+	void resume() override;
 	void interrupt() override;
 	[[nodiscard]] bool busy() const override;
 	[[nodiscard]] const std::vector<Message> &history() const override;

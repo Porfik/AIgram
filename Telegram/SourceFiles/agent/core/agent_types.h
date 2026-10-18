@@ -28,6 +28,7 @@ enum class Role : uchar {
 
 struct TextBlock {
 	QString text;
+	bool hidden = false;
 };
 
 struct ImageBlock {
