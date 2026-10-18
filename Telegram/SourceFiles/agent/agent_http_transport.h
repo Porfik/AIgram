@@ -10,6 +10,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_transport.h"
 #include "base/flat_map.h"
 
+#include <QtCore/QObject>
+
 #include <memory>
 
 class QNetworkAccessManager;
@@ -17,7 +19,7 @@ class QNetworkReply;
 
 namespace Agent {
 
-class HttpTransport final : public Transport {
+class HttpTransport final : public QObject, public Transport {
 public:
 	HttpTransport();
 	~HttpTransport();
