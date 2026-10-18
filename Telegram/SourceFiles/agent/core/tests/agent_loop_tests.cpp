@@ -1464,6 +1464,119 @@ std::vector<Check> LoopChecks() {
 			}
 			return QString();
 		} },
+		{ u"loop_resume_after_transport_error"_q, [] {
+			auto h = Harness(LoopOptions{ u"m"_q, u"s"_q, 0, 5 });
+			h.loop->send(UserText(u"fail"_q));
+			h.state().response = Response{
+				Error{ ErrorKind::Network, 0, u"reset"_q },
+				Message(),
+				StopReason::EndTurn,
+			};
+			h.transport->finished(u"connection reset"_q);
+			if (h.loop->busy() || h.loop->history().size() != 1) {
+				return u"expected the turn to fail on the user message"_q;
+			}
+			const auto before = int(h.events.size());
+			h.loop->resume();
+			if (!h.loop->busy() || h.transport->sent.size() != 2) {
+				return u"expected resume to request again"_q;
+			}
+			const auto historyDiff = SameMessages(
+				h.adapter->prepared[1].messages,
+				{ UserText(u"fail"_q) });
+			if (!historyDiff.isEmpty()) {
+				return u"resumed history: "_q + historyDiff;
+			}
+			h.state(1).response = Response{
+				std::nullopt,
+				AssistantText(u"recovered"_q),
+				StopReason::EndTurn,
+			};
+			h.transport->finished();
+			if (h.loop->busy()) {
+				return u"expected the resumed turn to end"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Completed,
+				false,
+				before);
+			if (!finished.isEmpty()) {
+				return u"resumed turn: "_q + finished;
+			}
+			return QString();
+		} },
+		{ u"loop_resume_after_interrupted_tools"_q, [] {
+			auto h = Harness();
+			h.loop->send(UserText(u"tools"_q));
+			h.state().response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+				StopReason::ToolUse,
+			};
+			h.transport->finished();
+			h.loop->interrupt();
+			if (h.loop->busy() || h.loop->history().size() != 3) {
+				return u"expected the interrupted turn to end"_q;
+			}
+			const auto staleTools = int(h.executor->pending.size());
+			const auto before = int(h.events.size());
+			h.loop->resume();
+			if (!h.loop->busy() || h.transport->sent.size() != 2) {
+				return u"expected resume to continue the turn"_q;
+			}
+			const auto expected = std::vector<Message>{
+				UserText(u"tools"_q),
+				Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+				Message{
+					Role::User,
+					{ ToolResultBlock{
+						u"t1"_q,
+						u"Interrupted by the user."_q,
+						true,
+					} },
+				},
+			};
+			const auto historyDiff = SameMessages(
+				h.adapter->prepared[1].messages,
+				expected);
+			if (!historyDiff.isEmpty()) {
+				return u"resumed history: "_q + historyDiff;
+			}
+			h.state(1).response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t2"_q) } },
+				StopReason::ToolUse,
+			};
+			h.transport->finished();
+			if (int(h.executor->pending.size()) != staleTools + 1
+				|| h.executor->pending.back().id != u"t2"_q) {
+				return u"expected the next tool to run"_q;
+			}
+			h.executor->pending.back().done(
+				ToolResultBlock{ u"t2"_q, u"after resume"_q, false });
+			if (h.transport->sent.size() != 3) {
+				return u"expected a third request"_q;
+			}
+			h.state(2).response = Response{
+				std::nullopt,
+				AssistantText(u"done"_q),
+				StopReason::EndTurn,
+			};
+			h.transport->finished();
+			if (h.loop->busy()) {
+				return u"expected the resumed turn to end"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Completed,
+				false,
+				before);
+			if (!finished.isEmpty()) {
+				return u"resumed turn: "_q + finished;
+			}
+			return QString();
+		} },
 	};
 }
 
