@@ -13,6 +13,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <rpl/event_stream.h>
 
+#include <QtCore/QJsonObject>
+
+#include <map>
+#include <memory>
 #include <vector>
 
 class PeerData;
@@ -22,6 +26,10 @@ class Session;
 } // namespace Main
 
 namespace Agent {
+
+namespace ChatTools {
+struct PendingCall;
+} // namespace ChatTools
 
 class ToolRegistry final : public ToolExecutor {
 public:
@@ -39,9 +47,18 @@ public:
 	[[nodiscard]] rpl::producer<PeerKey> touched() const;
 
 private:
+	void deliver(
+		const QString &toolUseId,
+		QString content,
+		bool error);
+	void deliverJson(
+		const QString &toolUseId,
+		QJsonObject json);
+
 	const not_null<Main::Session*> _session;
 	const not_null<PolicyGate*> _gate;
 	rpl::event_stream<PeerKey> _touched;
+	std::map<QString, std::unique_ptr<ChatTools::PendingCall>, std::less<>> _pending;
 
 };
 
