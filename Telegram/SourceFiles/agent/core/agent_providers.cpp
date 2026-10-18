@@ -17,7 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(1);
+constexpr auto kFormatVersion = qint32(2);
+constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 
 } // namespace
@@ -39,6 +40,7 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 			<< qint32(provider.vision ? 1 : 0);
 	}
 	stream << state.activeId << state.instructions;
+	stream << qint32(state.showEntryPoints ? 1 : 0);
 	return result;
 }
 
@@ -47,7 +49,9 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 	stream.setVersion(QDataStream::Qt_5_1);
 	auto version = qint32(0);
 	stream >> version;
-	if (stream.status() != QDataStream::Ok || version != kFormatVersion) {
+	if (stream.status() != QDataStream::Ok
+		|| version < kMinFormatVersion
+		|| version > kFormatVersion) {
 		return std::nullopt;
 	}
 	auto count = qint32(0);
@@ -84,8 +88,21 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		state.list.push_back(std::move(provider));
 	}
 	stream >> state.activeId >> state.instructions;
-	if (stream.status() != QDataStream::Ok || !stream.atEnd()) {
+	if (stream.status() != QDataStream::Ok) {
 		return std::nullopt;
+	}
+	if (version == kFormatVersion) {
+		auto showEntryPoints = qint32(0);
+		stream >> showEntryPoints;
+		if (stream.status() != QDataStream::Ok || !stream.atEnd()) {
+			return std::nullopt;
+		}
+		state.showEntryPoints = (showEntryPoints != 0);
+	} else {
+		if (!stream.atEnd()) {
+			return std::nullopt;
+		}
+		state.showEntryPoints = true;
 	}
 	return state;
 }

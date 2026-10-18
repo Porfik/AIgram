@@ -59,6 +59,7 @@ namespace {
 	};
 	state.activeId = u"локальный"_q;
 	state.instructions = u"Отвечай по-русски."_q;
+	state.showEntryPoints = false;
 	return state;
 }
 
@@ -85,6 +86,9 @@ namespace {
 			|| x.vision != y.vision) {
 			return u"provider "_q + QString::number(i) + u" differs"_q;
 		}
+	}
+	if (a.showEntryPoints != b.showEntryPoints) {
+		return u"showEntryPoints differs"_q;
 	}
 	return QString();
 }
@@ -120,7 +124,7 @@ std::vector<Check> ProvidersChecks() {
 					stream << qint32(0) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
-					stream << qint32(2) << qint32(0) << QString() << QString();
+					stream << qint32(3) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream << QString() << qint32(0) << QString() << QString();
@@ -136,11 +140,11 @@ std::vector<Check> ProvidersChecks() {
 		{ u"providers_reject_bad_counts"_q, [] {
 			const auto bad = std::vector<QByteArray>{
 				Written([](QDataStream &stream) {
-					stream << qint32(1) << qint32(-1) << QString() << QString();
+					stream << qint32(2) << qint32(-1) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream
-						<< qint32(1)
+						<< qint32(2)
 						<< qint32(1001)
 						<< QString()
 						<< QString();
@@ -205,6 +209,36 @@ std::vector<Check> ProvidersChecks() {
 				if (DeserializeProviders(bytes)) {
 					return u"expected nullopt for: "_q + bytes.toBase64();
 				}
+			}
+			return QString();
+		} },
+		{ u"providers_show_entry_points_old_version"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(1)
+					<< qint32(1)
+					<< u"old"_q
+					<< qint32(0)
+					<< u"Название"_q
+					<< u"https://example.com/v1"_q
+					<< u"key"_q
+					<< u"model"_q
+					<< qint32(8192)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q;
+			});
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"old version failed to deserialize"_q;
+			}
+			if (!restored->showEntryPoints) {
+				return u"expected showEntryPoints == true"_q;
+			}
+			if (restored->list.size() != 1
+				|| restored->list[0].id != u"old"_q
+				|| restored->activeId != u"old"_q) {
+				return u"unexpected restored state"_q;
 			}
 			return QString();
 		} },
