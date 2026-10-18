@@ -1395,6 +1395,35 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_settings_passkeys_unsigned_error" = "Passkeys are not available in unsigned builds. Please use an official signed version of Telegram Desktop.";
 "lng_settings_passkey_unknown" = "Passkey";
 
+"lng_agent_title" = "AI Agent";
+"lng_agent_providers_title" = "Providers";
+"lng_agent_add_provider" = "Add provider";
+"lng_agent_new_provider" = "New Provider";
+"lng_agent_edit_provider" = "Edit Provider";
+"lng_agent_provider_default" = "Provider";
+"lng_agent_provider_title" = "Title";
+"lng_agent_provider_url" = "Base URL";
+"lng_agent_provider_url_placeholder" = "https://openrouter.ai/api/v1";
+"lng_agent_provider_key" = "API key";
+"lng_agent_provider_model" = "Model";
+"lng_agent_provider_make_active" = "Make active";
+"lng_agent_instructions_title" = "General instructions";
+"lng_agent_instructions_placeholder" = "Extra text that every agent will see, e.g. 'Keep answers short and always reply in the user's language.'";
+"lng_agent_check_button" = "Check connection";
+"lng_agent_check_title" = "Check Connection";
+"lng_agent_check_prompt" = "Call get_current_time, then tell me the time you got in one short sentence.";
+"lng_agent_check_success" = "Success";
+"lng_agent_check_finished" = "Finished.";
+"lng_agent_check_interrupted" = "Interrupted.";
+"lng_agent_check_unsupported" = "This provider type is not supported yet.";
+"lng_agent_check_calling" = "Calling {name}...";
+"lng_agent_check_result" = "Result: {text}";
+"lng_agent_check_result_error" = "Result error: {text}";
+"lng_agent_check_usage" = "Tokens: {input} in, {output} out";
+"lng_agent_check_usage_cached" = "Tokens: {input} in ({cached} cached), {output} out";
+"lng_agent_error_url" = "Base URL must start with http:// or https://.";
+"lng_agent_error_model" = "Please enter a model name.";
+
 "lng_passkey_touch" = "Touch your security key";
 "lng_passkey_insert" = "Insert your security key, then touch it to continue.";
 "lng_passkey_pin_title" = "Security key PIN";

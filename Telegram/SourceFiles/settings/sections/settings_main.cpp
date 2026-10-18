@@ -48,6 +48,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/settings_builder.h"
 #include "settings/cloud_password/settings_cloud_password_input.h"
 #include "settings/sections/settings_advanced.h"
+#include "settings/sections/settings_agent.h"
 #include "settings/sections/settings_business.h"
 #include "settings/sections/settings_calls.h"
 #include "settings/sections/settings_chat.h"
@@ -446,6 +447,13 @@ void BuildSectionButtons(SectionBuilder &builder) {
 		.targetSection = CallsId(),
 		.icon = { &st::menuIconUnmute },
 		.keywords = { u"sessions"_q, u"calls"_q },
+	});
+
+	builder.addSectionButton({
+		.title = tr::lng_agent_title(),
+		.targetSection = AgentId(),
+		.icon = { &st::menuIconBot },
+		.keywords = { u"ai"_q, u"agent"_q, u"providers"_q },
 	});
 
 	builder.addButton({

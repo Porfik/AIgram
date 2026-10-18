@@ -122,8 +122,12 @@ nice_target_sources(Telegram ${src_loc}
 PRIVATE
     ${style_files}
 
+    agent/agent_check.cpp
+    agent/agent_check.h
     agent/agent_http_transport.cpp
     agent/agent_http_transport.h
+    agent/agent_settings.cpp
+    agent/agent_settings.h
     api/api_attached_stickers.cpp
     api/api_attached_stickers.h
     api/api_authorizations.cpp
@@ -1899,6 +1903,8 @@ PRIVATE
     settings/cloud_password/settings_cloud_password_validate_icon.h
     settings/sections/settings_active_sessions.cpp
     settings/sections/settings_active_sessions.h
+    settings/sections/settings_agent.cpp
+    settings/sections/settings_agent.h
     settings/sections/settings_advanced.cpp
     settings/sections/settings_advanced.h
     settings/sections/settings_chat.cpp
