@@ -236,7 +236,7 @@ void EditProviderBox(
 		}
 		provider.title = title->getLastText().trimmed();
 		provider.baseUrl = newUrl;
-		provider.apiKey = key->getLastText();
+		provider.apiKey = key->getLastText().trimmed();
 		provider.model = newModel;
 		auto &list = state->providers.list;
 		if (creating) {
