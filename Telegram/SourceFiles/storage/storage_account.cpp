@@ -73,6 +73,7 @@ constexpr auto kMultiDraftCursorsTag = quint64(0xFFFF'FFFF'FFFF'FF04ULL);
 constexpr auto kRichDraftsTag = quint64(0xFFFF'FFFF'FFFF'FF05ULL);
 constexpr auto kDraftsTag2 = quint64(0xFFFF'FFFF'FFFF'FF06ULL);
 constexpr auto kWalletEngineFormatVersion = quint32(1);
+constexpr auto kAgentFormatVersion = quint32(1);
 
 enum { // Local Storage Keys
 	lskUserMap = 0x00,
@@ -109,6 +110,7 @@ enum { // Local Storage Keys
 	lskWalletKey = 0x1f, // no data, legacy wallet record
 	lskWalletEngineKey = 0x20, // no data, legacy single-file storage
 	lskWalletEngineStorages = 0x21, // data: QString key
+	lskAgentStorages = 0x80, // data: QString key
 };
 
 auto EmptyMessageDraftSources()
@@ -306,6 +308,9 @@ base::flat_set<QString> Account::collectGoodNames() const {
 	for (const auto &[key, value] : _walletEngineStoragesMap) {
 		push(value);
 	}
+	for (const auto &[key, value] : _agentStoragesMap) {
+		push(value);
+	}
 	for (const auto &value : keys) {
 		push(value);
 	}
@@ -376,6 +381,7 @@ Account::ReadMapResult Account::readMapWith(
 	quint64 walletLegacyKey = 0;
 	quint64 walletEngineLegacyKey = 0;
 	base::flat_map<QString, FileKey> walletEngineStoragesMap;
+	base::flat_map<QString, FileKey> agentStoragesMap;
 	QByteArray webviewStorageTokenBots, webviewStorageTokenOther;
 	while (!map.stream.atEnd()) {
 		quint32 keyType;
@@ -516,6 +522,19 @@ Account::ReadMapResult Account::readMapWith(
 				walletEngineStoragesMap.emplace(entryKey, key);
 			}
 		} break;
+		case lskAgentStorages: {
+			quint32 count = 0;
+			map.stream >> count;
+			for (auto i = quint32(0); i != count; ++i) {
+				FileKey key = 0;
+				QString entryKey;
+				map.stream >> key >> entryKey;
+				if (!CheckStreamStatus(map.stream)) {
+					return ReadMapResult::Failed;
+				}
+				agentStoragesMap.emplace(entryKey, key);
+			}
+		} break;
 		case lskWebviewTokens: {
 			map.stream
 				>> webviewStorageTokenBots
@@ -576,6 +595,7 @@ Account::ReadMapResult Account::readMapWith(
 	_inlineBotsDownloadsKey = inlineBotsDownloadsKey;
 	_mediaLastPlaybackPositionsKey = mediaLastPlaybackPositionsKey;
 	_walletEngineStoragesMap = walletEngineStoragesMap;
+	_agentStoragesMap = agentStoragesMap;
 	_oldMapVersion = mapData.version;
 	_webviewStorageIdBots.token = webviewStorageTokenBots;
 	_webviewStorageIdOther.token = webviewStorageTokenOther;
@@ -712,6 +732,12 @@ void Account::writeMap() {
 			mapSize += sizeof(quint64) + Serialize::stringSize(key);
 		}
 	}
+	if (!_agentStoragesMap.empty()) {
+		mapSize += sizeof(quint32) * 2;
+		for (const auto &[key, value] : _agentStoragesMap) {
+			mapSize += sizeof(quint64) + Serialize::stringSize(key);
+		}
+	}
 
 	EncryptedDescriptor mapData(mapSize);
 	if (!self.isEmpty()) {
@@ -805,6 +831,14 @@ void Account::writeMap() {
 			mapData.stream << quint64(value) << key;
 		}
 	}
+	if (!_agentStoragesMap.empty()) {
+		mapData.stream
+			<< quint32(lskAgentStorages)
+			<< quint32(_agentStoragesMap.size());
+		for (const auto &[key, value] : _agentStoragesMap) {
+			mapData.stream << quint64(value) << key;
+		}
+	}
 	if (!_botStoragesMap.empty()) {
 		mapData.stream << quint32(lskBotStorages) << quint32(_botStoragesMap.size());
 		for (const auto &[key, value] : _botStoragesMap) {
@@ -846,6 +880,7 @@ void Account::reset() {
 	_inlineBotsDownloadsKey = 0;
 	_mediaLastPlaybackPositionsKey = 0;
 	_walletEngineStoragesMap.clear();
+	_agentStoragesMap.clear();
 	_oldMapVersion = 0;
 	_fileLocations.clear();
 	_fileLocationPairs.clear();
@@ -3866,6 +3901,77 @@ std::vector<QString> Account::walletEngineStorageKeys(
 		}
 	}
 	return result;
+}
+
+std::optional<QByteArray> Account::readAgentValue(const QString &key) {
+	const auto i = _agentStoragesMap.find(key);
+	if (i == _agentStoragesMap.cend()) {
+		return std::nullopt;
+	}
+	// WHY: unlike the wallet records, a broken agent record is history,
+	// not a pending operation, so absence is the truthful report.
+	FileReadDescriptor file;
+	if (!ReadEncryptedFile(file, i->second, _basePath, _localKey)) {
+		LOG(("Agent Error: broken agent storage record."));
+		return std::nullopt;
+	}
+	quint32 formatVersion = 0;
+	file.stream >> formatVersion;
+	if (!CheckStreamStatus(file.stream)
+		|| formatVersion > kAgentFormatVersion) {
+		LOG(("Agent Error: unsupported agent storage record version."));
+		return std::nullopt;
+	}
+	auto bytes = QByteArray();
+	file.stream >> bytes;
+	if (!CheckStreamStatus(file.stream)) {
+		LOG(("Agent Error: broken agent storage record."));
+		return std::nullopt;
+	}
+	return bytes;
+}
+
+void Account::writeAgentValue(const QString &key, const QByteArray &bytes) {
+	auto i = _agentStoragesMap.find(key);
+	const auto created = (i == _agentStoragesMap.cend());
+	if (created) {
+		i = _agentStoragesMap.emplace(
+			key,
+			GenerateKey(_basePath)).first;
+	}
+	const auto size = quint32(sizeof(quint32))
+		+ quint32(Serialize::bytearraySize(bytes));
+	EncryptedDescriptor data(size);
+	data.stream << quint32(kAgentFormatVersion) << bytes;
+	auto written = false;
+	{
+		FileWriteDescriptor file(i->second, _basePath);
+		file.writeEncrypted(data, _localKey);
+		written = file.finish();
+	}
+	if (!written) {
+		if (created) {
+			_agentStoragesMap.erase(i);
+		}
+		LOG(("Agent Error: could not write agent storage record."));
+		return;
+	}
+	if (created) {
+		_mapChanged = true;
+		writeMap();
+	}
+}
+
+void Account::removeAgentValue(const QString &key) {
+	const auto i = _agentStoragesMap.find(key);
+	if (i == _agentStoragesMap.cend()) {
+		return;
+	}
+	const auto fileKey = i->second;
+	_agentStoragesMap.erase(i);
+	_mapChanged = true;
+	writeMap();
+	ClearKey(fileKey, _basePath);
 }
 
 bool Account::encrypt(

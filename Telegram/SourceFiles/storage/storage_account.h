@@ -233,6 +233,12 @@ public:
 	[[nodiscard]] std::vector<QString> walletEngineStorageKeys(
 		const QString &prefix) const;
 
+	// Per-key encrypted records owned by the agent, like the wallet ones.
+	[[nodiscard]] std::optional<QByteArray> readAgentValue(
+		const QString &key);
+	void writeAgentValue(const QString &key, const QByteArray &bytes);
+	void removeAgentValue(const QString &key);
+
 	[[nodiscard]] bool encrypt(
 		const void *src,
 		void *dst,
@@ -385,6 +391,7 @@ private:
 	FileKey _inlineBotsDownloadsKey = 0;
 	FileKey _mediaLastPlaybackPositionsKey = 0;
 	base::flat_map<QString, FileKey> _walletEngineStoragesMap;
+	base::flat_map<QString, FileKey> _agentStoragesMap;
 
 	qint64 _cacheTotalSizeLimit = 0;
 	qint64 _cacheBigFileTotalSizeLimit = 0;
