@@ -11,9 +11,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/unique_qptr.h"
 #include "ui/rp_widget.h"
 
+#include <optional>
+
 namespace Ui {
 class PopupMenu;
 } // namespace Ui
+
+namespace Window {
+class SessionController;
+} // namespace Window
 
 namespace Agent {
 class Manager;
@@ -27,6 +33,7 @@ class SessionsList final : public RpWidget {
 public:
 	SessionsList(
 		QWidget *parent,
+		not_null<Window::SessionController*> controller,
 		not_null<Manager*> manager,
 		Scope scope);
 
@@ -35,27 +42,31 @@ public:
 protected:
 	void paintEvent(QPaintEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+	void leaveEventHook(QEvent *e) override;
 	void contextMenuEvent(QContextMenuEvent *e) override;
+	int resizeGetHeight(int newWidth) override;
 
 private:
 	void rebuild();
-	void openSession(const QString &id);
 	void renameSession(const QString &id);
 	void removeSession(const QString &id);
+	[[nodiscard]] QString titleOf(const QString &id) const;
 
 	struct Row {
 		QString id;
 		QString title;
 		QString date;
-		int height = 0;
 	};
-	[[nodiscard]] const Row *findRow(int y) const;
+	[[nodiscard]] std::optional<int> findRowIndex(int y) const;
 
+	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	std::vector<Row> _rows;
+	std::optional<int> _selected;
 	rpl::event_stream<QString> _openSessionRequests;
-	base::unique_qptr<Ui::PopupMenu> _menu;
+	base::unique_qptr<PopupMenu> _menu;
 
 };
 

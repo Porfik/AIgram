@@ -15,6 +15,7 @@ agentPanelEntryButton: IconButton(topBarSearch) {
 
 agentPanelHeaderHeight: 56px;
 agentPanelHeaderPadding: margins(16px, 0px, 16px, 0px);
+agentPanelHeaderTitleSkip: 8px;
 agentPanelHeaderTitleStyle: TextStyle(defaultTextStyle) {
 	font: font(15px semibold);
 }

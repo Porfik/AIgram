@@ -79,6 +79,8 @@ private:
 	void updateControlsGeometry();
 	void showHistory(bool shown);
 	void showSession(Session *session);
+	void trackSession(Session *session);
+	void updateHeaderTitle();
 
 	const not_null<Window::SessionController*> _controller;
 	const not_null<PeerData*> _peer;
@@ -88,9 +90,12 @@ private:
 	IconButton *_newSessionButton = nullptr;
 	IconButton *_historyButton = nullptr;
 	SessionView *_sessionView = nullptr;
+	ScrollArea *_scroll = nullptr;
 	SessionsList *_sessionsList = nullptr;
 	Fn<QString()> _hintProvider;
 	bool _listOpen = false;
+	QString _headerTitle;
+	rpl::lifetime _sessionLifetime;
 
 };
 
@@ -113,7 +118,8 @@ PanelWidget::Inner::Inner(
 				const auto thread = strong->activeChatCurrent().thread();
 				if (const auto topic = thread ? thread->asTopic() : nullptr) {
 					if (topic->peer() == _peer) {
-						return (u"The user has topic \"%1\" (topic_id %2) open.\n"_q
+						return (u"The user has topic \"%1\" "
+							"(topic_id %2) open."_q
 							.arg(topic->title())
 							.arg(topic->rootId().bare));
 					}
@@ -128,13 +134,24 @@ PanelWidget::Inner::Inner(
 		_controller,
 		_manager,
 		_scope);
-	_sessionsList = Ui::CreateChild<SessionsList>(
-		this,
-		_manager,
-		_scope);
+	_scroll = Ui::CreateChild<ScrollArea>(this);
+	_sessionsList = _scroll->setOwnedWidget(
+		object_ptr<SessionsList>(
+			_scroll,
+			_controller,
+			_manager,
+			_scope));
+	_scroll->widthValue(
+	) | rpl::on_next([=](int width) {
+		_sessionsList->resizeToWidth(width);
+	}, lifetime());
 	_sessionsList->openSessionRequests(
 	) | rpl::on_next([=](const QString &id) {
 		showSession(_manager->open(id));
+	}, lifetime());
+	_sessionView->sessionChanges(
+	) | rpl::on_next([=](Session *session) {
+		trackSession(session);
 	}, lifetime());
 
 	if (_hintProvider) {
@@ -169,18 +186,22 @@ void PanelWidget::Inner::setupHeader() {
 	) | rpl::on_next([=] {
 		auto p = QPainter(_header);
 		p.fillRect(_header->rect(), st::windowBg);
+		const auto font = st::agentPanelHeaderTitleStyle.font;
+		const auto available = std::max(
+			_newSessionButton->x()
+				- st::agentPanelHeaderPadding.left()
+				- st::agentPanelHeaderTitleSkip,
+			0);
 		p.setPen(st::windowFg);
-		p.setFont(st::agentPanelHeaderTitleStyle.font);
+		p.setFont(font);
 		p.drawText(
 			QRect(
 				st::agentPanelHeaderPadding.left(),
 				0,
-				_header->width()
-					- st::agentPanelHeaderPadding.left()
-					- st::agentPanelHeaderPadding.right(),
+				available,
 				st::agentPanelHeaderHeight),
 			Qt::AlignLeft | Qt::AlignVCenter,
-			tr::lng_agent_title(tr::now));
+			font->elided(_headerTitle, available));
 	}, _header->lifetime());
 }
 
@@ -190,13 +211,42 @@ void PanelWidget::Inner::showHistory(bool shown) {
 		? &st::agentPanelIconSession
 		: &st::agentPanelIconHistory);
 	_sessionView->setVisible(!shown);
-	_sessionsList->setVisible(shown);
+	_scroll->setVisible(shown);
+	updateHeaderTitle();
 	updateControlsGeometry();
 }
 
 void PanelWidget::Inner::showSession(Session *session) {
 	_sessionView->showSession(session);
+	trackSession(session);
 	showHistory(false);
+}
+
+void PanelWidget::Inner::trackSession(Session *session) {
+	_sessionLifetime = rpl::lifetime();
+	if (session) {
+		session->recordChanges(
+		) | rpl::on_next([=] {
+			updateHeaderTitle();
+		}, _sessionLifetime);
+	}
+	updateHeaderTitle();
+}
+
+void PanelWidget::Inner::updateHeaderTitle() {
+	if (_listOpen) {
+		_headerTitle = tr::lng_agent_sessions_tab(tr::now);
+	} else if (const auto session = _sessionView->session()) {
+		const auto title = session->record().info.title;
+		_headerTitle = title.isEmpty()
+			? tr::lng_agent_session_untitled(tr::now)
+			: title;
+	} else {
+		_headerTitle = tr::lng_agent_new_session(tr::now);
+	}
+	if (_header) {
+		_header->update();
+	}
 }
 
 void PanelWidget::Inner::restoreState(
@@ -251,11 +301,11 @@ void PanelWidget::Inner::updateControlsGeometry() {
 	}
 	const auto top = st::agentPanelHeaderHeight;
 	const auto contentHeight = height - top;
+	if (_scroll) {
+		_scroll->setGeometry(0, top, width, contentHeight);
+	}
 	if (_sessionView) {
 		_sessionView->setGeometry(0, top, width, contentHeight);
-	}
-	if (_sessionsList) {
-		_sessionsList->setGeometry(0, top, width, contentHeight);
 	}
 }
 

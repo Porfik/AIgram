@@ -9,17 +9,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/core/agent_record.h"
-#include "boxes/abstract_box.h" // Ui::show().
 #include "lang/lang_keys.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
-#include "ui/text/text_utilities.h"
 #include "ui/painter.h"
 #include "ui/widgets/fields/input_field.h"
 #include "ui/widgets/menu/menu_add_action_callback.h"
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
+#include "window/window_session_controller.h"
 #include "styles/style_agent_panel.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
@@ -28,11 +27,14 @@ namespace Agent::Ui {
 
 SessionsList::SessionsList(
 	QWidget *parent,
+	not_null<Window::SessionController*> controller,
 	not_null<Manager*> manager,
 	Scope scope)
 : RpWidget(parent)
+, _controller(controller)
 , _manager(manager)
 , _scope(scope) {
+	setMouseTracking(true);
 	_manager->listChanges(
 	) | rpl::on_next([=](const Scope &scope) {
 		if (scope == _scope) {
@@ -48,28 +50,27 @@ rpl::producer<QString> SessionsList::openSessionRequests() const {
 
 void SessionsList::rebuild() {
 	_rows.clear();
+	_selected.reset();
 	const auto list = _manager->list(_scope);
-	if (list.empty()) {
-		resize(width(), st::agentSessionListEmptyHeight);
-		update();
-		return;
-	}
-	auto height = 0;
+	_rows.reserve(list.size());
 	for (const auto &info : list) {
-		auto row = Row{
+		_rows.push_back({
 			.id = info.id,
 			.title = !info.title.isEmpty()
 				? info.title
 				: tr::lng_agent_session_untitled(tr::now),
-			.date = Ui::FormatDateTime(
+			.date = FormatDateTime(
 				QDateTime::fromSecsSinceEpoch(info.updated)),
-			.height = st::agentSessionListRowHeight,
-		};
-		height += row.height;
-		_rows.push_back(std::move(row));
+		});
 	}
-	resize(width(), height);
+	resizeToWidth(width());
 	update();
+}
+
+int SessionsList::resizeGetHeight(int newWidth) {
+	return _rows.empty()
+		? st::agentSessionListEmptyHeight
+		: int(_rows.size()) * st::agentSessionListRowHeight;
 }
 
 void SessionsList::paintEvent(QPaintEvent *e) {
@@ -89,30 +90,33 @@ void SessionsList::paintEvent(QPaintEvent *e) {
 	}
 	const auto rowHeight = st::agentSessionListRowHeight;
 	const auto padding = st::agentSessionListRowPadding;
+	const auto textLeft = padding.left();
+	const auto textWidth = width()
+		- padding.left()
+		- padding.right();
+	const auto titleFont = st::agentSessionListTitleStyle.font;
+	const auto dateFont = st::agentSessionListDateStyle.font;
+	const auto dateTop = padding.top() + titleFont->height;
 	auto top = 0;
+	auto index = 0;
 	for (const auto &row : _rows) {
+		if (index == _selected) {
+			p.fillRect(0, top, width(), rowHeight, st::windowBgOver);
+		}
 		p.setPen(st::windowFg);
-		p.setFont(st::agentSessionListTitleStyle.font);
+		p.setFont(titleFont);
 		p.drawText(
-			QRect(
-				padding.left(),
-				top + padding.top(),
-				width() - padding.left() - padding.right(),
-				padding.top() + st::agentSessionListTitleStyle.font->height),
+			QRect(textLeft, top + padding.top(), textWidth, titleFont->height),
 			Qt::AlignLeft,
-			row.title);
+			titleFont->elided(row.title, textWidth));
 		p.setPen(st::windowSubTextFg);
-		p.setFont(st::agentSessionListDateStyle.font);
+		p.setFont(dateFont);
 		p.drawText(
-			QRect(
-				padding.left(),
-				top + padding.top()
-					+ st::agentSessionListTitleStyle.font->height,
-				width() - padding.left() - padding.right(),
-				padding.bottom()),
+			QRect(textLeft, top + dateTop, textWidth, dateFont->height),
 			Qt::AlignLeft,
-			row.date);
+			dateFont->elided(row.date, textWidth));
 		top += rowHeight;
+		++index;
 	}
 }
 
@@ -120,19 +124,36 @@ void SessionsList::mousePressEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton) {
 		return;
 	}
-	if (const auto row = findRow(e->pos().y())) {
-		_openSessionRequests.fire_copy(row->id);
+	if (const auto index = findRowIndex(e->pos().y())) {
+		_openSessionRequests.fire_copy(_rows[*index].id);
+	}
+}
+
+void SessionsList::mouseMoveEvent(QMouseEvent *e) {
+	const auto index = findRowIndex(e->pos().y());
+	if (index != _selected) {
+		_selected = index;
+		setCursor(index ? style::cur_pointer : style::cur_default);
+		update();
+	}
+}
+
+void SessionsList::leaveEventHook(QEvent *e) {
+	if (_selected) {
+		_selected.reset();
+		setCursor(style::cur_default);
+		update();
 	}
 }
 
 void SessionsList::contextMenuEvent(QContextMenuEvent *e) {
-	const auto row = findRow(e->pos().y());
-	if (!row) {
+	const auto index = findRowIndex(e->pos().y());
+	if (!index) {
 		return;
 	}
-	_menu = base::make_unique_q<Ui::PopupMenu>(this, st::defaultPopupMenu);
-	const auto id = row->id;
-	const auto addAction = Ui::Menu::CreateAddActionCallback(_menu);
+	_menu = base::make_unique_q<PopupMenu>(this, st::defaultPopupMenu);
+	const auto id = _rows[*index].id;
+	const auto addAction = Menu::CreateAddActionCallback(_menu);
 	addAction(tr::lng_agent_session_rename(tr::now), [=] {
 		renameSession(id);
 	}, &st::menuIconEdit);
@@ -143,20 +164,31 @@ void SessionsList::contextMenuEvent(QContextMenuEvent *e) {
 }
 
 void SessionsList::renameSession(const QString &id) {
-	Ui::show(Box([=](not_null<Ui::GenericBox*> box) {
+	const auto manager = _manager;
+	const auto current = titleOf(id);
+	_controller->show(Box([manager, id, current](
+			not_null<GenericBox*> box) {
 		box->setTitle(tr::lng_agent_session_rename_title());
 		const auto input = box->addRow(
-			object_ptr<Ui::InputField>(
+			object_ptr<InputField>(
 				box,
 				st::defaultInputField,
 				tr::lng_agent_session_title_placeholder(),
-				QString()));
-		box->addButton(tr::lng_settings_save(), [=] {
-			if (!input->getLastText().isEmpty()) {
-				_manager->rename(id, input->getLastText());
-			}
-			box->closeBox();
+				current));
+		box->setFocusCallback([=] {
+			input->setFocusFast();
+			input->selectAll();
 		});
+		const auto save = [=] {
+			const auto text = input->getLastText().trimmed();
+			if (text.isEmpty() || text == current) {
+				return;
+			}
+			manager->rename(id, text);
+			box->closeBox();
+		};
+		input->submits() | rpl::on_next(save, box->lifetime());
+		box->addButton(tr::lng_settings_save(), save);
 		box->addButton(tr::lng_cancel(), [=] {
 			box->closeBox();
 		});
@@ -164,25 +196,36 @@ void SessionsList::renameSession(const QString &id) {
 }
 
 void SessionsList::removeSession(const QString &id) {
-	Ui::show(Ui::MakeConfirmBox({
+	const auto manager = _manager;
+	_controller->show(MakeConfirmBox({
 		.text = tr::lng_agent_session_delete_sure(tr::marked),
-		.confirmed = [=] {
-			_manager->remove(id);
+		.confirmed = [manager, id] {
+			manager->remove(id);
 		},
 		.confirmText = tr::lng_box_delete(),
 	}));
 }
 
-const SessionsList::Row *SessionsList::findRow(int y) const {
+QString SessionsList::titleOf(const QString &id) const {
+	const auto list = _manager->list(_scope);
+	for (const auto &info : list) {
+		if (info.id == id) {
+			return info.title;
+		}
+	}
+	return QString();
+}
+
+std::optional<int> SessionsList::findRowIndex(int y) const {
 	if (_rows.empty()) {
-		return nullptr;
+		return std::nullopt;
 	}
 	const auto rowHeight = st::agentSessionListRowHeight;
 	const auto index = y / rowHeight;
 	if (index < 0 || index >= int(_rows.size())) {
-		return nullptr;
+		return std::nullopt;
 	}
-	return &_rows[index];
+	return index;
 }
 
 } // namespace Agent::Ui
