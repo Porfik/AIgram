@@ -52,7 +52,6 @@ Loop::~Loop() {
 void Loop::send(Message message) {
 	Expects(!_busy);
 
-	++_generation;
 	_busy = true;
 	_steps = 0;
 	_history.push_back(std::move(message));
@@ -64,37 +63,49 @@ void Loop::interrupt() {
 		return;
 	}
 	++_generation;
+	const auto generation = _generation;
 	if (const auto id = base::take(_requestId)) {
 		_transport->cancel(id);
 	}
 	_parser = nullptr;
+	_runningTools = false;
+	_pendingTools = 0;
 	if (_toolUses.empty()) {
-		if (!_streamText.isEmpty()) {
+		if (const auto text = base::take(_streamText); !text.isEmpty()) {
 			_history.push_back(Message{
 				Role::Assistant,
-				{ TextBlock{ _streamText } },
+				{ TextBlock{ text } },
 			});
 		}
 	} else {
+		auto uses = base::take(_toolUses);
+		auto finished = base::take(_toolResults);
 		auto results = Message{ Role::User, {} };
-		results.blocks.reserve(_toolUses.size());
-		for (auto i = 0, count = int(_toolUses.size()); i != count; ++i) {
-			if (!_toolResults[i]) {
-				_tools->cancel(_toolUses[i].id);
-				_toolResults[i] = ToolResultBlock{
-					_toolUses[i].id,
+		auto synthesized = std::vector<int>();
+		results.blocks.reserve(uses.size());
+		for (auto i = 0, count = int(uses.size()); i != count; ++i) {
+			if (!finished[i]) {
+				_tools->cancel(uses[i].id);
+				finished[i] = ToolResultBlock{
+					uses[i].id,
 					u"Interrupted by the user."_q,
 					true,
 				};
-				_events.fire(ToolCallFinished{ *_toolResults[i] });
+				synthesized.push_back(i);
 			}
-			results.blocks.push_back(*_toolResults[i]);
+			results.blocks.push_back(*finished[i]);
 		}
-		_toolUses.clear();
-		_toolResults.clear();
 		_history.push_back(std::move(results));
+		for (const auto i : synthesized) {
+			_events.fire(ToolCallFinished{ *finished[i] });
+			if (_generation != generation) {
+				return;
+			}
+		}
 	}
-	finishTurn(TurnEnd::Interrupted, std::nullopt);
+	if (_generation == generation) {
+		finishTurn(TurnEnd::Interrupted, std::nullopt);
+	}
 }
 
 bool Loop::busy() const {
@@ -169,19 +180,25 @@ void Loop::forwardDelta(StreamDelta &&delta) {
 }
 
 void Loop::handleFinished(const QString &networkError) {
+	const auto generation = _generation;
 	_requestId = 0;
 	const auto response = _parser->finish(networkError);
 	_parser = nullptr;
 	if (UsageNonZero(response.usage)) {
 		_events.fire(UsageReported{ response.usage });
+		if (_generation != generation) {
+			return;
+		}
 	}
 	if (response.error) {
+		_streamText = QString();
 		finishTurn(TurnEnd::Failed, response.error);
 		return;
 	}
 	if (!response.message.blocks.empty()) {
 		_history.push_back(response.message);
 	}
+	_streamText = QString();
 	if (response.stopReason != StopReason::ToolUse) {
 		const auto end = (response.stopReason == StopReason::MaxTokens)
 			? TurnEnd::MaxTokens
@@ -211,11 +228,11 @@ void Loop::startTools(std::vector<ToolUseBlock> uses) {
 	_runningTools = true;
 	const auto generation = _generation;
 	for (auto i = 0, count = int(_toolUses.size()); i != count; ++i) {
+		const auto use = _toolUses[i];
+		_events.fire(ToolCallRequested{ use });
 		if (_generation != generation) {
 			return;
 		}
-		const auto &use = _toolUses[i];
-		_events.fire(ToolCallRequested{ use });
 		if (!use.inputError.isEmpty()) {
 			completeTool(
 				i,
@@ -234,6 +251,9 @@ void Loop::startTools(std::vector<ToolUseBlock> uses) {
 					completeTool(i, std::move(result));
 				}));
 		}
+		if (_generation != generation) {
+			return;
+		}
 	}
 	_runningTools = false;
 	if (_busy && !_pendingTools && _generation == generation) {
@@ -242,13 +262,14 @@ void Loop::startTools(std::vector<ToolUseBlock> uses) {
 }
 
 void Loop::completeTool(int index, ToolResultBlock result) {
+	const auto generation = _generation;
 	_toolResults[index] = result;
 	_events.fire(ToolCallFinished{ result });
-	if (!_busy) {
+	if (_generation != generation) {
 		return;
 	}
 	--_pendingTools;
-	if (!_pendingTools && !_runningTools) {
+	if (!_pendingTools && !_runningTools && _generation == generation) {
 		finishTools();
 	}
 }

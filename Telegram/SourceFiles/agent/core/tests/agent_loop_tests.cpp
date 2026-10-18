@@ -8,6 +8,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/tests/agent_tests.h"
 
 #include "agent/core/agent_loop.h"
+#include "agent/core/agent_openai.h"
+
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
 
 #include <deque>
 #include <memory>
@@ -160,15 +164,47 @@ struct Harness {
 
 	explicit Harness(
 			LoopOptions options = LoopOptions(),
-			bool synchronousTools = false)
-	: transport(std::make_unique<FakeTransport>())
-	, executor(std::make_unique<FakeExecutor>(
-		std::vector<ToolSpec>{
-			ToolSpec{ u"echo"_q, u"Echoes the input."_q, QJsonObject() },
-		},
-		synchronousTools)) {
+			bool synchronousTools = false,
+			std::vector<ToolSpec> specs = DefaultSpecs()) {
 		auto ownedAdapter = std::make_unique<FakeAdapter>();
 		adapter = ownedAdapter.get();
+		start(
+			std::move(options),
+			std::move(ownedAdapter),
+			synchronousTools,
+			std::move(specs));
+	}
+	Harness(
+		LoopOptions options,
+		std::unique_ptr<Adapter> ownedAdapter,
+		std::vector<ToolSpec> specs = DefaultSpecs()) {
+		start(
+			std::move(options),
+			std::move(ownedAdapter),
+			false,
+			std::move(specs));
+	}
+
+	[[nodiscard]] FakeParserState &state(int step = 0) {
+		return *adapter->states[step];
+	}
+
+private:
+	[[nodiscard]] static std::vector<ToolSpec> DefaultSpecs() {
+		return {
+			ToolSpec{ u"echo"_q, u"Echoes the input."_q, QJsonObject() },
+		};
+	}
+
+	void start(
+			LoopOptions options,
+			std::unique_ptr<Adapter> ownedAdapter,
+			bool synchronousTools,
+			std::vector<ToolSpec> specs) {
+		transport = std::make_unique<FakeTransport>();
+		executor = std::make_unique<FakeExecutor>(
+			std::move(specs),
+			synchronousTools);
 		loop = std::make_unique<Loop>(
 			std::move(ownedAdapter),
 			transport.get(),
@@ -179,11 +215,21 @@ struct Harness {
 		}, lifetime);
 	}
 
-	[[nodiscard]] FakeParserState &state(int step = 0) {
-		return *adapter->states[step];
-	}
-
 };
+
+void ReplayFixture(
+		FakeTransport &transport,
+		const QByteArray &bytes,
+		int parts) {
+	transport.head(200);
+	const auto step = bytes.size() / parts;
+	for (auto i = 0; i != parts; ++i) {
+		transport.data(bytes.mid(i * step, (i == parts - 1)
+			? bytes.size() - i * step
+			: step));
+	}
+	transport.finished();
+}
 
 [[nodiscard]] Message UserText(QString text) {
 	return Message{ Role::User, { TextBlock{ std::move(text) } } };
@@ -388,6 +434,10 @@ std::vector<Check> LoopChecks() {
 				|| request.tools.size() != 1
 				|| request.tools[0].name != u"echo"_q) {
 				return u"request options differ"_q;
+			}
+			if (h.transport->sent[0].request.url
+				!= u"https://provider.test/v1/chat/completions"_q) {
+				return u"unexpected request url"_q;
 			}
 			const auto historyDiff = SameMessages(
 				request.messages,
@@ -993,6 +1043,424 @@ std::vector<Check> LoopChecks() {
 			}
 			if (!lateOk) {
 				return u"expected the late handlers to be ignored"_q;
+			}
+			return QString();
+		} },
+		{ u"loop_interrupt_from_usage"_q, [] {
+			auto h = Harness();
+			auto interrupted = false;
+			h.loop->events() | rpl::on_next([&](EngineEvent &&event) {
+				if (std::get_if<UsageReported>(&event) && !interrupted) {
+					interrupted = true;
+					h.loop->interrupt();
+				}
+			}, h.lifetime);
+			h.loop->send(UserText(u"spend"_q));
+			h.state().deltas = { TextDelta{ u"par"_q } };
+			h.transport->data("1");
+			h.state().response = Response{
+				std::nullopt,
+				AssistantText(u"long answer"_q),
+				StopReason::EndTurn,
+				Usage{ 5, 5, 0 },
+			};
+			h.transport->finished();
+			if (!interrupted || h.loop->busy()) {
+				return u"expected the turn to end from the handler"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Interrupted);
+			if (!finished.isEmpty()) {
+				return finished;
+			}
+			const auto history = SameMessages(
+				h.loop->history(),
+				{ UserText(u"spend"_q), AssistantText(u"par"_q) });
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
+			}
+			const auto seen = h.events.size();
+			h.transport->finished();
+			if (h.events.size() != seen) {
+				return u"expected the late handler to be ignored"_q;
+			}
+			return QString();
+		} },
+		{ u"loop_interrupt_from_tool_requested"_q, [] {
+			auto h = Harness();
+			auto interrupted = false;
+			h.loop->events() | rpl::on_next([&](EngineEvent &&event) {
+				if (std::get_if<ToolCallRequested>(&event) && !interrupted) {
+					interrupted = true;
+					h.loop->interrupt();
+				}
+			}, h.lifetime);
+			h.loop->send(UserText(u"tools"_q));
+			h.state().response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+				StopReason::ToolUse,
+				Usage{ 1, 1, 0 },
+			};
+			h.transport->finished();
+			if (!interrupted || h.loop->busy()) {
+				return u"expected the turn to end from the handler"_q;
+			}
+			if (!h.executor->pending.empty()) {
+				return u"expected no executor call"_q;
+			} else if (h.executor->cancelled
+				!= std::vector<QString>{ u"t1"_q }) {
+				return u"expected the tool to be cancelled"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Interrupted);
+			if (!finished.isEmpty()) {
+				return finished;
+			}
+			const auto history = SameMessages(
+				h.loop->history(),
+				{
+					UserText(u"tools"_q),
+					Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+					Message{
+						Role::User,
+						{
+							ToolResultBlock{
+								u"t1"_q,
+								u"Interrupted by the user."_q,
+								true,
+							},
+						},
+					},
+				});
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
+			}
+			return QString();
+		} },
+		{ u"loop_interrupt_from_tool_finished"_q, [] {
+			auto h = Harness();
+			auto interrupted = false;
+			h.loop->events() | rpl::on_next([&](EngineEvent &&event) {
+				if (std::get_if<ToolCallFinished>(&event) && !interrupted) {
+					interrupted = true;
+					h.loop->interrupt();
+				}
+			}, h.lifetime);
+			h.loop->send(UserText(u"tools"_q));
+			h.state().response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t1"_q), ToolUse(u"t2"_q) } },
+				StopReason::ToolUse,
+			};
+			h.transport->finished();
+			if (h.executor->pending.size() != 2) {
+				return u"expected two pending tools"_q;
+			}
+			h.executor->pending[0].done(
+				ToolResultBlock{ u"t1"_q, u"ok"_q, false });
+			if (!interrupted || h.loop->busy()) {
+				return u"expected the turn to end from the handler"_q;
+			}
+			if (h.executor->cancelled != std::vector<QString>{ u"t2"_q }) {
+				return u"expected only t2 to be cancelled"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Interrupted);
+			if (!finished.isEmpty()) {
+				return finished;
+			}
+			const auto history = SameMessages(
+				h.loop->history(),
+				{
+					UserText(u"tools"_q),
+					Message{
+						Role::Assistant,
+						{ ToolUse(u"t1"_q), ToolUse(u"t2"_q) },
+					},
+					Message{
+						Role::User,
+						{
+							ToolResultBlock{ u"t1"_q, u"ok"_q, false },
+							ToolResultBlock{
+								u"t2"_q,
+								u"Interrupted by the user."_q,
+								true,
+							},
+						},
+					},
+				});
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
+			}
+			const auto seen = h.events.size();
+			h.executor->pending.back().done(
+				ToolResultBlock{ u"t2"_q, u"late"_q, false });
+			if (h.events.size() != seen || h.loop->busy()) {
+				return u"expected the late done call to be ignored"_q;
+			}
+			return QString();
+		} },
+		{ u"loop_interrupt_from_tool_finished_then_send"_q, [] {
+			auto h = Harness(LoopOptions{ u"m"_q, u"s"_q, 0, 5 });
+			auto reacted = false;
+			h.loop->events() | rpl::on_next([&](EngineEvent &&event) {
+				if (std::get_if<ToolCallFinished>(&event) && !reacted) {
+					reacted = true;
+					h.loop->interrupt();
+					h.loop->send(UserText(u"next"_q));
+				}
+			}, h.lifetime);
+			h.loop->send(UserText(u"tools"_q));
+			h.state().response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+				StopReason::ToolUse,
+			};
+			h.transport->finished();
+			h.executor->pending[0].done(
+				ToolResultBlock{ u"t1"_q, u"ok"_q, false });
+			if (!reacted
+				|| h.transport->sent.size() != 2
+				|| !h.loop->busy()) {
+				return u"expected a new turn from the handler"_q;
+			}
+			auto count = 0;
+			for (const auto &event : h.events) {
+				if (std::get_if<TurnFinished>(&event)) {
+					++count;
+				}
+			}
+			if (count != 1) {
+				return u"expected one TurnFinished so far"_q;
+			}
+			const auto history = SameMessages(
+				h.loop->history(),
+				{
+					UserText(u"tools"_q),
+					Message{ Role::Assistant, { ToolUse(u"t1"_q) } },
+					Message{
+						Role::User,
+						{ ToolResultBlock{ u"t1"_q, u"ok"_q, false } },
+					},
+					UserText(u"next"_q),
+				});
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
+			}
+			h.state(1).response = Response{
+				std::nullopt,
+				AssistantText(u"done"_q),
+				StopReason::EndTurn,
+			};
+			h.transport->finished();
+			if (h.loop->busy()) {
+				return u"expected the second turn to end"_q;
+			}
+			count = 0;
+			for (const auto &event : h.events) {
+				if (std::get_if<TurnFinished>(&event)) {
+					++count;
+				}
+			}
+			if (count != 2) {
+				return u"expected one TurnFinished per send"_q;
+			}
+			return QString();
+		} },
+		{ u"loop_interrupt_from_interrupt"_q, [] {
+			auto h = Harness();
+			auto nested = false;
+			h.loop->events() | rpl::on_next([&](EngineEvent &&event) {
+				if (std::get_if<ToolCallFinished>(&event) && !nested) {
+					nested = true;
+					h.loop->interrupt();
+				}
+			}, h.lifetime);
+			h.loop->send(UserText(u"tools"_q));
+			h.state().response = Response{
+				std::nullopt,
+				Message{ Role::Assistant, { ToolUse(u"t1"_q), ToolUse(u"t2"_q) } },
+				StopReason::ToolUse,
+			};
+			h.transport->finished();
+			h.loop->interrupt();
+			if (!nested || h.loop->busy()) {
+				return u"expected the turn to end"_q;
+			}
+			if (h.executor->cancelled
+				!= std::vector<QString>{ u"t1"_q, u"t2"_q }) {
+				return u"expected both tools to be cancelled"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Interrupted);
+			if (!finished.isEmpty()) {
+				return finished;
+			}
+			const auto history = SameMessages(
+				h.loop->history(),
+				{
+					UserText(u"tools"_q),
+					Message{
+						Role::Assistant,
+						{ ToolUse(u"t1"_q), ToolUse(u"t2"_q) },
+					},
+					Message{
+						Role::User,
+						{
+							ToolResultBlock{
+								u"t1"_q,
+								u"Interrupted by the user."_q,
+								true,
+							},
+							ToolResultBlock{
+								u"t2"_q,
+								u"Interrupted by the user."_q,
+								true,
+							},
+						},
+					},
+				});
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
+			}
+			return QString();
+		} },
+		{ u"loop_openai_integration"_q, [] {
+			auto settings = ProviderSettings{
+				u"test"_q,
+				ProviderKind::OpenAiCompatible,
+				u"Test"_q,
+				u"https://provider.test/v1"_q,
+				u"key"_q,
+				u"gpt-test"_q,
+				128000,
+				false,
+			};
+			auto h = Harness(
+				LoopOptions{ QString(), QString(), 0, 10 },
+				std::make_unique<OpenAi::Adapter>(settings));
+			h.loop->send(UserText(u"weather?"_q));
+			const auto call = ReadFixture(u"openai-tool-call.sse"_q);
+			if (call.isEmpty()) {
+				return u"fixture read failed"_q;
+			}
+			ReplayFixture(*h.transport, call, 4);
+			if (h.transport->sent.size() != 1 || !h.loop->busy()) {
+				return u"expected a busy wait for the tool"_q;
+			}
+			if (h.events.size() != 3
+				|| !std::get_if<ToolUseStarted>(&h.events[0])
+				|| !std::get_if<UsageReported>(&h.events[1])
+				|| !std::get_if<ToolCallRequested>(&h.events[2])) {
+				return u"events: "_q + EventList(h.events);
+			}
+			const auto started = std::get<ToolUseStarted>(h.events[0]);
+			if (started.name != u"get_weather"_q
+				|| started.id
+					!= u"chatcmpl-tool-f87e92f6ee59446d9de647f1e44e1ee6"_q) {
+				return u"tool use differs"_q;
+			}
+			const auto &firstUsage = std::get<UsageReported>(h.events[1]);
+			if (firstUsage.usage.inputTokens != 166
+				|| firstUsage.usage.outputTokens != 12) {
+				return u"first usage differs"_q;
+			}
+			if (h.executor->pending.size() != 1) {
+				return u"expected one pending weather call"_q;
+			}
+			const auto callId = h.executor->pending[0].id;
+			h.executor->pending[0].done(ToolResultBlock{
+				callId,
+				u"18°C and rain"_q,
+				false,
+			});
+			if (h.transport->sent.size() != 2 || !h.loop->busy()) {
+				return u"expected a second request"_q;
+			}
+			if (h.events.size() != 4
+				|| !std::get_if<ToolCallFinished>(&h.events[3])) {
+				return u"events: "_q + EventList(h.events);
+			}
+			const auto document = QJsonDocument::fromJson(
+				h.transport->sent[1].request.body);
+			const auto messages = document.object()
+				.value(u"messages"_q).toArray();
+			auto toolMessage = false;
+			for (const auto &message : messages) {
+				const auto object = message.toObject();
+				if (object.value(u"role"_q).toString() == u"tool"_q
+					&& object.value(u"tool_call_id"_q).toString() == callId
+					&& object.value(u"content"_q).toString()
+						== u"18°C and rain"_q) {
+					toolMessage = true;
+				}
+			}
+			if (!toolMessage) {
+				return u"expected the tool message in the request"_q;
+			}
+			const auto result = ReadFixture(u"openai-tool-result.sse"_q);
+			if (result.isEmpty()) {
+				return u"fixture read failed"_q;
+			}
+			ReplayFixture(*h.transport, result, 3);
+			if (h.loop->busy()) {
+				return u"expected the turn to end"_q;
+			}
+			const auto total = int(h.events.size());
+			if (total < 7) {
+				return u"expected streamed text"_q;
+			}
+			for (auto i = 4; i < total - 2; ++i) {
+				if (!std::get_if<TextDelta>(&h.events[i])) {
+					return u"events: "_q + EventList(h.events);
+				}
+			}
+			if (!std::get_if<UsageReported>(&h.events[total - 2])) {
+				return u"events: "_q + EventList(h.events);
+			}
+			const auto secondUsage = std::get<UsageReported>(
+				h.events[total - 2]);
+			if (secondUsage.usage.inputTokens != 187
+				|| secondUsage.usage.outputTokens != 33) {
+				return u"second usage differs"_q;
+			}
+			const auto finished = ExpectOneTurnFinished(
+				h.events,
+				TurnEnd::Completed);
+			if (!finished.isEmpty()) {
+				return finished;
+			}
+			auto use = ToolUseBlock();
+			use.id = callId;
+			use.name = u"get_weather"_q;
+			use.input = QJsonObject{
+				{ u"city"_q, QJsonValue(u"Paris"_q) },
+			};
+			const auto history = SameMessages(
+				h.loop->history(),
+				{
+					UserText(u"weather?"_q),
+					Message{ Role::Assistant, { std::move(use) } },
+					Message{
+						Role::User,
+						{ ToolResultBlock{
+							callId,
+							u"18°C and rain"_q,
+							false,
+						} },
+					},
+					AssistantText(
+						u"The weather in Paris is currently **18°C "
+						u"with light rain**. You might want to bring an "
+						u"umbrella if you're heading out! 🌧️"_q),
+				});
+			if (!history.isEmpty()) {
+				return u"history: "_q + history;
 			}
 			return QString();
 		} },
