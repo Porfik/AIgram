@@ -13,22 +13,28 @@ agentPanelEntryButton: IconButton(topBarSearch) {
 	iconOver: icon {{ "menu/ai_prompt", menuIconFgOver }};
 }
 
-agentPanelHeaderHeight: 56px;
-agentPanelHeaderPadding: margins(16px, 0px, 16px, 0px);
-agentPanelHeaderTitleSkip: 8px;
-agentPanelHeaderTitleStyle: TextStyle(defaultTextStyle) {
-	font: font(15px semibold);
+agentPanelLayerHeight: 720px;
+
+agentPanelTopBarNew: IconButton(infoTopBarEdit) {
+	width: 42px;
+	icon: icon {{ "menu/add", boxTitleCloseFg }};
+	iconOver: icon {{ "menu/add", boxTitleCloseFgOver }};
+	iconPosition: point(9px, -1px);
+	rippleAreaPosition: point(0px, 6px);
 }
-agentPanelHeaderButton: IconButton {
-	width: 40px;
-	height: 40px;
-	rippleAreaPosition: point(0px, 0px);
-	rippleAreaSize: 40px;
-	ripple: defaultRippleAnimation;
+agentPanelTopBarHistory: IconButton(agentPanelTopBarNew) {
+	icon: icon {{ "menu/reschedule", boxTitleCloseFg }};
+	iconOver: icon {{ "menu/reschedule", boxTitleCloseFgOver }};
 }
-agentPanelIconHistory: icon {{ "menu/all_media", windowFg }};
-agentPanelIconSession: icon {{ "menu/chats", windowFg }};
-agentPanelIconNewSession: icon {{ "menu/add", windowFg }};
+agentPanelTopBarHistoryActive: icon {{ "menu/reschedule", windowActiveTextFg }};
+agentPanelLayerTopBarNew: IconButton(infoLayerTopBarQr) {
+	icon: icon {{ "menu/add", boxTitleCloseFg }};
+	iconOver: icon {{ "menu/add", boxTitleCloseFgOver }};
+}
+agentPanelLayerTopBarHistory: IconButton(agentPanelLayerTopBarNew) {
+	icon: icon {{ "menu/reschedule", boxTitleCloseFg }};
+	iconOver: icon {{ "menu/reschedule", boxTitleCloseFgOver }};
+}
 
 agentSessionListEmptyHeight: 120px;
 agentSessionListRowHeight: 60px;

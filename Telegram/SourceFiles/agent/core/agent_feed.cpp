@@ -16,10 +16,13 @@ std::vector<FeedItem> BuildFeed(
 		int summaryUntil) {
 	auto result = std::vector<FeedItem>();
 	result.reserve(messages.size());
-	auto pending = std::vector<int>();
+	auto pending = std::vector<std::pair<int, int>>();
+	auto steps = -1;
 	const auto attach = [&](const ToolResultBlock &block) {
 		for (auto i = int(pending.size()) - 1; i >= 0; --i) {
-			auto &tool = std::get<FeedTool>(result[pending[i]]);
+			const auto [item, step] = pending[i];
+			auto &group = std::get<FeedSteps>(result[item]);
+			auto &tool = std::get<FeedTool>(group.steps[step]);
 			if (tool.call.id == block.toolUseId) {
 				tool.result = block;
 				pending.erase(pending.begin() + i);
@@ -27,10 +30,20 @@ std::vector<FeedItem> BuildFeed(
 			}
 		}
 	};
+	const auto addStep = [&](int index, FeedStep step) {
+		if (steps < 0) {
+			steps = int(result.size());
+			result.push_back(FeedSteps{ index });
+		}
+		auto &group = std::get<FeedSteps>(result[steps]);
+		group.steps.push_back(std::move(step));
+		return std::pair{ steps, int(group.steps.size()) - 1 };
+	};
 	const auto count = int(messages.size());
 	for (auto index = 0; index != count; ++index) {
 		if (summaryUntil > 0 && summaryUntil == index) {
 			result.push_back(FeedSummary{ summaryUntil });
+			steps = -1;
 		}
 		const auto &message = messages[index];
 		const auto user = (message.role == Role::User);
@@ -44,6 +57,7 @@ std::vector<FeedItem> BuildFeed(
 			} else {
 				result.push_back(FeedAssistant{ index, base::take(text) });
 			}
+			steps = -1;
 		};
 		for (const auto &block : message.blocks) {
 			std::visit([&](const auto &value) {
@@ -60,14 +74,14 @@ std::vector<FeedItem> BuildFeed(
 					if (!user) {
 						flush();
 						if (!value.text.isEmpty()) {
-							result.push_back(
-								FeedThinking{ index, value.text });
+							addStep(index, FeedThinking{ index, value.text });
 						}
 					}
 				} else if constexpr (std::is_same_v<T, ToolUseBlock>) {
 					flush();
-					result.push_back(FeedTool{ index, value, std::nullopt });
-					pending.push_back(int(result.size()) - 1);
+					pending.push_back(addStep(
+						index,
+						FeedTool{ index, value, std::nullopt }));
 				} else if constexpr (std::is_same_v<T, ToolResultBlock>) {
 					attach(value);
 				}

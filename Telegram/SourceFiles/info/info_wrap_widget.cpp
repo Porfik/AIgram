@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/info_wrap_widget.h"
 
+#include "agent/ui/agent_panel.h"
 #include "info/profile/info_profile_widget.h"
 #include "info/profile/info_profile_values.h"
 #include "info/media/info_media_widget.h"
@@ -524,6 +525,8 @@ void WrapWidget::setupTopBarMenuToggle() {
 				addTopBarMenuButton();
 			}
 		}, _topBar->lifetime());
+	} else if (section.type() == Section::Type::Agent) {
+		Agent::Ui::SetupPanelTopBar(_content.data(), _topBar.data(), wrap());
 	}
 }
 

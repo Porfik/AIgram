@@ -13,6 +13,9 @@ class PeerData;
 
 namespace Info {
 class ContentMemento;
+class ContentWidget;
+class TopBar;
+enum class Wrap;
 } // namespace Info
 
 namespace Window {
@@ -27,5 +30,9 @@ namespace Agent::Ui {
 void TogglePanel(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer);
+void SetupPanelTopBar(
+	not_null<Info::ContentWidget*> content,
+	not_null<Info::TopBar*> topBar,
+	Info::Wrap wrap);
 
 } // namespace Agent::Ui

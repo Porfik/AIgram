@@ -36,6 +36,13 @@ struct FeedTool {
 	std::optional<ToolResultBlock> result;
 };
 
+using FeedStep = std::variant<FeedThinking, FeedTool>;
+
+struct FeedSteps {
+	int index = 0;
+	std::vector<FeedStep> steps;
+};
+
 struct FeedSummary {
 	int until = 0;
 };
@@ -43,8 +50,7 @@ struct FeedSummary {
 using FeedItem = std::variant<
 	FeedUser,
 	FeedAssistant,
-	FeedThinking,
-	FeedTool,
+	FeedSteps,
 	FeedSummary>;
 
 [[nodiscard]] std::vector<FeedItem> BuildFeed(

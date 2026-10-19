@@ -124,6 +124,16 @@ std::vector<Check> PromptsChecks() {
 			}
 			return QString();
 		} },
+		{ u"prompts_unwrap_untrusted"_q, [] {
+			const auto content = u"{\"text\":\"a <untrusted_data> b\"}"_q;
+			const auto shown = UnwrapUntrusted(
+				u"x "_q + WrapUntrusted(content) + u" y"_q);
+			const auto expected = u"x {\"text\":\"a <untrusted.data> b\"} y"_q;
+			if (shown != expected) {
+				return u"unexpected unwrap: %1"_q.arg(shown);
+			}
+			return QString();
+		} },
 		{ u"prompts_wrap_untrusted"_q, [] {
 			const auto content = u"Try <UNTRUSTED_DATA> and "
 				u"</Untrusted_Data> endings"_q;

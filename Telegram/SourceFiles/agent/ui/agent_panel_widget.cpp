@@ -16,6 +16,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_thread.h"
 #include "info/info_controller.h"
+#include "info/info_top_bar.h"
+#include "info/info_wrap_widget.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "ui/rp_widget.h"
@@ -26,6 +28,21 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_agent_panel.h"
 
 namespace Agent::Ui {
+namespace {
+
+class HeightFiller final : public RpWidget {
+public:
+	using RpWidget::RpWidget;
+
+	rpl::producer<int> desiredHeightValue() const override;
+
+};
+
+rpl::producer<int> HeightFiller::desiredHeightValue() const {
+	return rpl::single(st::agentPanelLayerHeight);
+}
+
+} // namespace
 
 PanelMemento::PanelMemento(not_null<PeerData*> peer)
 : Info::ContentMemento(peer, nullptr, nullptr, PeerId()) {
@@ -70,31 +87,31 @@ public:
 	void restoreState(const QString &sessionId, bool listOpen);
 	[[nodiscard]] std::pair<QString, bool> state() const;
 	void setInnerFocus();
+	void startNewSession();
+	void toggleHistory();
+	[[nodiscard]] rpl::producer<QString> titleValue() const;
+	[[nodiscard]] rpl::producer<bool> listOpenValue() const;
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
 
 private:
-	void setupHeader();
 	void updateControlsGeometry();
 	void showHistory(bool shown);
 	void showSession(Session *session);
 	void trackSession(Session *session);
-	void updateHeaderTitle();
+	void updateTitle();
 
 	const not_null<Window::SessionController*> _controller;
 	const not_null<PeerData*> _peer;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
-	RpWidget *_header = nullptr;
-	IconButton *_newSessionButton = nullptr;
-	IconButton *_historyButton = nullptr;
 	SessionView *_sessionView = nullptr;
 	ScrollArea *_scroll = nullptr;
 	SessionsList *_sessionsList = nullptr;
 	Fn<QString()> _hintProvider;
-	bool _listOpen = false;
-	QString _headerTitle;
+	rpl::variable<bool> _listOpen = false;
+	rpl::variable<QString> _title;
 	rpl::lifetime _sessionLifetime;
 
 };
@@ -108,8 +125,6 @@ PanelWidget::Inner::Inner(
 , _peer(peer)
 , _manager(&peer->session().agent())
 , _scope(Scope::Chat(peer->id.value)) {
-	setupHeader();
-
 	const auto forumPeer = _peer->asChannel();
 	if (forumPeer && forumPeer->isForum()) {
 		const auto weak = base::make_weak(_controller.get());
@@ -162,58 +177,32 @@ PanelWidget::Inner::Inner(
 	showSession(list.empty() ? nullptr : _manager->open(list.front().id));
 }
 
-void PanelWidget::Inner::setupHeader() {
-	_header = Ui::CreateChild<RpWidget>(this);
-	_header->show();
-
-	_newSessionButton = Ui::CreateChild<IconButton>(
-		_header,
-		st::agentPanelHeaderButton);
-	_newSessionButton->setIconOverride(&st::agentPanelIconNewSession);
-	_newSessionButton->setToolTip(tr::lng_agent_new_session(tr::now));
-	_newSessionButton->setClickedCallback([=] {
-		showSession(nullptr);
-	});
-	_historyButton = Ui::CreateChild<IconButton>(
-		_header,
-		st::agentPanelHeaderButton);
-	_historyButton->setToolTip(tr::lng_agent_history(tr::now));
-	_historyButton->setClickedCallback([=] {
-		showHistory(!_listOpen);
-	});
-
-	_header->paintRequest(
-	) | rpl::on_next([=] {
-		auto p = QPainter(_header);
-		p.fillRect(_header->rect(), st::windowBg);
-		const auto font = st::agentPanelHeaderTitleStyle.font;
-		const auto available = std::max(
-			_newSessionButton->x()
-				- st::agentPanelHeaderPadding.left()
-				- st::agentPanelHeaderTitleSkip,
-			0);
-		p.setPen(st::windowFg);
-		p.setFont(font);
-		p.drawText(
-			QRect(
-				st::agentPanelHeaderPadding.left(),
-				0,
-				available,
-				st::agentPanelHeaderHeight),
-			Qt::AlignLeft | Qt::AlignVCenter,
-			font->elided(_headerTitle, available));
-	}, _header->lifetime());
-}
-
 void PanelWidget::Inner::showHistory(bool shown) {
 	_listOpen = shown;
-	_historyButton->setIconOverride(shown
-		? &st::agentPanelIconSession
-		: &st::agentPanelIconHistory);
 	_sessionView->setVisible(!shown);
 	_scroll->setVisible(shown);
-	updateHeaderTitle();
+	updateTitle();
 	updateControlsGeometry();
+}
+
+void PanelWidget::Inner::startNewSession() {
+	showSession(nullptr);
+	_sessionView->setInnerFocus();
+}
+
+void PanelWidget::Inner::toggleHistory() {
+	showHistory(!_listOpen.current());
+	if (!_listOpen.current()) {
+		_sessionView->setInnerFocus();
+	}
+}
+
+rpl::producer<QString> PanelWidget::Inner::titleValue() const {
+	return _title.value();
+}
+
+rpl::producer<bool> PanelWidget::Inner::listOpenValue() const {
+	return _listOpen.value();
 }
 
 void PanelWidget::Inner::showSession(Session *session) {
@@ -227,25 +216,22 @@ void PanelWidget::Inner::trackSession(Session *session) {
 	if (session) {
 		session->recordChanges(
 		) | rpl::on_next([=] {
-			updateHeaderTitle();
+			updateTitle();
 		}, _sessionLifetime);
 	}
-	updateHeaderTitle();
+	updateTitle();
 }
 
-void PanelWidget::Inner::updateHeaderTitle() {
-	if (_listOpen) {
-		_headerTitle = tr::lng_agent_sessions_tab(tr::now);
+void PanelWidget::Inner::updateTitle() {
+	if (_listOpen.current()) {
+		_title = tr::lng_agent_sessions_tab(tr::now);
 	} else if (const auto session = _sessionView->session()) {
 		const auto title = session->record().info.title;
-		_headerTitle = title.isEmpty()
+		_title = title.isEmpty()
 			? tr::lng_agent_session_untitled(tr::now)
 			: title;
 	} else {
-		_headerTitle = tr::lng_agent_new_session(tr::now);
-	}
-	if (_header) {
-		_header->update();
+		_title = tr::lng_agent_title(tr::now);
 	}
 }
 
@@ -263,12 +249,12 @@ void PanelWidget::Inner::restoreState(
 std::pair<QString, bool> PanelWidget::Inner::state() const {
 	return {
 		_sessionView->session() ? _sessionView->session()->id() : QString(),
-		_listOpen,
+		_listOpen.current(),
 	};
 }
 
 void PanelWidget::Inner::setInnerFocus() {
-	if (_listOpen) {
+	if (_listOpen.current()) {
 		_sessionsList->setFocus();
 	} else {
 		_sessionView->setInnerFocus();
@@ -281,32 +267,9 @@ void PanelWidget::Inner::resizeEvent(QResizeEvent *e) {
 }
 
 void PanelWidget::Inner::updateControlsGeometry() {
-	const auto width = this->width();
-	const auto height = this->height();
-	if (_header) {
-		_header->setGeometry(0, 0, width, st::agentPanelHeaderHeight);
-		const auto buttonSize = st::agentPanelHeaderButton.width;
-		_historyButton->setGeometry(
-			width
-				- buttonSize
-				- st::agentPanelHeaderPadding.right(),
-			(st::agentPanelHeaderHeight - buttonSize) / 2,
-			buttonSize,
-			st::agentPanelHeaderButton.height);
-		_newSessionButton->setGeometry(
-			_historyButton->x() - buttonSize,
-			(st::agentPanelHeaderHeight - buttonSize) / 2,
-			buttonSize,
-			st::agentPanelHeaderButton.height);
-	}
-	const auto top = st::agentPanelHeaderHeight;
-	const auto contentHeight = height - top;
-	if (_scroll) {
-		_scroll->setGeometry(0, top, width, contentHeight);
-	}
-	if (_sessionView) {
-		_sessionView->setGeometry(0, top, width, contentHeight);
-	}
+	const auto geometry = rect();
+	_scroll->setGeometry(geometry);
+	_sessionView->setGeometry(geometry);
 }
 
 PanelWidget::PanelWidget(
@@ -315,15 +278,14 @@ PanelWidget::PanelWidget(
 	not_null<PeerData*> peer)
 : Info::ContentWidget(parent, controller)
 , _peer(peer) {
-	_inner = setInnerWidget(object_ptr<Inner>(
+	setInnerWidget(object_ptr<HeightFiller>(this));
+	_inner = CreateChild<Inner>(
 		this,
 		controller->parentController(),
-		peer));
-
-	_inner->resizeToWidth(width());
-	scrollHeightValue(
-	) | rpl::on_next([=](int height) {
-		_inner->resize(width(), height);
+		peer);
+	scroll()->geometryValue(
+	) | rpl::on_next([=](QRect geometry) {
+		_inner->setGeometry(geometry);
 	}, _inner->lifetime());
 }
 
@@ -332,7 +294,50 @@ not_null<PeerData*> PanelWidget::peer() const {
 }
 
 rpl::producer<QString> PanelWidget::title() {
-	return tr::lng_agent_title();
+	return _inner->titleValue() | rpl::after_next([=] {
+		if (const auto topBar = _topBar.data()) {
+			topBar->resizeToWidth(topBar->width());
+		}
+	});
+}
+
+void PanelWidget::setInnerFocus() {
+	_inner->setInnerFocus();
+}
+
+void PanelWidget::setupTopBar(
+		not_null<Info::TopBar*> topBar,
+		Info::Wrap wrap) {
+	_topBar = topBar.get();
+	const auto layer = (wrap == Info::Wrap::Layer);
+	const auto history = topBar->addButton(
+		base::make_unique_q<IconButton>(
+			topBar,
+			(layer
+				? st::agentPanelLayerTopBarHistory
+				: st::agentPanelTopBarHistory)));
+	history->setAccessibleName(tr::lng_agent_history(tr::now));
+	history->setToolTip(tr::lng_agent_history(tr::now));
+	history->setClickedCallback([=] {
+		_inner->toggleHistory();
+	});
+	_inner->listOpenValue(
+	) | rpl::on_next([=](bool open) {
+		history->setIconOverride(
+			open ? &st::agentPanelTopBarHistoryActive : nullptr,
+			open ? &st::agentPanelTopBarHistoryActive : nullptr);
+	}, history->lifetime());
+	const auto add = topBar->addButton(
+		base::make_unique_q<IconButton>(
+			topBar,
+			(layer
+				? st::agentPanelLayerTopBarNew
+				: st::agentPanelTopBarNew)));
+	add->setAccessibleName(tr::lng_agent_new_session(tr::now));
+	add->setToolTip(tr::lng_agent_new_session(tr::now));
+	add->setClickedCallback([=] {
+		_inner->startNewSession();
+	});
 }
 
 bool PanelWidget::showInternal(

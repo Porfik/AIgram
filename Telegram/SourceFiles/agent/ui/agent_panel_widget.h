@@ -10,7 +10,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_scope.h"
 #include "info/info_content_widget.h"
 
+#include <QtCore/QPointer>
+
 class PeerData;
+
+namespace Info {
+class TopBar;
+enum class Wrap;
+} // namespace Info
 
 namespace Agent {
 class Manager;
@@ -58,6 +65,8 @@ public:
 		not_null<Info::ContentMemento*> memento);
 
 	rpl::producer<QString> title() override;
+	void setInnerFocus() override;
+	void setupTopBar(not_null<Info::TopBar*> topBar, Info::Wrap wrap);
 
 private:
 	class Inner;
@@ -68,6 +77,7 @@ private:
 
 	const not_null<PeerData*> _peer;
 	Inner *_inner = nullptr;
+	QPointer<Info::TopBar> _topBar;
 
 };
 

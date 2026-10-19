@@ -9,92 +9,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "base/variant.h"
 #include "lang/lang_keys.h"
+#include "ui/wrap/vertical_layout.h"
 
 #include "styles/style_agent.h"
 
 #include <map>
 
 namespace Agent::Ui {
-
-class FeedWidget::List final : public RpWidget {
-public:
-	List(QWidget *parent = nullptr);
-
-	template <typename Widget>
-	Widget *append(
-		object_ptr<Widget> widget,
-		const style::margins &margin,
-		style::align align);
-	void remove(not_null<FeedItemWidget*> widget);
-	void clear();
-
-protected:
-	int resizeGetHeight(int newWidth) override;
-
-private:
-	struct Entry {
-		object_ptr<FeedItemWidget> widget;
-		style::margins margin;
-		style::align align = style::al_left;
-	};
-
-	void refresh();
-
-	std::vector<Entry> _entries;
-
-};
-
-FeedWidget::List::List(QWidget *parent) : RpWidget(parent) {
-}
-
-template <typename Widget>
-Widget *FeedWidget::List::append(
-		object_ptr<Widget> widget,
-		const style::margins &margin,
-		style::align align) {
-	const auto raw = widget.data();
-	_entries.push_back({ std::move(widget), margin, align });
-	refresh();
-	return raw;
-}
-
-void FeedWidget::List::remove(not_null<FeedItemWidget*> widget) {
-	auto i = ranges::find_if(_entries, [&](const Entry &entry) {
-		return entry.widget.data() == widget.get();
-	});
-	if (i == end(_entries)) {
-		return;
-	}
-	_entries.erase(i);
-	refresh();
-}
-
-void FeedWidget::List::clear() {
-	_entries.clear();
-	refresh();
-}
-
-void FeedWidget::List::refresh() {
-	resize(width(), resizeGetHeight(width()));
-}
-
-int FeedWidget::List::resizeGetHeight(int newWidth) {
-	auto top = st::agentFeedContentPadding.top();
-	for (auto &entry : _entries) {
-		const auto &margin = entry.margin;
-		const auto available = newWidth - margin.left() - margin.right();
-		if (available > 0) {
-			entry.widget->resizeToNaturalWidth(available);
-		}
-		const auto x = (entry.align == style::al_right)
-			? (newWidth - margin.right() - entry.widget->width())
-			: margin.left();
-		entry.widget->move(x, top + margin.top());
-		top += margin.top() + entry.widget->height() + margin.bottom();
-	}
-	return top + st::agentFeedContentPadding.bottom();
-}
-
 namespace {
 
 [[nodiscard]] std::vector<QString> ComputeKeys(
@@ -107,13 +28,16 @@ namespace {
 		const auto index = v::match(item,
 			[](const FeedUser &data) { return data.index; },
 			[](const FeedAssistant &data) { return data.index; },
-			[](const FeedThinking &data) { return data.index; },
-			[](const FeedTool &data) { return data.index; },
-			[](const FeedSummary &data) { return -1; });
+			[](const FeedSteps &data) { return data.index; },
+			[](const FeedSummary &data) { return data.until; });
 		result.push_back(u"%1:%2:%3"_q.arg(kind).arg(index).arg(
 			counts[{ index, kind }]++));
 	}
 	return result;
+}
+
+[[nodiscard]] FeedStepsWidget *AsSteps(FeedItemWidget *widget) {
+	return dynamic_cast<FeedStepsWidget*>(widget);
 }
 
 } // namespace
@@ -121,17 +45,33 @@ namespace {
 FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 : RpWidget(parent)
 , _scroll(this, st::defaultScrollArea)
+, _list(_scroll->setOwnedWidget(object_ptr<VerticalLayout>(_scroll.data())))
 , _status(this)
-, _context(std::move(context)) {
+, _context(std::move(context))
+, _unfreezeStick([=] {
+	_stickFrozen = false;
+	updateStick();
+}) {
 	if (!_context.scrollBy) {
 		_context.scrollBy = [=](int pixels) {
 			_scroll->scrollToY(_scroll->scrollTop() + pixels);
 		};
 	}
-	auto list = object_ptr<List>(_scroll.data());
-	_list = list.data();
-	_scroll->setOwnedWidget(std::move(list));
-	Ui::SetStickyBottomScroll(_scroll.get(), _list);
+	_scroll->scrollTopChanges(
+	) | rpl::on_next([=] {
+		updateStick();
+	}, lifetime());
+	_list->heightValue(
+	) | rpl::on_next([=] {
+		applyStick();
+	}, lifetime());
+	rpl::combine(
+		_scroll->scrollTopValue(),
+		_scroll->heightValue(),
+		_list->heightValue()
+	) | rpl::on_next([=](int top, int height, int) {
+		_list->setVisibleTopBottom(top, top + height);
+	}, lifetime());
 	_status->retryClicks(
 	) | rpl::on_next([=] {
 		_retryRequests.fire({});
@@ -160,101 +100,126 @@ object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
 		[&](const FeedAssistant &data) -> Result {
 			return object_ptr<FeedAssistantWidget>(_list, _context, data.text);
 		},
-		[&](const FeedThinking &data) -> Result {
-			return object_ptr<FeedThinkingWidget>(_list, data.text);
-		},
-		[&](const FeedTool &data) -> Result {
-			return object_ptr<FeedToolWidget>(_list, data);
+		[&](const FeedSteps &data) -> Result {
+			return object_ptr<FeedStepsWidget>(_list, data);
 		},
 		[&](const FeedSummary &data) -> Result {
 			return object_ptr<FeedSummaryWidget>(_list);
 		});
 }
 
+FeedItemWidget *FeedWidget::addWidget(
+		object_ptr<FeedItemWidget> widget,
+		const FeedItem &item) {
+	const auto user = std::holds_alternative<FeedUser>(item);
+	const auto result = _list->add(
+		std::move(widget),
+		user ? st::agentFeedUserMargin : st::agentFeedItemMargin,
+		user ? style::al_topright : style::al_left);
+	result->manualToggles(
+	) | rpl::on_next([=] {
+		freezeStick();
+	}, result->lifetime());
+	return result;
+}
+
 void FeedWidget::rebuild(const std::vector<FeedItem> &items) {
 	dropLive();
 	const auto keys = ComputeKeys(items);
-	const auto keep = std::min(_rows.size(), keys.size());
+	const auto keep = int(std::min(_rows.size(), keys.size()));
 	auto same = 0;
-	for (; same < keep; ++same) {
+	for (; same != keep; ++same) {
 		if (_rows[same].key != keys[same]) {
 			break;
 		}
 		_rows[same].widget->updatePayload(items[same]);
 	}
-	for (auto j = int(_rows.size()) - 1; j >= same; --j) {
-		_list->remove(_rows[j].widget);
-		_rows[j].widget = nullptr;
+	for (auto i = same; i != int(_rows.size()); ++i) {
+		delete _rows[i].widget;
 	}
 	_rows.resize(same);
-	for (auto i = same; i < int(keys.size()); ++i) {
-		auto widget = makeItemWidget(items[i]);
-		_rows.push_back({ keys[i], widget.data() });
-		_list->append(
-			std::move(widget),
-			st::agentFeedItemMargin,
-			std::holds_alternative<FeedUser>(items[i])
-				? style::al_right
-				: style::al_left);
+	for (auto i = same; i != int(items.size()); ++i) {
+		_rows.push_back({
+			keys[i],
+			addWidget(makeItemWidget(items[i]), items[i]),
+		});
 	}
-	relayoutInner();
+	refreshActive();
+}
+
+FeedItemWidget *FeedWidget::tail() const {
+	return !_live.empty()
+		? _live.back()
+		: !_rows.empty()
+		? _rows.back().widget
+		: nullptr;
+}
+
+FeedStepsWidget *FeedWidget::liveSteps() {
+	if (const auto steps = AsSteps(tail())) {
+		return steps;
+	}
+	const auto item = FeedItem(FeedSteps{ .index = -1 });
+	const auto result = AsSteps(addWidget(makeItemWidget(item), item));
+	_live.push_back(result);
+	return result;
 }
 
 void FeedWidget::handleLiveEvent(const EngineEvent &event) {
 	v::match(event,
 		[&](const TextDelta &data) {
-			if (!_liveAssistant) {
-				_liveAssistant = _list->append(
-					object_ptr<FeedAssistantWidget>(
-						_list,
-						_context,
-						QString()),
-					st::agentFeedItemMargin,
-					style::al_left);
-				relayoutInner();
+			if (!_liveAssistant || tail() != _liveAssistant) {
+				const auto item = FeedItem(FeedAssistant{ .index = -1 });
+				_liveAssistant = static_cast<FeedAssistantWidget*>(
+					addWidget(makeItemWidget(item), item));
+				_live.push_back(_liveAssistant);
 			}
 			_liveAssistant->streamDelta(data.text);
 		},
 		[&](const ThinkingDelta &data) {
-			if (!_liveThinking) {
-				_liveThinking = _list->append(
-					object_ptr<FeedThinkingWidget>(_list, QString()),
-					st::agentFeedItemMargin,
-					style::al_left);
-				relayoutInner();
-			}
-			_liveThinkingBuffer += data.text;
-			_liveThinking->setText(_liveThinkingBuffer);
+			liveSteps()->appendThinking(data.text);
 		},
 		[&](const ToolUseStarted &data) {
-			_liveAssistant = nullptr;
-			_liveThinking = nullptr;
-			auto widget = object_ptr<FeedToolWidget>(_list, FeedTool{
-				.index = -1,
-				.call = ToolUseBlock{
-					.id = data.id,
-					.name = data.name,
-				},
-				.result = std::nullopt,
-			});
-			_liveTools.emplace(data.id, widget.data());
-			_list->append(
-				std::move(widget),
-				st::agentFeedItemMargin,
-				style::al_left);
-			relayoutInner();
+			liveSteps()->appendTool(data.id, data.name);
 		},
 		[&](const ToolCallFinished &data) {
-			if (const auto widget = _liveTools.take(data.result.toolUseId)) {
-				(*widget)->showFinished(data.result);
+			for (const auto &row : _rows) {
+				const auto steps = AsSteps(row.widget);
+				if (steps && steps->applyResult(data.result)) {
+					return;
+				}
+			}
+			for (const auto widget : _live) {
+				const auto steps = AsSteps(widget);
+				if (steps && steps->applyResult(data.result)) {
+					return;
+				}
 			}
 		},
 		[](const auto &) {
 		});
+	refreshActive();
+}
+
+void FeedWidget::refreshActive() {
+	const auto last = tail();
+	const auto apply = [&](FeedItemWidget *widget) {
+		if (const auto steps = AsSteps(widget)) {
+			steps->setActive(_working && (widget == last));
+		}
+	};
+	for (const auto &row : _rows) {
+		apply(row.widget);
+	}
+	for (const auto widget : _live) {
+		apply(widget);
+	}
 }
 
 void FeedWidget::setStatus(const SessionState &state) {
 	using Kind = FeedStatusWidget::Kind;
+	_working = (state.status == SessionStatus::Working)
+		|| (state.status == SessionStatus::Compacting);
 	if (state.status == SessionStatus::Working) {
 		_status->showStatus(Kind::Working, tr::lng_agent_working(tr::now));
 	} else if (state.status == SessionStatus::Compacting) {
@@ -298,52 +263,56 @@ void FeedWidget::setStatus(const SessionState &state) {
 	} else {
 		_status->hide();
 	}
+	refreshActive();
 	relayout();
 }
 
 void FeedWidget::scrollToBottom() {
-	_scroll->scrollToY(_list->height(), _list->height());
+	_stickFrozen = false;
+	_unfreezeStick.cancel();
+	_stick = true;
+	applyStick();
+}
+
+bool FeedWidget::empty() const {
+	return _rows.empty() && _live.empty();
+}
+
+void FeedWidget::updateStick() {
+	if (!_stickFrozen) {
+		_stick = (_scroll->scrollTop() + st::agentFeedBottomSkip
+			>= _scroll->scrollTopMax());
+	}
+}
+
+void FeedWidget::applyStick() {
+	if (_stick && !_stickFrozen) {
+		_scroll->scrollToY(_scroll->scrollTopMax());
+	}
+}
+
+void FeedWidget::freezeStick() {
+	_stickFrozen = true;
+	_unfreezeStick.callOnce(st::slideWrapDuration * 2);
 }
 
 void FeedWidget::dropLive() {
-	if (_liveAssistant) {
-		_list->remove(_liveAssistant);
-		_liveAssistant = nullptr;
+	for (const auto widget : base::take(_live)) {
+		delete widget;
 	}
-	if (_liveThinking) {
-		_list->remove(_liveThinking);
-		_liveThinking = nullptr;
-	}
-	for (const auto &[id, widget] : base::take(_liveTools)) {
-		_list->remove(widget);
-	}
-	_liveTools.clear();
-	_liveThinkingBuffer = QString();
+	_liveAssistant = nullptr;
 }
 
 void FeedWidget::relayout() {
-	const auto statusHeight = _status->isHidden()
-		? 0
-		: _status->height();
-	_status->setGeometry(
-		0,
-		this->height() - statusHeight,
-		this->width(),
-		statusHeight);
-	_scroll->setGeometry(
-		0,
-		0,
-		this->width(),
-		this->height() - statusHeight);
-	relayoutInner();
-}
-
-void FeedWidget::relayoutInner() {
-	const auto w = _scroll->width();
-	if (w <= 0) {
-		return;
+	const auto width = this->width();
+	if (!_status->isHidden()) {
+		_status->resizeToWidth(width);
 	}
-	_list->resizeToWidth(w);
+	const auto statusHeight = _status->isHidden() ? 0 : _status->height();
+	_status->moveToLeft(0, height() - statusHeight, width);
+	_scroll->setGeometry(0, 0, width, height() - statusHeight);
+	_list->resizeToWidth(width);
+	applyStick();
 }
 
 void FeedWidget::resizeEvent(QResizeEvent *e) {

@@ -13,6 +13,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rp_widget.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
+#include "ui/wrap/slide_wrap.h"
+#include "ui/wrap/vertical_layout.h"
 
 #include <memory>
 #include <optional>
@@ -31,6 +33,8 @@ namespace Agent::Ui {
 
 using namespace ::Ui;
 
+class ToggleRow;
+
 struct FeedContext {
 	not_null<Window::SessionController*> controller;
 	std::shared_ptr<Iv::Markdown::MathRenderer> renderer;
@@ -44,6 +48,17 @@ public:
 
 	virtual void updatePayload(const FeedItem &item) {
 	}
+	[[nodiscard]] rpl::producer<> manualToggles() const {
+		return _manualToggles.events();
+	}
+
+protected:
+	void notifyManualToggle() {
+		_manualToggles.fire({});
+	}
+
+private:
+	rpl::event_stream<> _manualToggles;
 
 };
 
@@ -64,9 +79,6 @@ protected:
 	void paintEvent(QPaintEvent *e) override;
 
 private:
-	void refreshBubble();
-
-	const style::FlatLabel &_st;
 	style::color _bg;
 	int _radius = 0;
 	style::margins _padding;
@@ -99,51 +111,40 @@ private:
 
 };
 
-class FeedThinkingWidget final : public FeedItemWidget {
+class FeedStepsWidget final : public FeedItemWidget {
 public:
-	FeedThinkingWidget(QWidget *parent, QString text);
+	FeedStepsWidget(QWidget *parent, const FeedSteps &steps);
+	~FeedStepsWidget();
 
-	void setText(QString text);
+	void updatePayload(const FeedItem &item) override;
+	void appendThinking(const QString &text);
+	void appendTool(const QString &id, const QString &name);
+	bool applyResult(const ToolResultBlock &result);
+	void setActive(bool active);
 
 protected:
 	int resizeGetHeight(int newWidth) override;
 	void paintEvent(QPaintEvent *e) override;
-	void mousePressEvent(QMouseEvent *e) override;
 
 private:
-	void refresh(bool toggle = false);
+	class Step;
+	struct Entry {
+		QString key;
+		Step *step = nullptr;
+	};
 
-	object_ptr<Ui::FlatLabel> _title;
-	object_ptr<Ui::FlatLabel> _text;
+	void applySteps(const std::vector<FeedStep> &steps);
+	void addStep(QString key, const FeedStep &step);
+	void refreshHeader();
+	void toggleExpanded();
+
+	VerticalLayout *_content = nullptr;
+	ToggleRow *_header = nullptr;
+	SlideWrap<VerticalLayout> *_list = nullptr;
+	std::vector<Entry> _entries;
+	int _liveThinking = 0;
 	bool _expanded = false;
-
-};
-
-class FeedToolWidget final : public FeedItemWidget {
-public:
-	FeedToolWidget(QWidget *parent, const FeedTool &tool);
-
-	void updatePayload(const FeedItem &item) override;
-	void showFinished(ToolResultBlock result);
-
-protected:
-	int resizeGetHeight(int newWidth) override;
-	void mousePressEvent(QMouseEvent *e) override;
-
-private:
-	void applyResult(std::optional<ToolResultBlock> result);
-	void refresh();
-
-	QString _callId;
-	object_ptr<Ui::FlatLabel> _title;
-	object_ptr<Ui::FlatLabel> _state;
-	object_ptr<Ui::FlatLabel> _argumentsHeader;
-	object_ptr<Ui::FlatLabel> _arguments;
-	object_ptr<Ui::FlatLabel> _resultHeader;
-	object_ptr<Ui::FlatLabel> _result;
-	bool _expanded = false;
-	bool _running = true;
-	bool _failed = false;
+	bool _active = false;
 
 };
 
@@ -175,12 +176,10 @@ public:
 	[[nodiscard]] rpl::producer<> retryClicks() const;
 
 protected:
-	void resizeEvent(QResizeEvent *e) override;
+	int resizeGetHeight(int newWidth) override;
 	void paintEvent(QPaintEvent *e) override;
 
 private:
-	void relayout();
-
 	object_ptr<Ui::FlatLabel> _label;
 	object_ptr<Ui::RoundButton> _retry;
 	Ui::InfiniteRadialAnimation _animation;

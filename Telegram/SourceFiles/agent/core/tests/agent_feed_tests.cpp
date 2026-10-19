@@ -8,12 +8,26 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/tests/agent_tests.h"
 
 #include "agent/core/agent_feed.h"
+#include "base/variant.h"
 
 namespace Agent::Tests {
 namespace {
 
 [[nodiscard]] Message UserText(const QString &text) {
 	return Message{ Role::User, { TextBlock{ text, false } } };
+}
+
+[[nodiscard]] QString DumpStep(const FeedStep &step) {
+	return v::match(step, [](const FeedThinking &value) {
+		return u"thinking("_q + QString::number(value.index)
+			+ u"): '"_q + value.text + u"' "_q;
+	}, [](const FeedTool &value) {
+		return u"tool("_q + QString::number(value.index)
+			+ u"): '"_q + value.call.id + u"'"_q
+			+ (value.result ? (u"='"_q + value.result->content + u"'"_q)
+				: QString())
+			+ u" "_q;
+	});
 }
 
 [[nodiscard]] QString DumpFeed(const std::vector<FeedItem> &feed) {
@@ -27,19 +41,39 @@ namespace {
 			} else if constexpr (std::is_same_v<T, FeedAssistant>) {
 				result += u"assistant("_q + QString::number(value.index)
 					+ u"): '"_q + value.text + u"' "_q;
-			} else if constexpr (std::is_same_v<T, FeedThinking>) {
-				result += u"thinking("_q + QString::number(value.index)
-					+ u"): '"_q + value.text + u"' "_q;
-			} else if constexpr (std::is_same_v<T, FeedTool>) {
-				result += u"tool("_q + QString::number(value.index)
-					+ u"): '"_q + value.call.id + u"' "_q;
+			} else if constexpr (std::is_same_v<T, FeedSteps>) {
+				result += u"steps("_q + QString::number(value.index)
+					+ u")[ "_q;
+				for (const auto &step : value.steps) {
+					result += DumpStep(step);
+				}
+				result += u"] "_q;
 			} else if constexpr (std::is_same_v<T, FeedSummary>) {
 				result += u"summary("_q + QString::number(value.until)
 					+ u") "_q;
 			}
 		}, item);
 	}
-	return result;
+	return result.trimmed();
+}
+
+[[nodiscard]] QString Expect(
+		const std::vector<FeedItem> &feed,
+		const QString &expected) {
+	const auto dump = DumpFeed(feed);
+	return (dump == expected)
+		? QString()
+		: (u"expected: "_q + expected + u"\ngot: "_q + dump);
+}
+
+[[nodiscard]] ToolUseBlock Call(const QString &id) {
+	return ToolUseBlock{ id, u"tool"_q, {}, QString(), {} };
+}
+
+[[nodiscard]] ToolResultBlock Result(
+		const QString &id,
+		const QString &content) {
+	return ToolResultBlock{ id, content, false };
 }
 
 } // namespace
@@ -94,115 +128,109 @@ std::vector<Check> FeedChecks() {
 			return QString();
 		} },
 		{ u"feed_assistant_text_tool_text"_q, [] {
-			const auto feed = BuildFeed({
+			return Expect(BuildFeed({
 				Message{ Role::Assistant, {
 					TextBlock{ u"before"_q, false },
-					ToolUseBlock{ u"call1"_q, u"tool"_q, {}, QString(), {} },
+					Call(u"call1"_q),
 					TextBlock{ u"after"_q, false },
 				} },
-			}, 0);
-			if (feed.size() != 3) {
-				return u"expected three items, got: "_q + DumpFeed(feed);
-			}
-			if (!std::get_if<FeedAssistant>(&feed[0])
-				|| !std::get_if<FeedTool>(&feed[1])
-				|| !std::get_if<FeedAssistant>(&feed[2])) {
-				return u"unexpected item kinds, got: "_q + DumpFeed(feed);
-			}
-			return QString();
+			}, 0), u"assistant(0): 'before' "
+				"steps(0)[ tool(0): 'call1' ] "
+				"assistant(0): 'after'"_q);
 		} },
 		{ u"feed_thinking_empty_and_non_empty"_q, [] {
-			const auto feed = BuildFeed({
+			return Expect(BuildFeed({
 				Message{ Role::Assistant, {
 					ThinkingBlock{ QString(), QByteArray("sign1") },
 					TextBlock{ u"answer"_q, false },
 					ThinkingBlock{ u"reasoning"_q, QByteArray("sign2") },
 				} },
-			}, 0);
-			auto seen = 0;
-			for (const auto &item : feed) {
-				if (const auto thinking = std::get_if<FeedThinking>(&item)) {
-					if (thinking->text != u"reasoning"_q) {
-						return u"unexpected thinking: "_q + DumpFeed(feed);
-					}
-					++seen;
-				}
-			}
-			if (seen != 1) {
-				return u"expected one thinking item, got: "_q + DumpFeed(feed);
-			}
-			return QString();
+			}, 0), u"assistant(0): 'answer' "
+				"steps(0)[ thinking(0): 'reasoning' ]"_q);
 		} },
 		{ u"feed_tool_results_across_messages"_q, [] {
-			const auto feed = BuildFeed({
-				Message{ Role::Assistant, {
-					ToolUseBlock{ u"call1"_q, u"tool"_q, {}, QString(), {} },
-				} },
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
 				Message{ Role::User, {
-					ToolResultBlock{ u"call1"_q, u"result text"_q, false },
+					Result(u"call1"_q, u"result text"_q),
 				} },
-			}, 0);
-			if (feed.size() != 1) {
-				return u"expected one item, got: "_q + DumpFeed(feed);
-			}
-			const auto tool = std::get_if<FeedTool>(&feed[0]);
-			if (!tool || !tool->result.has_value()) {
-				return u"expected attached result, got: "_q + DumpFeed(feed);
-			}
-			if (tool->result->content != u"result text"_q) {
-				return u"unexpected result content, got: "_q + DumpFeed(feed);
-			}
-			return QString();
+			}, 0), u"steps(0)[ tool(0): 'call1'='result text' ]"_q);
 		} },
 		{ u"feed_parallel_tool_uses_reverse_results"_q, [] {
-			const auto feed = BuildFeed({
+			return Expect(BuildFeed({
 				Message{ Role::Assistant, {
-					ToolUseBlock{ u"call1"_q, u"tool"_q, {}, QString(), {} },
-					ToolUseBlock{ u"call2"_q, u"tool"_q, {}, QString(), {} },
+					Call(u"call1"_q),
+					Call(u"call2"_q),
 				} },
 				Message{ Role::User, {
-					ToolResultBlock{ u"call2"_q, u"second"_q, false },
-					ToolResultBlock{ u"call1"_q, u"first"_q, false },
+					Result(u"call2"_q, u"second"_q),
+					Result(u"call1"_q, u"first"_q),
 				} },
-			}, 0);
-			if (feed.size() != 2) {
-				return u"expected two items, got: "_q + DumpFeed(feed);
-			}
-			const auto first = std::get_if<FeedTool>(&feed[0]);
-			const auto second = std::get_if<FeedTool>(&feed[1]);
-			if (!first || !second) {
-				return u"expected two tool items, got: "_q + DumpFeed(feed);
-			}
-			if (first->call.id != u"call1"_q || second->call.id != u"call2"_q) {
-				return u"unexpected tool order, got: "_q + DumpFeed(feed);
-			}
-			if (!first->result.has_value() || !second->result.has_value()) {
-				return u"expected both results attached, got: "_q
-					+ DumpFeed(feed);
-			}
-			if (first->result->content != u"first"_q
-				|| second->result->content != u"second"_q) {
-				return u"unexpected result matching, got: "_q + DumpFeed(feed);
-			}
-			return QString();
+			}, 0), u"steps(0)[ tool(0): 'call1'='first' "
+				"tool(0): 'call2'='second' ]"_q);
 		} },
 		{ u"feed_unmatched_result"_q, [] {
-			const auto feed = BuildFeed({
-				Message{ Role::Assistant, {
-					ToolUseBlock{ u"call1"_q, u"tool"_q, {}, QString(), {} },
-				} },
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
 				Message{ Role::User, {
-					ToolResultBlock{ u"unknown"_q, u"orphan"_q, false },
+					Result(u"unknown"_q, u"orphan"_q),
 				} },
-			}, 0);
-			if (feed.size() != 1) {
-				return u"expected one item, got: "_q + DumpFeed(feed);
-			}
-			const auto tool = std::get_if<FeedTool>(&feed[0]);
-			if (!tool || tool->result.has_value()) {
-				return u"expected no result, got: "_q + DumpFeed(feed);
-			}
-			return QString();
+			}, 0), u"steps(0)[ tool(0): 'call1' ]"_q);
+		} },
+		{ u"feed_steps_span_tool_rounds"_q, [] {
+			return Expect(BuildFeed({
+				UserText(u"go"_q),
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"plan"_q, QByteArray() },
+					Call(u"call1"_q),
+				} },
+				Message{ Role::User, { Result(u"call1"_q, u"one"_q) } },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+				Message{ Role::User, { Result(u"call2"_q, u"two"_q) } },
+				Message{ Role::Assistant, {
+					TextBlock{ u"done"_q, false },
+				} },
+			}, 0), u"user(0): 'go' "
+				"steps(1)[ thinking(1): 'plan' tool(1): 'call1'='one' "
+				"tool(3): 'call2'='two' ] "
+				"assistant(5): 'done'"_q);
+		} },
+		{ u"feed_steps_split_by_text"_q, [] {
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					Call(u"call1"_q),
+				} },
+				Message{ Role::User, { Result(u"call1"_q, u"one"_q) } },
+				Message{ Role::Assistant, {
+					TextBlock{ u"still reading"_q, false },
+					Call(u"call2"_q),
+				} },
+				UserText(u"next"_q),
+				Message{ Role::Assistant, { Call(u"call3"_q) } },
+			}, 0), u"steps(0)[ tool(0): 'call1'='one' ] "
+				"assistant(2): 'still reading' "
+				"steps(2)[ tool(2): 'call2' ] "
+				"user(3): 'next' "
+				"steps(4)[ tool(4): 'call3' ]"_q);
+		} },
+		{ u"feed_steps_split_by_summary"_q, [] {
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+			}, 1), u"steps(0)[ tool(0): 'call1' ] "
+				"summary(1) "
+				"steps(1)[ tool(1): 'call2' ]"_q);
+		} },
+		{ u"feed_hidden_text_keeps_steps"_q, [] {
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
+				Message{ Role::User, {
+					Result(u"call1"_q, u"one"_q),
+					TextBlock{ u"hint"_q, true },
+				} },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+			}, 0), u"steps(0)[ tool(0): 'call1'='one' "
+				"tool(2): 'call2' ]"_q);
 		} },
 		{ u"feed_images_skipped"_q, [] {
 			const auto feed = BuildFeed({

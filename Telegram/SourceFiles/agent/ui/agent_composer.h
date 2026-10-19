@@ -30,15 +30,15 @@ public:
 
 protected:
 	int resizeGetHeight(int newWidth) override;
+	void paintEvent(QPaintEvent *e) override;
 
 private:
 	void submit();
 	void refresh();
 
+	object_ptr<VerticalLayout> _queued;
 	object_ptr<Ui::InputField> _field;
 	object_ptr<Ui::SendButton> _send;
-	object_ptr<Ui::FlatLabel> _queuedLabel;
-	std::vector<object_ptr<BubbleWidget>> _queuedBubbles;
 	bool _working = false;
 	rpl::event_stream<QString> _sends;
 	rpl::event_stream<> _stops;

@@ -56,4 +56,13 @@ void TogglePanel(
 	controller->showSection(std::move(memento), params.withThirdColumn());
 }
 
+void SetupPanelTopBar(
+		not_null<Info::ContentWidget*> content,
+		not_null<Info::TopBar*> topBar,
+		Info::Wrap wrap) {
+	if (const auto panel = dynamic_cast<PanelWidget*>(content.get())) {
+		panel->setupTopBar(topBar, wrap);
+	}
+}
+
 } // namespace Agent::Ui

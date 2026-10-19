@@ -114,6 +114,13 @@ QString WrapUntrusted(const QString &content) {
 	return u"<untrusted_data>"_q + defused + u"</untrusted_data>"_q;
 }
 
+QString UnwrapUntrusted(const QString &content) {
+	auto result = content;
+	result.remove(u"<untrusted_data>"_q);
+	result.remove(u"</untrusted_data>"_q);
+	return result;
+}
+
 QString HintText(const QString &hint) {
 	auto text = hint.trimmed();
 	if (text.isEmpty()) {

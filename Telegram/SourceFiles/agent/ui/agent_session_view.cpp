@@ -195,6 +195,7 @@ void SessionView::sendCurrentText(const QString &text) {
 		session = _manager->create(_scope);
 		showSession(session);
 	}
+	_feed->scrollToBottom();
 	session->send({
 		.text = text,
 		.mentions = {},
@@ -245,7 +246,7 @@ void SessionView::relayoutOverlay() {
 			top + _noProviderLabel->height() + st::agentOverlayGap);
 		return;
 	}
-	if (_session) {
+	if (_session || !_feed->empty()) {
 		_welcome->hide();
 		return;
 	}

@@ -1462,6 +1462,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_tool_failed" = "Failed";
 "lng_agent_tool_arguments" = "Arguments";
 "lng_agent_tool_result" = "Result";
+"lng_agent_steps#one" = "{count} step";
+"lng_agent_steps#other" = "{count} steps";
+"lng_agent_steps_failed#one" = "{count} failed";
+"lng_agent_steps_failed#other" = "{count} failed";
 
 "lng_passkey_touch" = "Touch your security key";
 "lng_passkey_insert" = "Insert your security key, then touch it to continue.";

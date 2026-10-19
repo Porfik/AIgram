@@ -22,8 +22,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   way round.
 - Hooks into existing code stay one call or one enum value wide:
   `Main::Session::agent()`, the agent values in `Storage::Account`,
-  `Info::Section::Type::Agent`, the ✦ button in the history top bar, the
-  third column follow in `MainWidget::updateThirdColumnToCurrentChat()` and
+  `Info::Section::Type::Agent`, `Agent::Ui::SetupPanelTopBar()` in
+  `Info::WrapWidget::setupTopBarMenuToggle()`, the ✦ button in the history
+  top bar, the third column follow in
+  `MainWidget::updateThirdColumnToCurrentChat()` and
   `Shortcuts::Command::AgentPanel`.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
@@ -176,9 +178,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   an empty line, or nothing when there is no visible text. Its tool results
   attach to the `FeedTool` with the same id and never show on their own;
   images are skipped.
-- An assistant message gives `FeedThinking` for each non-empty thinking
-  block, one `FeedAssistant` per run of adjacent text blocks and a `FeedTool`
-  for each tool use.
+- An assistant message gives one `FeedAssistant` per run of adjacent text
+  blocks. Its non-empty thinking blocks (`FeedThinking`) and tool uses
+  (`FeedTool`) are steps: steps not separated by visible text form one
+  `FeedSteps` item, also across messages, so a whole run of tool rounds is
+  one item. Its `index` is the message of the first step. Visible user text,
+  assistant text and `FeedSummary` end the run; hidden text does not.
 - `FeedSummary` stands before the item of `messages[summaryUntil]` when
   `summaryUntil > 0`, or last when everything is summarized.
 
@@ -221,7 +226,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   prompt includes `FormatChatBrief()` and says requests outside the chat
   need the general agent. General instructions and memory come last.
 - `WrapUntrusted()` wraps content in `<untrusted_data>` tags and defuses any
-  such tag inside it. `HintText()` makes a one-line `[Context] ...` text, or
+  such tag inside it. `UnwrapUntrusted()` removes the wrapper tags for
+  display; defused inner tags stay as they are. `HintText()` makes a one-line `[Context] ...` text, or
   an empty string for an empty hint.
 
 ## Single requests (`agent_request.h`)
@@ -293,3 +299,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - The chat panel is an Info section (`Info::Section::Type::Agent`, keyed by
   the peer) built by `MakePanelMemento()`; `TogglePanel()` opens or closes
   it and `PanelAvailable()` says whether a peer can have one.
+- The panel has no header of its own: its title (the session title, the
+  agent name without a session, "Sessions" with the list open) and the "new
+  session" and "history" buttons live in the Info top bar, added by
+  `SetupPanelTopBar()`. The panel content lies over the Info scroll area,
+  which only holds an empty widget reporting the layer height, so the Info
+  scroll never moves.
+- The feed is a `Ui::VerticalLayout` in a scroll area. Rows are deleted
+  explicitly, never left to `object_ptr`. A `FeedSteps` row is collapsed by
+  default and shows the last tool, the step count and failures; its steps
+  expand to the thinking text or the arguments and result, shown without the
+  untrusted tags and with JSON indented. The feed keeps to the bottom while
+  the user is there, except while an expand animation runs.

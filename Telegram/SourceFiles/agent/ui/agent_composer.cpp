@@ -10,7 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "ui/controls/send_button.h"
 #include "ui/painter.h"
-#include "ui/text/text_utilities.h"
+#include "ui/wrap/vertical_layout.h"
 
 #include "styles/style_agent.h"
 #include "styles/style_chat_helpers.h"
@@ -19,14 +19,18 @@ namespace Agent::Ui {
 
 Composer::Composer(QWidget *parent)
 : RpWidget(parent)
+, _queued(this)
 , _field(
 	this,
-	st::agentComposerField,
+	st::historyComposeField,
 	Ui::InputField::Mode::MultiLine,
 	tr::lng_agent_input_placeholder())
-, _send(this, st::agentComposerSend)
-, _queuedLabel(this, QString(), st::agentQueuedLabel) {
-	_queuedLabel->hide();
+, _send(this, st::historySend) {
+	_field->setMinHeight(
+		st::historySendSize.height() - 2 * st::historySendPadding);
+	_field->setMaxHeight(st::historyComposeFieldMaxHeight);
+	_field->setDocumentMargin(4.);
+	_field->setAdditionalMargin(style::ConvertScale(4) - 4);
 	_field->setSubmitSettings(Ui::InputSubmitSettings::Enter);
 	_field->submits(
 	) | rpl::on_next([=] {
@@ -34,6 +38,10 @@ Composer::Composer(QWidget *parent)
 	}, lifetime());
 	_field->heightChanges(
 	) | rpl::on_next([=] {
+		refresh();
+	}, lifetime());
+	_queued->heightValue(
+	) | rpl::skip(1) | rpl::on_next([=] {
 		refresh();
 	}, lifetime());
 	_send->setClickedCallback([=] {
@@ -50,8 +58,8 @@ void Composer::submit() {
 	if (text.isEmpty()) {
 		return;
 	}
-	_sends.fire(std::move(text));
 	_field->setText(QString());
+	_sends.fire(std::move(text));
 }
 
 void Composer::refresh() {
@@ -70,24 +78,28 @@ void Composer::setWorking(bool working) {
 }
 
 void Composer::setQueued(const std::vector<QString> &texts) {
-	_queuedBubbles.clear();
-	for (const auto &text : texts) {
-		auto bubble = object_ptr<BubbleWidget>(
-			this,
-			st::agentQueuedLabel,
-			st::agentQueuedBubbleBg,
-			st::agentQueuedBubbleRadius,
-			st::agentQueuedBubblePadding,
-			st::agentFeedMaxTextWidth);
-		bubble->setText(text);
-		_queuedBubbles.push_back(std::move(bubble));
-	}
-	if (_queuedBubbles.empty()) {
-		_queuedLabel->hide();
-	} else {
-		_queuedLabel->setText(
-			tr::lng_agent_queued(tr::now, lt_count, int(texts.size())));
-		_queuedLabel->show();
+	_queued->clear();
+	if (!texts.empty()) {
+		_queued->add(
+			object_ptr<FlatLabel>(
+				_queued,
+				tr::lng_agent_queued(tr::now, lt_count, int(texts.size())),
+				st::agentQueuedLabel),
+			st::agentQueuedLabelMargin);
+		for (const auto &text : texts) {
+			auto bubble = object_ptr<BubbleWidget>(
+				_queued,
+				st::agentQueuedTextLabel,
+				st::agentQueuedBubbleBg,
+				st::agentQueuedBubbleRadius,
+				st::agentQueuedBubblePadding,
+				st::agentFeedMaxTextWidth);
+			bubble->setText(text);
+			_queued->add(
+				std::move(bubble),
+				st::agentQueuedBubbleMargin,
+				style::al_topright);
+		}
 	}
 	refresh();
 }
@@ -109,34 +121,40 @@ void Composer::focusField() {
 }
 
 int Composer::resizeGetHeight(int newWidth) {
-	const auto padding = st::agentComposerPadding;
-	const auto inner = newWidth - padding.left() - padding.right();
-	const auto sendWidth = st::agentComposerSend.inner.width;
-	auto top = padding.top();
-	if (!_queuedBubbles.empty()) {
-		_queuedLabel->move(padding.left(), top);
-		top += _queuedLabel->height();
-		for (const auto &bubble : _queuedBubbles) {
-			bubble->resizeToNaturalWidth(inner);
-			bubble->move(
-				padding.left() + inner - bubble->width(),
-				top);
-			top += bubble->height() + st::agentQueuedBubbleMargin.top();
-		}
-		top += st::agentQueuedBottomGap;
+	auto top = st::lineWidth;
+	if (_queued->count() > 0) {
+		const auto &padding = st::agentComposerQueuedPadding;
+		_queued->resizeToWidth(std::max(
+			newWidth - padding.left() - padding.right(),
+			1));
+		_queued->moveToLeft(padding.left(), top + padding.top(), newWidth);
+		_queued->show();
+		top += padding.top() + _queued->height() + padding.bottom();
+	} else {
+		_queued->hide();
 	}
-	const auto rowHeight = std::max(_field->height(), _send->height());
-	const auto fieldLeft = padding.left();
-	const auto fieldWidth = std::max(
-		inner - sendWidth - st::agentComposerRowGap,
-		0);
-	_field->setGeometry(fieldLeft, top, fieldWidth, rowHeight);
-	_send->setGeometry(
-		fieldLeft + fieldWidth + st::agentComposerRowGap,
-		top + (rowHeight - _send->height()) / 2,
-		sendWidth,
-		_send->height());
-	return top + rowHeight + padding.bottom();
+	const auto sendSize = st::historySendSize;
+	const auto fieldLeft = st::agentComposerFieldLeft;
+	_field->resizeToWidth(
+		std::max(newWidth - fieldLeft - sendSize.width(), 1));
+	const auto rowHeight = std::max(
+		_field->height() + 2 * st::historySendPadding,
+		sendSize.height());
+	_field->moveToLeft(
+		fieldLeft,
+		top + rowHeight - st::historySendPadding - _field->height(),
+		newWidth);
+	_send->moveToLeft(
+		newWidth - sendSize.width(),
+		top + rowHeight - sendSize.height(),
+		newWidth);
+	return top + rowHeight;
+}
+
+void Composer::paintEvent(QPaintEvent *e) {
+	auto p = QPainter(this);
+	p.fillRect(rect(), st::historyComposeAreaBg);
+	p.fillRect(0, 0, width(), st::lineWidth, st::shadowFg);
 }
 
 } // namespace Agent::Ui

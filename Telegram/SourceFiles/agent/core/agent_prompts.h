@@ -37,6 +37,7 @@ struct PromptContext {
 [[nodiscard]] QString SystemPrompt(const PromptContext &context);
 [[nodiscard]] QString FormatChatBrief(const ChatBrief &brief);
 [[nodiscard]] QString WrapUntrusted(const QString &content);
+[[nodiscard]] QString UnwrapUntrusted(const QString &content);
 [[nodiscard]] QString HintText(const QString &hint);
 
 } // namespace Agent
