@@ -16,3 +16,20 @@ agentSessionListUserpicGap: 12px;
 agentSessionListUserpicShift: 12px;
 
 agentChatsRowIcon: icon {{ "menu/ai_prompt", windowFgActive }};
+
+agentHiddenRowUserpicSize: 32px;
+agentHiddenRowUserpic: UserpicButton(defaultUserpicButton) {
+	size: size(32px, 32px);
+	photoSize: 32px;
+}
+agentHiddenRowShow: IconButton(defaultIconButton) {
+	width: 36px;
+	height: 36px;
+	icon: menuIconRestore;
+}
+agentHiddenRowHeight: 44px;
+agentHiddenRowSkip: 10px;
+agentHiddenRowName: FlatLabel(defaultFlatLabel) {
+	maxHeight: 20px;
+}
+agentHiddenRowIcon: icon {{ "menu/chats", menuIconColor }};

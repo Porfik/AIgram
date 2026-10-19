@@ -8,15 +8,28 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "settings/sections/settings_agent.h"
 
 #include "agent/agent_check.h"
+#include "agent/agent_exclusions.h"
+#include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
+#include "agent/agent_spending_tracker.h"
+#include "agent/ui/agent_spending_format.h"
+#include "boxes/peer_list_box.h"
+#include "boxes/peer_list_controllers.h"
+#include "data/data_chat_filters.h"
+#include "data/data_peer.h"
+#include "data/data_session.h"
+#include "data/data_thread.h"
 #include "lang/lang_keys.h"
+#include "main/main_session.h"
 #include "settings/sections/settings_main.h"
 #include "settings/settings_builder.h"
 #include "settings/settings_common_session.h"
 #include "ui/layers/generic_box.h"
+#include "ui/boxes/confirm_box.h"
 #include "ui/painter.h"
 #include "ui/text/text_utilities.h"
 #include "ui/vertical_list.h"
+#include "ui/controls/userpic_button.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
@@ -26,7 +39,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 
 #include <rpl/map.h>
+#include <rpl/then.h>
 
+#include <memory>
+#include <optional>
+
+#include "styles/style_agent_general.h"
 #include "styles/style_boxes.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
@@ -43,6 +61,37 @@ struct AgentState {
 	rpl::event_stream<> changed;
 
 };
+
+[[nodiscard]] QString PriceText(double price) {
+	return (price > 0.) ? QString::number(price) : QString();
+}
+
+[[nodiscard]] std::optional<double> ParsePrice(QString text) {
+	text = text.trimmed();
+	if (text.isEmpty()) {
+		return 0.;
+	}
+	auto replaced = text;
+	replaced.replace(QChar(','), QChar('.'));
+	auto seenDot = false;
+	auto digits = 0;
+	for (const auto &ch : replaced) {
+		if (ch == QChar('.')) {
+			if (seenDot) {
+				return std::nullopt;
+			}
+			seenDot = true;
+		} else if (ch.isDigit()) {
+			++digits;
+		} else {
+			return std::nullopt;
+		}
+	}
+	if (!digits) {
+		return std::nullopt;
+	}
+	return replaced.toDouble();
+}
 
 void SaveState(not_null<AgentState*> state) {
 	::Agent::SaveProviders(state->providers);
@@ -73,6 +122,232 @@ void EditProviderBox(
 	not_null<Ui::GenericBox*> box,
 	std::shared_ptr<AgentState> state,
 	::Agent::ProviderSettings provider);
+
+class HideChatsController final : public ChooseRecipientBoxController {
+public:
+	HideChatsController(
+		not_null<Main::Session*> session,
+		Fn<bool(not_null<Data::Thread*>)> filter,
+		FnMut<void(not_null<Data::Thread*>)> callback)
+	: ChooseRecipientBoxController({
+		.session = session,
+		.callback = std::move(callback),
+		.filter = std::move(filter),
+	}) {
+	}
+
+	void prepareViewHook() override;
+
+};
+
+void HideChatsController::prepareViewHook() {
+	ChooseRecipientBoxController::prepareViewHook();
+	delegate()->peerListSetTitle(tr::lng_agent_hidden_choose());
+}
+
+void HiddenChatsBox(
+	not_null<Ui::GenericBox*> box,
+	not_null<Window::SessionController*> controller) {
+	box->setTitle(tr::lng_agent_hidden_box_title());
+	box->setWidth(st::boxWideWidth);
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
+
+	const auto exclusions
+		= &controller->session().agent().exclusions();
+	const auto container = box->verticalLayout();
+	const auto rows = container->add(
+		object_ptr<Ui::VerticalLayout>(container));
+	const auto fill = [=] {
+		rows->clear();
+		const auto addFolderRow = [=](int folderId) {
+			const auto &filters
+				= controller->session().data().chatsFilters().list();
+			auto title = QString();
+			for (const auto &filter : filters) {
+				if (filter.id() == folderId) {
+					title = filter.title().text.text;
+					break;
+				}
+			}
+			if (title.isEmpty()) {
+				return;
+			}
+			const auto row = rows->add(
+				object_ptr<Ui::RpWidget>(rows),
+				st::boxRowPadding);
+			row->resize(row->width(), st::agentHiddenRowHeight);
+			const auto icon = Ui::CreateChild<Ui::RpWidget>(row);
+			icon->resize(
+				st::agentHiddenRowUserpicSize,
+				st::agentHiddenRowUserpicSize);
+			icon->paintRequest(
+			) | rpl::on_next([=] {
+				auto p = QPainter(icon);
+				st::agentHiddenRowIcon.paint(
+					p,
+					(icon->width() - st::agentHiddenRowIcon.width()) / 2,
+					(icon->height() - st::agentHiddenRowIcon.height()) / 2,
+					icon->width());
+			}, icon->lifetime());
+			const auto name = Ui::CreateChild<Ui::FlatLabel>(
+				row,
+				rpl::single(title),
+				st::agentHiddenRowName);
+			const auto show = Ui::CreateChild<Ui::IconButton>(
+				row,
+				st::agentHiddenRowShow);
+			show->setClickedCallback([=] {
+				exclusions->setFolderExcluded(folderId, false);
+			});
+			row->sizeValue(
+			) | rpl::on_next([=](QSize size) {
+				icon->moveToLeft(
+					st::boxRowPadding.left(),
+					(size.height() - icon->height()) / 2);
+				show->moveToRight(
+					st::boxRowPadding.right(),
+					(size.height() - show->height()) / 2);
+				const auto textLeft = st::boxRowPadding.left()
+					+ icon->width()
+					+ st::agentHiddenRowSkip;
+				const auto textRight = st::boxRowPadding.right()
+					+ show->width()
+					+ st::agentHiddenRowSkip;
+				name->resizeToWidth(size.width() - textLeft - textRight);
+				name->moveToLeft(
+					textLeft,
+					(size.height() - name->height()) / 2);
+			}, row->lifetime());
+		};
+		const auto addChatRow = [=](not_null<PeerData*> peer) {
+			const auto key = peer->id.value;
+			const auto row = rows->add(
+				object_ptr<Ui::RpWidget>(rows),
+				st::boxRowPadding);
+			row->resize(row->width(), st::agentHiddenRowHeight);
+			const auto userpic = Ui::CreateChild<Ui::UserpicButton>(
+				row,
+				peer,
+				st::agentHiddenRowUserpic,
+				Ui::PeerUserpicShape::Circle);
+			userpic->showSavedMessagesOnSelf(peer->isSelf());
+			const auto name = Ui::CreateChild<Ui::FlatLabel>(
+				row,
+				rpl::single(peer->name()),
+				st::agentHiddenRowName);
+			const auto show = Ui::CreateChild<Ui::IconButton>(
+				row,
+				st::agentHiddenRowShow);
+			show->setClickedCallback([=] {
+				exclusions->setPeerExcluded(key, false);
+			});
+			row->sizeValue(
+			) | rpl::on_next([=](QSize size) {
+				userpic->moveToLeft(
+					st::boxRowPadding.left(),
+					(size.height() - userpic->height()) / 2);
+				show->moveToRight(
+					st::boxRowPadding.right(),
+					(size.height() - show->height()) / 2);
+				const auto textLeft = st::boxRowPadding.left()
+					+ userpic->width()
+					+ st::agentHiddenRowSkip;
+				const auto textRight = st::boxRowPadding.right()
+					+ show->width()
+					+ st::agentHiddenRowSkip;
+				name->resizeToWidth(size.width() - textLeft - textRight);
+				name->moveToLeft(
+					textLeft,
+					(size.height() - name->height()) / 2);
+			}, row->lifetime());
+		};
+		const auto &list = exclusions->list();
+		auto hiddenFolders = false;
+		auto hiddenChats = false;
+		for (const auto folderId : list.folders) {
+			if (!hiddenFolders) {
+				hiddenFolders = true;
+				rows->add(
+					object_ptr<Ui::FlatLabel>(
+						rows,
+						tr::lng_agent_hidden_folders(),
+						st::boxLabel),
+					st::boxRowPadding);
+			}
+			addFolderRow(folderId);
+		}
+		for (const auto peerId : list.peers) {
+			const auto peer = controller->session().data().peerLoaded(
+				PeerId(peerId));
+			if (!peer) {
+				continue;
+			}
+			if (!hiddenChats) {
+				hiddenChats = true;
+				rows->add(
+					object_ptr<Ui::FlatLabel>(
+						rows,
+						tr::lng_agent_hidden_chats(),
+						st::boxLabel),
+					st::boxRowPadding);
+			}
+			addChatRow(peer);
+		}
+		if (!hiddenFolders && !hiddenChats) {
+			rows->add(
+				object_ptr<Ui::FlatLabel>(
+					rows,
+					tr::lng_agent_hidden_empty(),
+					st::boxLabel),
+				st::boxRowPadding);
+		}
+		rows->resizeToWidth(rows->width());
+		rows->showChildren();
+	};
+	const auto weakRows = QPointer<Ui::VerticalLayout>(rows);
+	exclusions->changes(
+	) | rpl::on_next([=] {
+		crl::on_main([=] {
+			if (weakRows) {
+				fill();
+			}
+		});
+	}, container->lifetime());
+	fill();
+	Ui::AddSkip(container);
+	const auto add = container->add(
+		object_ptr<Ui::SettingsButton>(
+			container,
+			tr::lng_agent_hidden_add(),
+			st::defaultSettingsButton));
+	add->setClickedCallback([=] {
+		const auto picker = std::make_shared<
+			base::weak_qptr<Ui::BoxContent>>();
+		*picker = controller->show(
+			Box<PeerListBox>(
+				std::make_unique<HideChatsController>(
+					&controller->session(),
+					[=](not_null<Data::Thread*> thread) {
+						return !exclusions->excluded(
+							thread->peer()->id.value);
+					},
+					[=](not_null<Data::Thread*> thread) {
+						exclusions->setPeerExcluded(
+							thread->peer()->id.value,
+							true);
+						if (const auto strong = picker->get()) {
+							strong->closeBox();
+						}
+					}),
+				[=](not_null<PeerListBox*> box) {
+					box->addButton(tr::lng_cancel(), [=] {
+						box->closeBox();
+					});
+				}));
+	});
+}
 
 void RebuildProviderRows(
 		not_null<Ui::VerticalLayout*> container,
@@ -212,6 +487,37 @@ void EditProviderBox(
 			provider.model),
 		st::boxRowPadding);
 	Ui::AddSkip(container);
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
+			tr::lng_agent_provider_prices(),
+			st::boxLabel),
+		st::boxRowPadding);
+	const auto priceInput = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			tr::lng_agent_provider_price_input(),
+			PriceText(provider.priceInput)),
+		st::boxRowPadding);
+	const auto priceOutput = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			tr::lng_agent_provider_price_output(),
+			PriceText(provider.priceOutput)),
+		st::boxRowPadding);
+	const auto priceCached = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			tr::lng_agent_provider_price_cached(),
+			PriceText(provider.priceCached)),
+		st::boxRowPadding);
+	Ui::AddDividerText(
+		container,
+		tr::lng_agent_provider_prices_about());
+	Ui::AddSkip(container);
 
 	const auto wasActive = (provider.id == state->providers.activeId);
 	const auto checkbox = container->add(
@@ -236,10 +542,29 @@ void EditProviderBox(
 			box->uiShow()->showToast(tr::lng_agent_error_model(tr::now));
 			return;
 		}
+		const auto parseField = [=](
+				not_null<Ui::InputField*> field) {
+			auto value = ParsePrice(field->getLastText());
+			if (!value) {
+				field->showError();
+				box->uiShow()->showToast(
+					tr::lng_agent_error_price(tr::now));
+			}
+			return value;
+		};
+		const auto newPriceInput = parseField(priceInput);
+		const auto newPriceOutput = parseField(priceOutput);
+		const auto newPriceCached = parseField(priceCached);
+		if (!newPriceInput || !newPriceOutput || !newPriceCached) {
+			return;
+		}
 		provider.title = title->getLastText().trimmed();
 		provider.baseUrl = newUrl;
 		provider.apiKey = key->getLastText().trimmed();
 		provider.model = newModel;
+		provider.priceInput = *newPriceInput;
+		provider.priceOutput = *newPriceOutput;
+		provider.priceCached = *newPriceCached;
 		auto &list = state->providers.list;
 		if (creating) {
 			provider.id = ::Agent::GenerateProviderId();
@@ -418,6 +743,128 @@ void BuildEntryPoints(
 	}, nullptr);
 }
 
+void BuildSpending(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
+	const auto spending = &controller->session().agent().spending();
+	const auto totalsText = [](const ::Agent::SpendingTotals &totals) {
+		return totals.empty()
+			? tr::lng_agent_spending_none(tr::now)
+			: ::Agent::Ui::FormatSpending(totals);
+	};
+	const auto label = [=](auto compute) {
+		return rpl::single(totalsText(compute()))
+			| rpl::then(spending->changes()
+				| rpl::map([=] { return totalsText(compute()); }));
+	};
+	builder.addSkip();
+	builder.addSubsectionTitle({
+		.id = u"agent/spending"_q,
+		.title = tr::lng_agent_spending_title(),
+		.keywords = { u"spending"_q, u"cost"_q, u"tokens"_q },
+	});
+	builder.addButton({
+		.id = u"agent/spending/today"_q,
+		.title = tr::lng_agent_spending_today(),
+		.label = label([=] { return spending->today(); }),
+		.keywords = { u"today"_q, u"spending"_q },
+	});
+	builder.addButton({
+		.id = u"agent/spending/month"_q,
+		.title = tr::lng_agent_spending_month(),
+		.label = label([=] { return spending->lastDays(30); }),
+		.keywords = { u"month"_q, u"30"_q, u"spending"_q },
+	});
+	builder.addButton({
+		.id = u"agent/spending/all"_q,
+		.title = tr::lng_agent_spending_all(),
+		.label = label([=] { return spending->allTime(); }),
+		.keywords = { u"all"_q, u"time"_q, u"spending"_q },
+	});
+	builder.addButton({
+		.id = u"agent/spending/reset"_q,
+		.title = tr::lng_agent_spending_reset(),
+		.icon = { &st::menuIconClear },
+		.onClick = [=] {
+			controller->show(Ui::MakeConfirmBox({
+				.text = tr::lng_agent_spending_reset_sure(),
+				.confirmed = [=](Fn<void()> close) {
+					spending->reset();
+					close();
+				},
+			}));
+		},
+		.keywords = { u"reset"_q, u"statistics"_q, u"spending"_q },
+	});
+	const auto button = builder.addButton({
+		.id = u"agent/spending/show"_q,
+		.title = tr::lng_agent_spending_show(),
+		.toggled = rpl::single(state->providers.showSpending),
+		.keywords = { u"spending"_q, u"sessions"_q, u"show"_q },
+	});
+	if (button) {
+		button->toggledChanges(
+		) | rpl::filter([=](bool toggled) {
+			return (toggled != state->providers.showSpending);
+		}) | rpl::on_next([=](bool toggled) {
+			state->providers.showSpending = toggled;
+			SaveState(state.get());
+		}, button->lifetime());
+	}
+	builder.addDividerText(tr::lng_agent_spending_about());
+}
+
+void BuildHiddenChats(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
+	const auto exclusions
+		= &controller->session().agent().exclusions();
+	const auto count = [=] {
+		const auto &list = exclusions->list();
+		return QString::number(
+			int(list.peers.size() + list.folders.size()));
+	};
+	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/hidden"_q,
+		.title = tr::lng_agent_hidden_title(),
+		.label = rpl::single(count())
+			| rpl::then(exclusions->changes() | rpl::map(count)),
+		.onClick = [=] {
+			controller->show(Box(HiddenChatsBox, controller));
+		},
+		.keywords = { u"hidden"_q, u"chats"_q, u"exclude"_q },
+	});
+	builder.addDividerText(tr::lng_agent_hidden_about());
+}
+
+void BuildClearData(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
+	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/clear-data"_q,
+		.title = tr::lng_agent_clear_data(),
+		.st = &st::settingsAttentionButton,
+		.onClick = [=] {
+			controller->show(Ui::MakeConfirmBox({
+				.text = tr::lng_agent_clear_data_sure(),
+				.confirmed = [=](Fn<void()> close) {
+					controller->session().agent().clearAllData();
+					close();
+					controller->showToast(
+						tr::lng_agent_clear_data_done(tr::now));
+				},
+				.confirmStyle = &st::attentionBoxButton,
+			}));
+		},
+		.keywords = { u"delete"_q, u"data"_q, u"agent"_q },
+	});
+}
+
 Agent::Agent(QWidget *parent, not_null<Window::SessionController*> controller)
 : Section(parent, controller) {
 	setupContent();
@@ -447,6 +894,9 @@ void Agent::setupContent() {
 		BuildInstructions(builder, state);
 		BuildCheckButton(builder, state, controller);
 		BuildEntryPoints(builder, state);
+		BuildSpending(builder, state, controller);
+		BuildHiddenChats(builder, state, controller);
+		BuildClearData(builder, state, controller);
 	};
 
 	build(content, buildMethod);
@@ -481,6 +931,30 @@ const auto kMeta = BuildHelper({
 			.id = u"agent/check"_q,
 			.title = tr::lng_agent_check_button(tr::now),
 			.keywords = { u"check"_q, u"test"_q, u"connection"_q },
+		};
+	});
+
+	builder.add(nullptr, [] {
+		return SearchEntry{
+			.id = u"agent/spending"_q,
+			.title = tr::lng_agent_spending_title(tr::now),
+			.keywords = { u"spending"_q, u"cost"_q, u"tokens"_q },
+		};
+	});
+
+	builder.add(nullptr, [] {
+		return SearchEntry{
+			.id = u"agent/hidden"_q,
+			.title = tr::lng_agent_hidden_title(tr::now),
+			.keywords = { u"hidden"_q, u"chats"_q, u"exclude"_q },
+		};
+	});
+
+	builder.add(nullptr, [] {
+		return SearchEntry{
+			.id = u"agent/clear-data"_q,
+			.title = tr::lng_agent_clear_data(tr::now),
+			.keywords = { u"delete"_q, u"data"_q, u"agent"_q },
 		};
 	});
 });
