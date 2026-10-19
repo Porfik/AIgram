@@ -350,7 +350,28 @@ bool IsContextOverflow(const Error &error) {
 QString HandoffText(
 		const SessionRecord &record,
 		const QString &chatTitle) {
-	return QString();
+	auto text = u"Handoff from the chat \u201C%1\u201D."_q.arg(chatTitle);
+	if (!record.summary.isEmpty()) {
+		text += u"\n\nSummary of the earlier conversation:\n"_q
+			+ record.summary;
+	}
+	text += u"\n\nTranscript:\n"_q;
+	text += TranscriptText(std::vector<Message>(
+		record.messages.begin() + record.summaryUntil,
+		record.messages.end()));
+	if (text.size() <= kHandoffMaxChars) {
+		return text;
+	}
+	const auto note = u"[The beginning of the handoff was cut off.]"_q;
+	const auto excess = text.size() + note.size() + 1 - kHandoffMaxChars;
+	if (excess >= text.size()) {
+		return note;
+	}
+	auto cut = excess;
+	while (cut < text.size() && text[cut - 1] != '\n') {
+		++cut;
+	}
+	return note + u"\n"_q + text.mid(cut);
 }
 
 } // namespace Agent

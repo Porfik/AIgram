@@ -179,6 +179,82 @@ void WriteHandTextBlock(QDataStream &stream) {
 	stream << quint8(1) << u"текст"_q << qint32(0);
 }
 
+[[nodiscard]] Card SampleCard() {
+	auto card = Card();
+	card.toolUseId = u"call_9"_q;
+	card.kind = CardKind::Delete;
+	card.status = CardStatus::Failed;
+	card.decided = CardAction::Execute;
+	card.targets = {
+		CardTarget{
+			123456789,
+			42,
+			u"Чат \"тест\""_q,
+			u"превью"_q,
+			true,
+			u"Flood wait 3s"_q },
+		CardTarget{ 987654321, 0, u"Second"_q, QString(), false, QString() },
+	};
+	card.text = u"текст"_q;
+	card.proposedText = u"было"_q;
+	card.detail = u"детали"_q;
+	card.option = true;
+	card.optionAvailable = true;
+	card.canAllowForTurn = true;
+	card.allowedForTurn = true;
+	card.autoApproved = true;
+	return card;
+}
+
+[[nodiscard]] QString CardsEqual(const Card &a, const Card &b) {
+	if (a.toolUseId != b.toolUseId) {
+		return u"toolUseId differs"_q;
+	} else if (a.kind != b.kind) {
+		return u"kind differs"_q;
+	} else if (a.status != b.status) {
+		return u"status differs"_q;
+	} else if (a.decided != b.decided) {
+		return u"decided differs"_q;
+	} else if (a.targets.size() != b.targets.size()) {
+		return u"target count differs"_q;
+	}
+	for (auto i = 0, count = int(a.targets.size()); i != count; ++i) {
+		const auto &x = a.targets[i];
+		const auto &y = b.targets[i];
+		if (x.peer != y.peer) {
+			return u"target peer differs"_q;
+		} else if (x.messageId != y.messageId) {
+			return u"target messageId differs"_q;
+		} else if (x.title != y.title) {
+			return u"target title differs"_q;
+		} else if (x.preview != y.preview) {
+			return u"target preview differs"_q;
+		} else if (x.checked != y.checked) {
+			return u"target checked differs"_q;
+		} else if (x.error != y.error) {
+			return u"target error differs"_q;
+		}
+	}
+	if (a.text != b.text) {
+		return u"text differs"_q;
+	} else if (a.proposedText != b.proposedText) {
+		return u"proposedText differs"_q;
+	} else if (a.detail != b.detail) {
+		return u"detail differs"_q;
+	} else if (a.option != b.option) {
+		return u"option differs"_q;
+	} else if (a.optionAvailable != b.optionAvailable) {
+		return u"optionAvailable differs"_q;
+	} else if (a.canAllowForTurn != b.canAllowForTurn) {
+		return u"canAllowForTurn differs"_q;
+	} else if (a.allowedForTurn != b.allowedForTurn) {
+		return u"allowedForTurn differs"_q;
+	} else if (a.autoApproved != b.autoApproved) {
+		return u"autoApproved differs"_q;
+	}
+	return QString();
+}
+
 } // namespace
 
 std::vector<Check> RecordChecks() {
@@ -239,7 +315,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(2);
+				stream << qint32(3);
 				WriteHandInfo(stream);
 			});
 			if (DeserializeSession(bytes)) {
@@ -460,6 +536,205 @@ std::vector<Check> RecordChecks() {
 					return u"expected nullopt for: "_q
 						+ truncated.toBase64();
 				}
+			}
+			return QString();
+		} },
+		{ u"record_cards_round_trip"_q, [] {
+			auto record = SessionRecord();
+			for (auto kind = 0; kind <= int(CardKind::Handoff); ++kind) {
+				for (auto status = 0; status <= int(CardStatus::NotDone); ++status) {
+					for (auto decided = 0; decided <= int(CardAction::Decline); ++decided) {
+						auto card = SampleCard();
+						card.kind = CardKind(kind);
+						card.status = CardStatus(status);
+						card.decided = CardAction(decided);
+						record.cards.push_back(card);
+					}
+				}
+			}
+			record.loadedGroups = { u"folders"_q };
+			record.undone = { u"call_8"_q, u"call_7"_q };
+			const auto bytes = SerializeSession(record);
+			if (bytes.isEmpty()) {
+				return u"serialization is empty"_q;
+			}
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"deserialization failed"_q;
+			}
+			if (restored->cards.size() != record.cards.size()) {
+				return u"unexpected card count"_q;
+			}
+			for (auto i = 0, count = int(record.cards.size()); i != count; ++i) {
+				const auto diff = CardsEqual(record.cards[i], restored->cards[i]);
+				if (!diff.isEmpty()) {
+					return u"card "_q + QString::number(i) + u": "_q + diff;
+				}
+			}
+			if (restored->loadedGroups != record.loadedGroups) {
+				return u"loadedGroups differ"_q;
+			}
+			if (restored->undone != record.undone) {
+				return u"undone differ"_q;
+			}
+			if (SerializeSession(*restored) != bytes) {
+				return u"re-serialization is not byte-identical"_q;
+			}
+			return QString();
+		} },
+		{ u"record_reject_truncated_v2"_q, [] {
+			auto record = SessionRecord();
+			record.cards = { SampleCard() };
+			record.loadedGroups = { u"folders"_q };
+			record.undone = { u"call_8"_q };
+			const auto bytes = SerializeSession(record);
+			if (!DeserializeSession(bytes)) {
+				return u"the full record failed to deserialize"_q;
+			}
+			for (auto size = 0; size != bytes.size(); ++size) {
+				if (DeserializeSession(bytes.mid(0, size))) {
+					return u"expected nullopt for truncation at "_q
+						+ QString::number(size);
+				}
+			}
+			return QString();
+		} },
+		{ u"record_loads_version1"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(1);
+				WriteHandInfo(stream);
+				stream << qint32(1);
+				stream << qint32(0) << qint32(1);
+				WriteHandTextBlock(stream);
+				WriteHandTail(stream, 0);
+			});
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 1 failed to load"_q;
+			}
+			if (restored->messages.size() != 1
+				|| restored->messages[0].blocks.size() != 1) {
+				return u"version 1 messages lost"_q;
+			}
+			if (!restored->cards.empty()) {
+				return u"version 1 must have no cards"_q;
+			}
+			if (!restored->loadedGroups.empty()) {
+				return u"version 1 must have no loaded groups"_q;
+			}
+			if (!restored->undone.empty()) {
+				return u"version 1 must have no undone"_q;
+			}
+			return QString();
+		} },
+		{ u"record_close_interrupted_turn_with_cards"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { TextBlock{ u"go"_q, false } } },
+				Message{ Role::Assistant, {
+					ToolUseBlock{
+						u"call1"_q,
+						u"send_message"_q,
+						{},
+						QString(),
+						{} },
+					ToolUseBlock{
+						u"call2"_q,
+						u"set_mute"_q,
+						{},
+						QString(),
+						{} },
+				} },
+			};
+			auto waiting = Card();
+			waiting.toolUseId = u"call1"_q;
+			waiting.kind = CardKind::Send;
+			waiting.status = CardStatus::Pending;
+			auto running = Card();
+			running.toolUseId = u"call2"_q;
+			running.kind = CardKind::Send;
+			running.status = CardStatus::Running;
+			running.targets = {
+				CardTarget{ 111, 0, u"Alpha"_q, QString(), true, QString() },
+			};
+			record.cards = { waiting, running };
+			if (!CloseInterruptedTurn(record)) {
+				return u"expected a change"_q;
+			}
+			if (record.cards[0].status != CardStatus::NotDone
+				|| record.cards[1].status != CardStatus::NotDone) {
+				return u"cards must become NotDone"_q;
+			}
+			if (record.messages.size() != 3) {
+				return u"expected one appended message"_q;
+			}
+			const auto &last = record.messages.back();
+			if (last.role != Role::User || last.blocks.size() != 2) {
+				return u"unexpected appended message"_q;
+			}
+			const auto first = std::get_if<ToolResultBlock>(&last.blocks[0]);
+			const auto second = std::get_if<ToolResultBlock>(&last.blocks[1]);
+			if (!first || !second) {
+				return u"expected tool results"_q;
+			}
+			if (first->toolUseId != u"call1"_q || second->toolUseId != u"call2"_q) {
+				return u"results out of order"_q;
+			}
+			if (!first->content.contains(u"was not performed"_q)
+				|| first->error) {
+				return u"unexpected first result"_q;
+			}
+			if (second->error
+				|| !second->content.contains(u"was not performed"_q)) {
+				return u"unexpected second result"_q;
+			}
+			if (CloseInterruptedTurn(record)) {
+				return u"a repaired record must not change again"_q;
+			}
+			return QString();
+		} },
+		{ u"record_close_interrupted_turn_without_cards"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::Assistant, {
+					ToolUseBlock{
+						u"call1"_q,
+						u"read_history"_q,
+						{},
+						QString(),
+						{} },
+				} },
+			};
+			if (!CloseInterruptedTurn(record)) {
+				return u"expected a change"_q;
+			}
+			if (record.messages.size() != 2) {
+				return u"expected an appended result"_q;
+			}
+			const auto block = std::get_if<ToolResultBlock>(
+				&record.messages.back().blocks[0]);
+			if (!block
+				|| block->toolUseId != u"call1"_q
+				|| !block->error
+				|| !block->content.contains(u"closed"_q)) {
+				return u"unexpected error result"_q;
+			}
+			return QString();
+		} },
+		{ u"record_close_interrupted_turn_nothing_open"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { TextBlock{ u"hi"_q, false } } },
+				Message{ Role::Assistant, {
+					TextBlock{ u"answer"_q, false },
+				} },
+			};
+			auto card = Card();
+			card.toolUseId = u"call1"_q;
+			card.status = CardStatus::Done;
+			record.cards = { card };
+			if (CloseInterruptedTurn(record)) {
+				return u"nothing open must not change the record"_q;
 			}
 			return QString();
 		} },

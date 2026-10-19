@@ -17,11 +17,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(1);
+constexpr auto kSessionVersion = qint32(2);
+constexpr auto kIndexVersion = qint32(1);
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
 constexpr auto kMaxTouched = 10'000;
 constexpr auto kMaxSessions = 100'000;
+constexpr auto kMaxCards = 10'000;
+constexpr auto kMaxTargets = 1'000;
+constexpr auto kMaxGroups = 100;
+constexpr auto kMaxUndone = 10'000;
 
 enum class BlockTag : quint8 {
 	Text = 1,
@@ -237,6 +242,157 @@ std::optional<Usage> ReadUsage(QDataStream &stream) {
 	return Usage{ input, output, cached };
 }
 
+void WriteCard(QDataStream &stream, const Card &card) {
+	stream
+		<< card.toolUseId
+		<< qint32(card.kind)
+		<< qint32(card.status)
+		<< qint32(card.decided)
+		<< qint32(card.targets.size());
+	for (const auto &target : card.targets) {
+		stream
+			<< quint64(target.peer)
+			<< qint64(target.messageId)
+			<< target.title
+			<< target.preview
+			<< qint32(target.checked ? 1 : 0)
+			<< target.error;
+	}
+	stream
+		<< card.text
+		<< card.proposedText
+		<< card.detail
+		<< qint32(card.option ? 1 : 0)
+		<< qint32(card.optionAvailable ? 1 : 0)
+		<< qint32(card.canAllowForTurn ? 1 : 0)
+		<< qint32(card.allowedForTurn ? 1 : 0)
+		<< qint32(card.autoApproved ? 1 : 0);
+}
+
+[[nodiscard]] bool ReadFlags(
+		QDataStream &stream,
+		bool &option,
+		bool &optionAvailable,
+		bool &canAllowForTurn,
+		bool &allowedForTurn,
+		bool &autoApproved) {
+	auto first = qint32(0);
+	auto second = qint32(0);
+	auto third = qint32(0);
+	auto fourth = qint32(0);
+	auto fifth = qint32(0);
+	stream >> first >> second >> third >> fourth >> fifth;
+	if (stream.status() != QDataStream::Ok
+		|| first < 0 || first > 1
+		|| second < 0 || second > 1
+		|| third < 0 || third > 1
+		|| fourth < 0 || fourth > 1
+		|| fifth < 0 || fifth > 1) {
+		return false;
+	}
+	option = (first != 0);
+	optionAvailable = (second != 0);
+	canAllowForTurn = (third != 0);
+	allowedForTurn = (fourth != 0);
+	autoApproved = (fifth != 0);
+	return true;
+}
+
+std::optional<Card> ReadCard(QDataStream &stream) {
+	auto toolUseId = QString();
+	auto kind = qint32(0);
+	auto status = qint32(0);
+	auto decided = qint32(0);
+	auto targetCount = qint32(0);
+	stream >> toolUseId >> kind >> status >> decided >> targetCount;
+	if (stream.status() != QDataStream::Ok
+		|| kind < 0
+		|| kind > int(CardKind::Handoff)
+		|| status < 0
+		|| status > int(CardStatus::NotDone)
+		|| decided < 0
+		|| decided > int(CardAction::Decline)
+		|| targetCount < 0
+		|| targetCount > kMaxTargets) {
+		return std::nullopt;
+	}
+	auto card = Card();
+	card.toolUseId = toolUseId;
+	card.kind = CardKind(kind);
+	card.status = CardStatus(status);
+	card.decided = CardAction(decided);
+	card.targets.reserve(targetCount);
+	for (auto i = 0; i != targetCount; ++i) {
+		auto peer = quint64(0);
+		auto messageId = qint64(0);
+		auto title = QString();
+		auto preview = QString();
+		auto checked = qint32(0);
+		auto error = QString();
+		stream >> peer >> messageId >> title >> preview >> checked >> error;
+		if (stream.status() != QDataStream::Ok
+			|| checked < 0
+			|| checked > 1) {
+			return std::nullopt;
+		}
+		card.targets.push_back(CardTarget{
+			peer,
+			messageId,
+			title,
+			preview,
+			(checked != 0),
+			error });
+	}
+	stream >> card.text >> card.proposedText >> card.detail;
+	if (!ReadFlags(
+		stream,
+		card.option,
+		card.optionAvailable,
+		card.canAllowForTurn,
+		card.allowedForTurn,
+		card.autoApproved)) {
+		return std::nullopt;
+	}
+	return card;
+}
+
+void WriteStringList(QDataStream &stream, const std::vector<QString> &list) {
+	stream << qint32(list.size());
+	for (const auto &value : list) {
+		stream << value;
+	}
+}
+
+std::optional<std::vector<QString>> ReadStringList(
+		QDataStream &stream,
+		int max) {
+	auto count = qint32(0);
+	stream >> count;
+	if (stream.status() != QDataStream::Ok || count < 0 || count > max) {
+		return std::nullopt;
+	}
+	auto list = std::vector<QString>();
+	list.reserve(count);
+	for (auto i = 0; i != count; ++i) {
+		auto value = QString();
+		stream >> value;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+		list.push_back(std::move(value));
+	}
+	return list;
+}
+
+const Card *FindCard(const std::vector<Card> &cards, const QString &id) {
+	for (const auto &card : cards) {
+		if (card.toolUseId == id) {
+			return &card;
+		}
+	}
+	return nullptr;
+}
+
 } // namespace
 
 QString GenerateSessionId() {
@@ -248,7 +404,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	auto result = QByteArray();
 	QDataStream stream(&result, QIODevice::WriteOnly);
 	stream.setVersion(QDataStream::Qt_5_1);
-	stream << kFormatVersion;
+	stream << kSessionVersion;
 	WriteInfo(stream, record.info);
 	stream << qint32(record.messages.size());
 	for (const auto &message : record.messages) {
@@ -257,6 +413,12 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	stream << qint32(record.summaryUntil) << record.summary;
 	WriteUsage(stream, record.usage);
 	stream << qint32(record.tainted ? 1 : 0);
+	stream << qint32(record.cards.size());
+	for (const auto &card : record.cards) {
+		WriteCard(stream, card);
+	}
+	WriteStringList(stream, record.loadedGroups);
+	WriteStringList(stream, record.undone);
 	return result;
 }
 
@@ -265,7 +427,9 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 	stream.setVersion(QDataStream::Qt_5_1);
 	auto version = qint32(0);
 	stream >> version;
-	if (stream.status() != QDataStream::Ok || version != kFormatVersion) {
+	if (stream.status() != QDataStream::Ok
+		|| version < 1
+		|| version > kSessionVersion) {
 		return std::nullopt;
 	}
 	auto info = ReadInfo(stream);
@@ -305,11 +469,37 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 	stream >> tainted;
 	if (stream.status() != QDataStream::Ok
 		|| tainted < 0
-		|| tainted > 1
-		|| !stream.atEnd()) {
+		|| tainted > 1) {
 		return std::nullopt;
 	}
 	record.tainted = (tainted != 0);
+	if (version >= 2) {
+		auto cardCount = qint32(0);
+		stream >> cardCount;
+		if (stream.status() != QDataStream::Ok
+			|| cardCount < 0
+			|| cardCount > kMaxCards) {
+			return std::nullopt;
+		}
+		record.cards.reserve(cardCount);
+		for (auto i = 0; i != cardCount; ++i) {
+			auto card = ReadCard(stream);
+			if (!card) {
+				return std::nullopt;
+			}
+			record.cards.push_back(std::move(*card));
+		}
+		auto loadedGroups = ReadStringList(stream, kMaxGroups);
+		auto undone = ReadStringList(stream, kMaxUndone);
+		if (!loadedGroups || !undone) {
+			return std::nullopt;
+		}
+		record.loadedGroups = std::move(*loadedGroups);
+		record.undone = std::move(*undone);
+	}
+	if (!stream.atEnd()) {
+		return std::nullopt;
+	}
 	return record;
 }
 
@@ -317,7 +507,7 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 	auto result = QByteArray();
 	QDataStream stream(&result, QIODevice::WriteOnly);
 	stream.setVersion(QDataStream::Qt_5_1);
-	stream << kFormatVersion << qint32(list.size());
+	stream << kIndexVersion << qint32(list.size());
 	for (const auto &info : list) {
 		WriteInfo(stream, info);
 	}
@@ -330,7 +520,7 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 	stream.setVersion(QDataStream::Qt_5_1);
 	auto version = qint32(0);
 	stream >> version;
-	if (stream.status() != QDataStream::Ok || version != kFormatVersion) {
+	if (stream.status() != QDataStream::Ok || version != kIndexVersion) {
 		return std::nullopt;
 	}
 	auto count = qint32(0);
@@ -356,7 +546,47 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 }
 
 bool CloseInterruptedTurn(SessionRecord &record) {
-	return false;
+	auto changed = false;
+	for (auto &card : record.cards) {
+		if (card.status == CardStatus::Pending
+			|| card.status == CardStatus::Running) {
+			card.status = CardStatus::NotDone;
+			changed = true;
+		}
+	}
+	if (record.messages.empty()
+		|| record.messages.back().role != Role::Assistant) {
+		return changed;
+	}
+	auto results = std::vector<ToolResultBlock>();
+	for (const auto &block : record.messages.back().blocks) {
+		const auto use = std::get_if<ToolUseBlock>(&block);
+		if (!use) {
+			continue;
+		}
+		const auto card = FindCard(record.cards, use->id);
+		if (card) {
+			results.push_back(ToolResultBlock{
+				use->id,
+				CardResultText(*card),
+				(card->status == CardStatus::Failed) });
+		} else {
+			results.push_back(ToolResultBlock{
+				use->id,
+				u"The app was closed while the tool was running."_q,
+				true });
+		}
+	}
+	if (results.empty()) {
+		return changed;
+	}
+	auto blocks = std::vector<Block>();
+	blocks.reserve(results.size());
+	for (auto &result : results) {
+		blocks.push_back(std::move(result));
+	}
+	record.messages.push_back(Message{ Role::User, std::move(blocks) });
+	return true;
 }
 
 } // namespace Agent

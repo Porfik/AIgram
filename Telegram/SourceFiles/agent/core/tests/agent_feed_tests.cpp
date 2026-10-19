@@ -51,6 +51,20 @@ namespace {
 			} else if constexpr (std::is_same_v<T, FeedSummary>) {
 				result += u"summary("_q + QString::number(value.until)
 					+ u") "_q;
+			} else if constexpr (std::is_same_v<T, FeedActions>) {
+				result += u"actions("_q + QString::number(value.index)
+					+ u")[ "_q;
+				for (const auto &action : value.actions) {
+					result += DumpStep(FeedStep(action));
+				}
+				result += u"] "_q;
+			} else if constexpr (std::is_same_v<T, FeedCard>) {
+				result += u"card("_q + QString::number(value.index)
+					+ u"): '"_q + value.call.id + u"'"_q
+					+ (value.result
+						? (u"='"_q + value.result->content + u"'"_q)
+						: QString())
+					+ u" "_q;
 			}
 		}, item);
 	}
@@ -74,6 +88,18 @@ namespace {
 		const QString &id,
 		const QString &content) {
 	return ToolResultBlock{ id, content, false };
+}
+
+[[nodiscard]] ToolUseBlock Action(const QString &id, const QString &name) {
+	return ToolUseBlock{ id, name, {}, QString(), {} };
+}
+
+[[nodiscard]] Card HandoffCard(const QString &id) {
+	auto card = Card();
+	card.toolUseId = id;
+	card.kind = CardKind::Handoff;
+	card.status = CardStatus::Done;
+	return card;
 }
 
 } // namespace
@@ -289,6 +315,65 @@ std::vector<Check> FeedChecks() {
 				return u"expected third text, got: "_q + DumpFeed(feed);
 			}
 			return QString();
+		} },
+		{ u"feed_card_ends_run"_q, [] {
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
+				Message{ Role::User, { Result(u"call1"_q, u"ok"_q) } },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+				Message{ Role::User, { Result(u"call2"_q, u"two"_q) } },
+				Message{ Role::Assistant, {
+					TextBlock{ u"done"_q, false },
+				} },
+			}, 0, { HandoffCard(u"call1"_q) }),
+				u"card(0): 'call1'='ok' "
+					"steps(2)[ tool(2): 'call2'='two' ] "
+					"assistant(4): 'done'"_q);
+		} },
+		{ u"feed_actions_after_steps"_q, [] {
+			const auto actions = base::flat_set<QString>{ u"set_mute"_q };
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					Call(u"call1"_q),
+					Action(u"mute1"_q, u"set_mute"_q),
+				} },
+				Message{ Role::User, {
+					Result(u"mute1"_q, u"two"_q),
+					Result(u"call1"_q, u"one"_q),
+				} },
+				Message{ Role::Assistant, {
+					TextBlock{ u"done"_q, false },
+				} },
+			}, 0, {}, actions),
+				u"steps(0)[ tool(0): 'call1'='one' ] "
+					"actions(0)[ tool(0): 'mute1'='two' ] "
+					"assistant(2): 'done'"_q);
+		} },
+		{ u"feed_actions_only_run"_q, [] {
+			const auto actions = base::flat_set<QString>{ u"set_mute"_q };
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					Action(u"mute1"_q, u"set_mute"_q),
+				} },
+				Message{ Role::User, {
+					Result(u"mute1"_q, u"ok"_q),
+				} },
+			}, 0, {}, actions),
+				u"actions(0)[ tool(0): 'mute1'='ok' ]"_q);
+		} },
+		{ u"feed_summary_between_actions_and_text"_q, [] {
+			const auto actions = base::flat_set<QString>{ u"set_mute"_q };
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					Action(u"mute1"_q, u"set_mute"_q),
+				} },
+				Message{ Role::User, {
+					Result(u"mute1"_q, u"ok"_q),
+				} },
+				UserText(u"next"_q),
+			}, 2, {}, actions),
+				u"actions(0)[ tool(0): 'mute1'='ok' ] "
+					"summary(2) user(2): 'next'"_q);
 		} },
 		{ u"feed_summary_at_end"_q, [] {
 			const auto feed = BuildFeed({

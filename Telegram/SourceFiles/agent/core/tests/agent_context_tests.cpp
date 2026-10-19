@@ -431,6 +431,57 @@ std::vector<Check> ContextChecks() {
 			}
 			return QString();
 		} },
+		{ u"context_handoff_text_content"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				UserText(u"hello"_q),
+				AssistantText(u"answer"_q),
+				UserText(u"more"_q),
+			};
+			record.summary = u"old summary"_q;
+			record.summaryUntil = 1;
+			const auto text = HandoffText(record, u"My Chat"_q);
+			for (const auto &needle : {
+				u"My Chat"_q,
+				u"Summary of the earlier conversation:\nold summary"_q,
+				u"Assistant: answer"_q,
+				u"User: more"_q,
+			}) {
+				if (!text.contains(needle)) {
+					return u"missing: "_q + needle;
+				}
+			}
+			if (text.contains(u"User: hello"_q)) {
+				return u"summary range must start after it"_q;
+			}
+			if (text.size() > kHandoffMaxChars) {
+				return u"handoff too long"_q;
+			}
+			return QString();
+		} },
+		{ u"context_handoff_text_capped_keeps_newest"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				UserText(Repeated(20000, 'a')),
+				AssistantText(Repeated(20000, 'b')),
+				UserText(u"newest message"_q),
+			};
+			const auto text = HandoffText(record, u"Chat"_q);
+			if (text.size() > kHandoffMaxChars) {
+				return u"handoff not capped: "_q
+					+ QString::number(text.size());
+			}
+			if (!text.contains(u"newest message"_q)) {
+				return u"newest part lost"_q;
+			}
+			if (text.contains(Repeated(100, 'a'))) {
+				return u"the start was not cut"_q;
+			}
+			if (!text.contains(u"cut off"_q)) {
+				return u"no cut note"_q;
+			}
+			return QString();
+		} },
 		{ u"context_overflow_errors"_q, [] {
 			const auto openai = Error{
 				ErrorKind::BadRequest,
