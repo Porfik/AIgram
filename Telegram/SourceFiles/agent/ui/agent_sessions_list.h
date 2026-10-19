@@ -75,6 +75,7 @@ private:
 	};
 	void paintUserpicStack(Painter &p, Row &row, int top);
 	[[nodiscard]] int rowTextLeft() const;
+	[[nodiscard]] QRect deleteIconRect(int top) const;
 	[[nodiscard]] std::optional<int> findRowIndex(int y) const;
 
 	const not_null<Window::SessionController*> _controller;

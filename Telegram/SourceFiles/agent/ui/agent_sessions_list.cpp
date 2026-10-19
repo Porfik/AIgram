@@ -24,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
+#include "styles/style_agent.h"
 #include "styles/style_agent_general.h"
 #include "styles/style_agent_panel.h"
 #include "styles/style_layers.h"
@@ -215,10 +216,17 @@ void SessionsList::paintEvent(QPaintEvent *e) {
 	const auto titleFont = st::agentSessionListTitleStyle.font;
 	const auto dateFont = st::agentSessionListDateStyle.font;
 	const auto dateTop = padding.top() + titleFont->height;
+	const auto deleteSpace = st::agentSessionListDeleteRight
+		+ st::agentSessionListDeleteIcon.width()
+		+ st::agentSessionListDeleteTextGap;
 	auto top = 0;
 	auto index = 0;
 	for (auto &row : _rows) {
-		if (index == _selected) {
+		const auto hovered = (index == _selected);
+		const auto rowTextWidth = hovered
+			? std::max(textWidth - deleteSpace, 0)
+			: textWidth;
+		if (hovered) {
 			p.fillRect(0, top, width(), rowHeight, st::windowBgOver);
 		}
 		if (_scope.kind == ScopeKind::Account) {
@@ -227,27 +235,55 @@ void SessionsList::paintEvent(QPaintEvent *e) {
 		p.setPen(st::windowFg);
 		p.setFont(titleFont);
 		p.drawText(
-			QRect(textLeft, top + padding.top(), textWidth, titleFont->height),
+			QRect(
+				textLeft,
+				top + padding.top(),
+				rowTextWidth,
+				titleFont->height),
 			Qt::AlignLeft,
-			titleFont->elided(row.title, textWidth));
+			titleFont->elided(row.title, rowTextWidth));
 		p.setPen(st::windowSubTextFg);
 		p.setFont(dateFont);
 		p.drawText(
-			QRect(textLeft, top + dateTop, textWidth, dateFont->height),
+			QRect(textLeft, top + dateTop, rowTextWidth, dateFont->height),
 			Qt::AlignLeft,
-			dateFont->elided(row.date, textWidth));
+			dateFont->elided(row.date, rowTextWidth));
+		if (hovered) {
+			st::agentSessionListDeleteIcon.paint(
+				p,
+				deleteIconRect(top).topLeft(),
+				width());
+		}
 		top += rowHeight;
 		++index;
 	}
+}
+
+QRect SessionsList::deleteIconRect(int top) const {
+	const auto &icon = st::agentSessionListDeleteIcon;
+	return QRect(
+		width()
+			- st::agentSessionListDeleteRight
+			- icon.width(),
+		top + (st::agentSessionListRowHeight - icon.height()) / 2,
+		icon.width(),
+		icon.height());
 }
 
 void SessionsList::mousePressEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton) {
 		return;
 	}
-	if (const auto index = findRowIndex(e->pos().y())) {
-		_openSessionRequests.fire_copy(_rows[*index].id);
+	const auto index = findRowIndex(e->pos().y());
+	if (!index) {
+		return;
 	}
+	if (deleteIconRect(*index * st::agentSessionListRowHeight)
+			.contains(e->pos())) {
+		ShowDeleteSessionBox(_controller, _manager, _rows[*index].id);
+		return;
+	}
+	_openSessionRequests.fire_copy(_rows[*index].id);
 }
 
 void SessionsList::mouseMoveEvent(QMouseEvent *e) {

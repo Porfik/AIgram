@@ -238,3 +238,16 @@ agentFeedActionsUndoLink: FlatLabel(defaultFlatLabel) {
 }
 agentFeedActionsRowGap: 6px;
 agentFeedActionsUndoAllMargin: margins(0px, 8px, 0px, 0px);
+
+agentSessionListDeleteIcon: icon {{ "menu/delete", menuIconFg }};
+agentSessionListDeleteRight: 14px;
+agentSessionListDeleteTextGap: 8px;
+
+agentFeedSpendingLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowSubTextFg;
+	style: TextStyle(defaultTextStyle) {
+		font: font(12px);
+	}
+}
+agentFeedSpendingMargin: margins(16px, 4px, 16px, 6px);
