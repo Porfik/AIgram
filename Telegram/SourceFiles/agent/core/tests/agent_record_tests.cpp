@@ -53,7 +53,7 @@ namespace {
 	};
 	record.summaryUntil = 1;
 	record.summary = u"Краткое содержание"_q;
-	record.usage = Usage{ 100, 200, 30 };
+	record.info.usage = Usage{ 100, 200, 30 };
 	record.tainted = true;
 	return record;
 }
@@ -117,9 +117,9 @@ namespace {
 		return u"summaryUntil differs"_q;
 	} else if (a.summary != b.summary) {
 		return u"summary differs"_q;
-	} else if (a.usage.inputTokens != b.usage.inputTokens
-		|| a.usage.outputTokens != b.usage.outputTokens
-		|| a.usage.cachedInputTokens != b.usage.cachedInputTokens) {
+	} else if (a.info.usage.inputTokens != b.info.usage.inputTokens
+		|| a.info.usage.outputTokens != b.info.usage.outputTokens
+		|| a.info.usage.cachedInputTokens != b.info.usage.cachedInputTokens) {
 		return u"usage differs"_q;
 	} else if (a.tainted != b.tainted) {
 		return u"tainted differs"_q;

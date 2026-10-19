@@ -7,10 +7,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_manager.h"
 
+#include "agent/agent_exclusions.h"
 #include "agent/agent_http_transport.h"
+#include "agent/agent_memories.h"
 #include "agent/agent_session.h"
 #include "agent/agent_session_store.h"
 #include "agent/agent_settings.h"
+#include "agent/agent_spending_tracker.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_openai.h"
 #include "base/algorithm.h"
@@ -34,7 +37,10 @@ namespace {
 Manager::Manager(not_null<Main::Session*> session)
 : _session(session)
 , _store(std::make_unique<SessionStore>(session))
-, _transport(std::make_unique<HttpTransport>()) {
+, _transport(std::make_unique<HttpTransport>())
+, _memories(std::make_unique<Memories>(session))
+, _exclusions(std::make_unique<Exclusions>(session))
+, _spending(std::make_unique<SpendingTracker>(session)) {
 	Agent::ProvidersChanged(
 	) | rpl::on_next([=] {
 		refresh();
@@ -151,6 +157,18 @@ std::vector<SessionInfo> Manager::list(const Scope &scope) const {
 		}
 	}
 	return result;
+}
+
+std::optional<SessionInfo> Manager::info(const QString &id) const {
+	if (const auto session = findOpen(id)) {
+		return session->record().info;
+	}
+	for (const auto &entry : _index) {
+		if (entry.id == id) {
+			return entry;
+		}
+	}
+	return std::nullopt;
 }
 
 rpl::producer<Scope> Manager::listChanges() const {
@@ -288,6 +306,21 @@ void Manager::remove(const QString &id) {
 	if (known) {
 		_listChanges.fire_copy(scope);
 	}
+}
+
+void Manager::clearAllData() {
+}
+
+Memories &Manager::memories() const {
+	return *_memories;
+}
+
+Exclusions &Manager::exclusions() const {
+	return *_exclusions;
+}
+
+SpendingTracker &Manager::spending() const {
+	return *_spending;
 }
 
 void Manager::upsertIndex(const SessionInfo &info) {

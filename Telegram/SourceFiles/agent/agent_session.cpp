@@ -461,7 +461,7 @@ void Session::handleEvent(EngineEvent event) {
 			return;
 		}
 	} else if (const auto usage = std::get_if<UsageReported>(&event)) {
-		_record.usage += usage->usage;
+		_record.info.usage += usage->usage;
 	} else if (const auto finished = std::get_if<TurnFinished>(&event)) {
 		const auto turn = *finished;
 		if (!handleTurnFinished(turn)) {

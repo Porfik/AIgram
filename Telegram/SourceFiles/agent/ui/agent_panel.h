@@ -7,9 +7,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include <rpl/producer.h>
+
 #include <memory>
 
 class PeerData;
+
+namespace Main {
+class Session;
+} // namespace Main
 
 namespace Info {
 class ContentMemento;
@@ -27,6 +33,8 @@ namespace Agent::Ui {
 [[nodiscard]] std::shared_ptr<Info::ContentMemento> MakePanelMemento(
 	not_null<PeerData*> peer);
 [[nodiscard]] bool PanelAvailable(not_null<PeerData*> peer);
+[[nodiscard]] rpl::producer<> PanelAvailabilityChanges(
+	not_null<Main::Session*> session);
 void TogglePanel(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer);

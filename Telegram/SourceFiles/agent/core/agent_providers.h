@@ -34,6 +34,9 @@ struct ProviderSettings {
 	QString model;
 	int contextWindow = 0;
 	bool vision = false;
+	double priceInput = 0.;
+	double priceOutput = 0.;
+	double priceCached = 0.;
 };
 
 struct ProvidersState {
@@ -41,6 +44,7 @@ struct ProvidersState {
 	QString activeId;
 	QString instructions;
 	bool showEntryPoints = true;
+	bool showSpending = false;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);

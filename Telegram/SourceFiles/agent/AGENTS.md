@@ -24,19 +24,28 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   schema helpers; each `agent_tools_<group>.cpp` returns its entries from
   `<Group>Tools::Entries()`: `chat` (reading one chat), `general` (chat
   list, settings navigation, handoff), `actions` (card actions),
-  `chat_state` (mute, archive, pin, read) and `folders`. `agent_tools.cpp`
-  is the `ToolRegistry` and `load_tools`.
+  `chat_state` (mute, archive, pin, read), `folders` and `memory`.
+  `agent_tools.cpp` is the `ToolRegistry` and `load_tools`.
+- Account data next to the sessions: `Memories` (`agent_memories.*`),
+  `Exclusions` (`agent_exclusions.*`) and `SpendingTracker`
+  (`agent_spending_tracker.*`), owned by `Manager`; their pure parts are
+  `agent_memory`, `agent_exclusion_list` and `agent_spending` in `core`.
 - UI: `agent_feed_cards.*` are the card and action rows of the feed,
-  `agent_section.*` the general agent screen and `agent_chats_row.*` the
-  "✦ Agent" row above the chat list.
+  `agent_section.*` the general agent screen, `agent_chats_row.*` the
+  "✦ Agent" row above the chat list, `agent_history_view.*` the history
+  pane with its tabs, `agent_memory_list.*` the memory tab,
+  `agent_menus.*` the agent items of the chat and folder menus and
+  `agent_spending_format.*` the spending texts.
 - Hooks into existing code stay one call or one enum value wide:
   `Main::Session::agent()`, the agent values in `Storage::Account`,
   `Info::Section::Type::Agent`, `Agent::Ui::SetupPanelTopBar()` in
   `Info::WrapWidget::setupTopBarMenuToggle()`, the ✦ button in the history
   top bar, the third column follow in
   `MainWidget::updateThirdColumnToCurrentChat()`,
-  `Shortcuts::Command::AgentPanel` and `Agent::Ui::SetupChatsListRow()` in
-  `Dialogs::Widget`.
+  `Shortcuts::Command::AgentPanel`, `Agent::Ui::SetupChatsListRow()` in
+  `Dialogs::Widget`, `Agent::Ui::FillPeerMenu()` in the `Window::PeerMenu`
+  filler, `Agent::Ui::FillFolderMenu()` in both folder menus and
+  `Agent::Ui::PanelAvailabilityChanges()` in the history top bar.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
@@ -54,6 +63,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   keeps the exact text. Requests send `rawInput` back verbatim; the loop
   answers such a call with an error `ToolResultBlock` without executing it.
 - `Error::retryAfter` is in milliseconds, zero when the provider gave none.
+- `Usage::cost` is in dollars and meaningful only with `hasCost`. `+=` sums
+  tokens and costs and ORs `hasCost`. `inputTokens` include
+  `cachedInputTokens`.
 - `TextBlock::hidden` text is sent to the model but not shown in the feed:
   client hints and the compaction summary.
 
@@ -93,6 +105,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   thinking, assembles `tool_calls` fragments by `index`, generates
   `call_<index>` ids when the provider sends none, and reports in-stream
   `error` objects and non-2xx bodies through `ParseError()`.
+- It reads `usage.cost` (OpenRouter) into `Usage::cost` with `hasCost`;
+  when `usage.is_byok` is true it adds
+  `usage.cost_details.upstream_inference_cost`, which the user's own key
+  pays. Without `usage.cost` the usage has no cost.
 
 ## Loop and engines (`agent_engine.h`, `agent_loop.h`)
 
@@ -126,6 +142,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   encrypted `Storage::Domain` blob and never written to logs.
 - `ProvidersState::showEntryPoints` (default true) hides the ✦ button and the
   agent row when false; it is appended to the stream under a new version.
+- Version 3 writes `priceInput`, `priceOutput` and `priceCached` (`double`,
+  dollars per million tokens, zero when unset) after `vision` of each
+  provider and `showSpending` (default false) after `showEntryPoints`.
+  Versions 1 and 2 load with zero prices and `showSpending` false.
 - `Agent::SaveProviders()` fires `Agent::ProvidersChanged()` after writing.
 
 ## Scope (`agent_scope.h`)
@@ -208,7 +228,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `SessionInfo::titleFinal` is false while the title is the first line of
   the first message, and true once the model or the user named it.
   `created` and `updated` are unix seconds; `touched` lists the peers the
-  session's tools read or acted on, without duplicates.
+  session's tools read or acted on, without duplicates. `usage` is the
+  priced sum of every request of the session (`PriceUsage()` applied).
 - `cards` are the session's cards in creation order, `loadedGroups` the
   tool groups `load_tools` loaded in load order, `undone` the tool use ids
   of actions the user undid.
@@ -218,7 +239,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `std::nullopt`. Every `Block` alternative round-trips, including `hidden`,
   `signature`, `inputError` and `rawInput`. Version 2 adds `cards`,
   `loadedGroups` and `undone` (every `Card` field round-trips); version 1
-  records still load with them empty. The index format is unchanged.
+  records still load with them empty. Version 3 keeps `info.usage` with
+  `cost` and `hasCost`; older records load their usage into `info.usage`
+  without a cost. Index version 2 adds `usage` (with the cost) to every
+  entry; version 1 indexes load with zero usage.
 - `CloseInterruptedTurn()` repairs a record saved while a turn ran: every
   `Pending` or `Running` card becomes `NotDone`, and when the last message
   is an assistant message with tool uses, one user message is appended
@@ -248,6 +272,63 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   run's `FeedActions` item instead of `FeedSteps`. In a run the
   `FeedSteps` item (if any) comes before the `FeedActions` item (if any);
   the latter's `index` is the message of its first action.
+
+## Memory (`agent_memory.h`)
+
+- A `Memory` is the fact list of one owner: a chat (its scope peer) or the
+  general agent (owner 0). `nextId` only grows, so an id is never reused
+  within an owner, also after `clear`.
+- `NormalizeMemoryText()` turns every line break into a space and trims.
+- `MemoryAdd()` normalizes the text and fails with `Empty`, then
+  `TooLong` (more than `kMemoryMaxChars` UTF-16 units), then `Full` (at
+  `kMemoryMaxFacts`); otherwise appends `m<nextId>`, increments `nextId`
+  and returns the fact and its index.
+- `MemoryUpdate()` fails with `UnknownId`, `Empty` or `TooLong`; returns
+  the new fact, its index and `previousText`.
+- `MemoryRemove()` fails with `UnknownId`; returns the removed fact and
+  the index it had.
+- `MemoryRestore()` undoes a remove: `DuplicateId` when the id exists,
+  `Full` at the limit, otherwise inserts at the index clamped to the list
+  and raises `nextId` above the id's number when needed.
+- A failed operation leaves the memory unchanged. `MemoryErrorText()` is the
+  English error for the model, empty for `None`.
+- `FormatMemory()` is one `- [m3] text` line per fact in order, joined by
+  `\n`, empty for no facts.
+- `SerializeMemoryBook()` uses `QDataStream` (`Qt_5_1`) with a leading
+  `quint32` version 1, skipping owners with no facts and `nextId` 1.
+  Unknown versions, truncated data, negative counts and more than
+  `kMemoryMaxFacts` facts deserialize to `std::nullopt`.
+
+## Spending (`agent_spending.h`)
+
+- `PriceUsage()` returns a usage with `hasCost` unchanged. Otherwise, when
+  any price of the provider is positive, it sets `hasCost` and the cost:
+  uncached input (`inputTokens - cachedInputTokens`, at least zero) times
+  `priceInput`, cached input times `priceCached` (or `priceInput` when
+  that is zero) and output times `priceOutput`, each per million tokens.
+  Without prices it returns the usage unchanged.
+- `SpendingTotals::add(Usage)` adds the tokens, counts one request and
+  adds the cost only when `hasCost` (then sets `hasCost`). `tokens()` is
+  input plus output; `empty()` means no requests.
+- `SpendingStats::days` are per-day totals in ascending `day` order (the
+  caller's day number, `QDate::toJulianDay()` of the local date).
+  `AddSpending()` adds to the day's bucket, creating it in order, then
+  moves every bucket older than `kSpendingKeepDays` days before the newest
+  one into `older`.
+- `SumSpending()` sums the buckets with `fromDay <= day <= toDay`;
+  `SumAllSpending()` sums all buckets and `older`.
+- Serialization: `quint32` version 1, `older`, the bucket count, each
+  bucket. Unknown versions, truncated data and negative or huge counts
+  deserialize to `std::nullopt`.
+
+## Exclusions (`agent_exclusion_list.h`)
+
+- An `ExclusionList` holds hidden peers and hidden folder ids in the order
+  they were hidden, without duplicates. `SetPeerExcluded()` and
+  `SetFolderExcluded()` add or remove one entry and return whether the
+  list changed; peer 0 and folder 0 ("All chats") never change it.
+- Serialization: `quint32` version 1, peers, folders; duplicates are
+  dropped on load, bad data deserializes to `std::nullopt`.
 
 ## Context (`agent_context.h`)
 
@@ -292,7 +373,14 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   instructions, that `[Context]` lines come from the client, to reply in the
   language of the user's latest message and to use Markdown. The chat agent
   prompt includes `FormatChatBrief()` and says requests outside the chat
-  need the general agent. General instructions and memory come last.
+  need the general agent. A memory paragraph follows for both scopes: what
+  the memory is (the chat's or the agent's own), to save with
+  `memory_add` only what the user asks to remember or clearly states as a
+  lasting preference or fact, never one-off task details, to keep facts
+  short and fix or delete them with `memory_update` and `memory_remove`,
+  also when asked to forget; in the account scope also that
+  `read_chat_memory` reads a chat's memory. General instructions come
+  next, then `Memory:` with `FormatMemory()` when it is not empty.
 - `WrapUntrusted()` wraps content in `<untrusted_data>` tags and defuses any
   such tag inside it. `UnwrapUntrusted()` removes the wrapper tags for
   display; defused inner tags stay as they are. `HintText()` makes a one-line `[Context] ...` text, or
@@ -362,6 +450,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `SendRequest::untrusted`, when not empty, is added to the user message
   as a hidden `WrapUntrusted()` text block after the text, and the gate is
   tainted before the turn starts.
+- `buildSystem()` passes `FormatMemory()` of the scope's owner
+  (`Scope::peer`, zero for the account) to the prompt, so memory changes
+  reach the model from the next dispatch on, never within a turn.
+- Usage: every `UsageReported` and the usage of the compaction and title
+  responses goes through `PriceUsage()` with the provider that served it,
+  then into `info.usage` and `SpendingTracker::add()`.
 - Undo: `canUndo()` asks the registry. `undo()` undoes each id that can
   be undone; a success appends the id to `undone`, saves the record and
   fires `undoChanges()`, a failure fires `undoErrors()` with the error and
@@ -369,10 +463,43 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   ..." for the ids undone since the previous dispatch to the hint.
 - The registry starts with the record's `loadedGroups` and every
   `loadedGroupsChanges()` copies them back into the record.
+- Every session's `PolicyGate` asks `Exclusions::excluded()`. When the
+  exclusions change, every open chat session whose peer became excluded
+  is stopped. Sessions and memory of hidden chats stay stored.
+- `info(id)` is the open session's info or the index entry. `save()` puts
+  the record's info, usage included, into the index.
+- `clearAllData()` stops and destroys every open session, removes every
+  session in the index and the index itself, clears all memory and resets
+  the spending, then fires `listChanges()` for every scope that had
+  sessions. Exclusions stay.
 - `Manager::activity()` of a scope: `working` when any open session of the
   scope is `Working` or `Compacting`, `pendingCards` summed over them.
   `activityValue()` starts with the current value and fires on changes,
   without repeats.
+
+## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`)
+
+- All three keep one agent value each in `Storage::Account`: `memory`
+  (the `MemoryBook`), `excluded` and `spending`. Unreadable values log an
+  error and start empty.
+- `Memories` loads the book on first use. `get(owner)` returns the
+  owner's memory, empty when it has none; the reference lives until the
+  next change. `add`, `update`, `remove` and `restore` run the `core`
+  operation, and on success save and fire `changes()` with the owner.
+  `clear(owner)` drops the facts but keeps `nextId`; `clearAll()` removes
+  the value.
+- `Exclusions::excluded(peer)` is true for a hidden peer, or when the
+  peer's `History` is loaded and an existing hidden folder of
+  `Data::ChatFilters` contains it. Folder membership is checked at call
+  time, so a folder hides chats added to it later and chats its rules
+  match. `setPeerExcluded()` and `setFolderExcluded()` save and fire
+  `changes()` when the list changed; `changes()` also fires on
+  `ChatFilters::changed()`.
+- `SpendingTracker` loads in its constructor. `add()` adds to today's
+  bucket (local date), fires `changes()` and saves two seconds later, or
+  in the destructor when a save is pending. `lastDays(n)` covers today and
+  the `n - 1` days before. `reset()` empties the stats, removes the value
+  and fires.
 
 ## Tools (`agent/tools/`)
 
@@ -391,6 +518,14 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   invisible chat fails the call. `peer` is the resolved `chat` (null when
   omitted), `peers` the resolved `chat` or `chats`. The gate checks
   `peers`; `touched()` reports them.
+- A chat reference that resolves to an excluded peer, and a
+  `DenyReason::Excluded`, fail with "The user hid this chat from the
+  agent." plus a request to tell the user and not to look for it another
+  way. Lists and searches skip excluded chats silently: `list_chats`, the
+  global `search_messages`, folder chat lists. `list_folders` skips
+  hidden folders, the folder tools fail on them with "The user hid this
+  folder from the agent.", and `reorder_folders` keeps hidden folders in
+  their slots. Members and senders inside a visible chat are not hidden.
 - `ResolveChatRef()` takes a chat id (a JSON number or a numeric string,
   `PeerId::value` as in every tool result), `@username`, or a
   `t.me/username` link, and finds only peers already loaded in
@@ -431,6 +566,13 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   "title": ..., "error": ...}]}`, folder tools add `"folder": {"id": id,
   "title": ...}`, `reorder_folders` returns `{"order": [ids]}`.
 - `ActionToolNames()` lists the names of entries with `action`.
+- Memory tools work on the scope's own memory (owner `Scope::peer`).
+  `memory_add`, `memory_update` and `memory_remove` return
+  `{"fact": {"id": ..., "text": ...}, "count": n, "limit": 50}` with the
+  added, updated or removed fact, fail with `MemoryErrorText()`, and
+  register an undo: remove the added fact, put the previous text back, or
+  `restore()` the removed fact at its index. `read_chat_memory` returns
+  `{"chat": id, "title": ..., "facts": [{"id": ..., "text": ...}]}`.
 
 | Tool | File | Risk | Scopes | Chat param | Notes |
 |---|---|---|---|---|---|
@@ -460,6 +602,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 | `set_folder_chats` | folders | Reversible, action | both | Many | `included` |
 | `reorder_folders` | folders | Reversible, action | general | None | |
 | `delete_folder` | folders | Visible | general | None | `DeleteFolder` card |
+| `memory_add` | memory | Reversible, action | both | None | `text` |
+| `memory_update` | memory | Reversible, action | both | None | `id`, `text` |
+| `memory_remove` | memory | Reversible, action | both | None | `id` |
+| `read_chat_memory` | memory | Read | general | One | untrusted |
 | `load_tools` | registry | Read | both | None | |
 
 ## UI (`agent/ui/`)
@@ -523,3 +669,38 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   or forums) and `Manager::enabled()`. It shows "Working..." or the
   number of waiting cards from `Manager::activityValue()` and opens the
   general agent screen.
+- `HistoryView` is the history pane of the panel and the general screen:
+  "Sessions" and "Memory" tabs over a scroll area with the scope's
+  `SessionsList` or its `MemoryList` (owner `Scope::peer`). With it open
+  the top bar title is "History"; mementos keep the open tab.
+- `MemoryList` shows the owner's facts in order, each wrapping, with
+  "Edit" and "Delete" on hover; below them "Add a fact" and, when there
+  are facts, "Clear memory", then an explanation. Add and edit use a box
+  with one field limited to `kMemoryMaxChars`; delete and clear ask first.
+  It rebuilds on `Memories::changes()` of its owner.
+- The panel and the general screen have a "⋮" button in the top bar while
+  a session is open, with "Rename" and "Delete session" through
+  `ShowRenameSessionBox()` and `ShowDeleteSessionBox()`; after a delete
+  the view shows the new-session state.
+- `SessionsList` shows a delete icon at the right of the hovered row,
+  which opens `ShowDeleteSessionBox()`; the context menu stays. With
+  `ProvidersState::showSpending` the date line adds
+  `FormatSpending(UsageTotals(info.usage))`. The userpic stack skips
+  excluded peers.
+- With `showSpending` the feed ends with a gray "This session: …" line
+  for a session with usage, with `FormatSpendingDetails()` as its
+  tooltip. Memory action rows read "Remembered: …", "Updated memory: …"
+  or "Forgot: …" with the result's `fact.text`.
+- `PanelAvailable()` is also false for an excluded peer;
+  `PanelAvailabilityChanges()` fires on `enabledValue()` and exclusion
+  changes. An open panel whose chat becomes excluded closes: the third
+  column shows the chat's profile instead, a layer hides.
+- `FillPeerMenu()` adds "Hide from agent" or "Show to agent" (by
+  `Exclusions::peerListed()`) when `Manager::available()`, with a toast.
+  `FillFolderMenu()` does the same for a folder other than "All chats".
+- The settings page adds price fields to the provider box, a "Spending"
+  block (today, last 30 days, all time, "Reset statistics", the "Show
+  spending in sessions" toggle), "Hidden chats" (a box listing hidden
+  folders and chats with a way to show each again and "Add chats") and
+  "Delete agent data" (`Manager::clearAllData()` after a confirmation).
+  The spending, hidden chats and data belong to the current account.

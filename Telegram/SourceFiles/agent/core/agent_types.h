@@ -77,11 +77,15 @@ struct Usage {
 	int inputTokens = 0;
 	int outputTokens = 0;
 	int cachedInputTokens = 0;
+	double cost = 0.;
+	bool hasCost = false;
 
 	Usage &operator+=(const Usage &other) {
 		inputTokens += other.inputTokens;
 		outputTokens += other.outputTokens;
 		cachedInputTokens += other.cachedInputTokens;
+		cost += other.cost;
+		hasCost = hasCost || other.hasCost;
 		return *this;
 	}
 };

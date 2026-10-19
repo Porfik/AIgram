@@ -31,6 +31,57 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent::Ui {
 
+void ShowRenameSessionBox(
+		not_null<Window::SessionController*> controller,
+		not_null<Manager*> manager,
+		const QString &id) {
+	const auto info = manager->info(id);
+	if (!info) {
+		return;
+	}
+	const auto current = info->title;
+	controller->show(Box([=](not_null<GenericBox*> box) {
+		box->setTitle(tr::lng_agent_session_rename_title());
+		const auto input = box->addRow(
+			object_ptr<InputField>(
+				box,
+				st::defaultInputField,
+				tr::lng_agent_session_title_placeholder(),
+				current));
+		box->setFocusCallback([=] {
+			input->setFocusFast();
+			input->selectAll();
+		});
+		const auto save = [=] {
+			const auto text = input->getLastText().trimmed();
+			if (text.isEmpty() || text == current) {
+				return;
+			}
+			manager->rename(id, text);
+			box->closeBox();
+		};
+		input->submits() | rpl::on_next(save, box->lifetime());
+		box->addButton(tr::lng_settings_save(), save);
+		box->addButton(tr::lng_cancel(), [=] {
+			box->closeBox();
+		});
+	}));
+}
+
+void ShowDeleteSessionBox(
+		not_null<Window::SessionController*> controller,
+		not_null<Manager*> manager,
+		const QString &id) {
+	controller->show(MakeConfirmBox({
+		.text = tr::lng_agent_session_delete_sure(tr::marked),
+		.confirmed = [=](Fn<void()> close) {
+			manager->remove(id);
+			close();
+		},
+		.confirmText = tr::lng_box_delete(),
+	}));
+}
+
 SessionsList::SessionsList(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller,
@@ -225,65 +276,12 @@ void SessionsList::contextMenuEvent(QContextMenuEvent *e) {
 	const auto id = _rows[*index].id;
 	const auto addAction = Menu::CreateAddActionCallback(_menu);
 	addAction(tr::lng_agent_session_rename(tr::now), [=] {
-		renameSession(id);
+		ShowRenameSessionBox(_controller, _manager, id);
 	}, &st::menuIconEdit);
 	addAction(tr::lng_agent_session_delete(tr::now), [=] {
-		removeSession(id);
+		ShowDeleteSessionBox(_controller, _manager, id);
 	}, &st::menuIconDelete);
 	_menu->popup(e->globalPos());
-}
-
-void SessionsList::renameSession(const QString &id) {
-	const auto manager = _manager;
-	const auto current = titleOf(id);
-	_controller->show(Box([manager, id, current](
-			not_null<GenericBox*> box) {
-		box->setTitle(tr::lng_agent_session_rename_title());
-		const auto input = box->addRow(
-			object_ptr<InputField>(
-				box,
-				st::defaultInputField,
-				tr::lng_agent_session_title_placeholder(),
-				current));
-		box->setFocusCallback([=] {
-			input->setFocusFast();
-			input->selectAll();
-		});
-		const auto save = [=] {
-			const auto text = input->getLastText().trimmed();
-			if (text.isEmpty() || text == current) {
-				return;
-			}
-			manager->rename(id, text);
-			box->closeBox();
-		};
-		input->submits() | rpl::on_next(save, box->lifetime());
-		box->addButton(tr::lng_settings_save(), save);
-		box->addButton(tr::lng_cancel(), [=] {
-			box->closeBox();
-		});
-	}));
-}
-
-void SessionsList::removeSession(const QString &id) {
-	const auto manager = _manager;
-	_controller->show(MakeConfirmBox({
-		.text = tr::lng_agent_session_delete_sure(tr::marked),
-		.confirmed = [manager, id] {
-			manager->remove(id);
-		},
-		.confirmText = tr::lng_box_delete(),
-	}));
-}
-
-QString SessionsList::titleOf(const QString &id) const {
-	const auto list = _manager->list(_scope);
-	for (const auto &info : list) {
-		if (info.id == id) {
-			return info.title;
-		}
-	}
-	return QString();
 }
 
 std::optional<int> SessionsList::findRowIndex(int y) const {

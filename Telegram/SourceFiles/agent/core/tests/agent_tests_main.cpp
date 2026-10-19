@@ -31,6 +31,9 @@ namespace {
 	append(RequestChecks());
 	append(CardChecks());
 	append(NavigationChecks());
+	append(MemoryChecks());
+	append(SpendingChecks());
+	append(ExclusionChecks());
 	return result;
 }
 

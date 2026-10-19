@@ -411,7 +411,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 		WriteMessage(stream, message);
 	}
 	stream << qint32(record.summaryUntil) << record.summary;
-	WriteUsage(stream, record.usage);
+	WriteUsage(stream, record.info.usage);
 	stream << qint32(record.tainted ? 1 : 0);
 	stream << qint32(record.cards.size());
 	for (const auto &card : record.cards) {
@@ -464,7 +464,7 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 	if (!usage) {
 		return std::nullopt;
 	}
-	record.usage = *usage;
+	record.info.usage = *usage;
 	auto tainted = qint32(0);
 	stream >> tainted;
 	if (stream.status() != QDataStream::Ok

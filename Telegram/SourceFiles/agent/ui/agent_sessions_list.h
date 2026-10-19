@@ -33,6 +33,15 @@ namespace Agent::Ui {
 
 using namespace ::Ui;
 
+void ShowRenameSessionBox(
+	not_null<Window::SessionController*> controller,
+	not_null<Manager*> manager,
+	const QString &id);
+void ShowDeleteSessionBox(
+	not_null<Window::SessionController*> controller,
+	not_null<Manager*> manager,
+	const QString &id);
+
 class SessionsList final : public RpWidget {
 public:
 	SessionsList(
@@ -53,9 +62,6 @@ protected:
 
 private:
 	void rebuild();
-	void renameSession(const QString &id);
-	void removeSession(const QString &id);
-	[[nodiscard]] QString titleOf(const QString &id) const;
 
 	struct Userpic {
 		not_null<PeerData*> peer;

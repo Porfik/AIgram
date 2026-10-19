@@ -24,6 +24,7 @@ struct SessionInfo {
 	qint64 created = 0;
 	qint64 updated = 0;
 	std::vector<PeerKey> touched;
+	Usage usage;
 };
 
 struct SessionRecord {
@@ -31,7 +32,6 @@ struct SessionRecord {
 	std::vector<Message> messages;
 	int summaryUntil = 0;
 	QString summary;
-	Usage usage;
 	bool tainted = false;
 	std::vector<Card> cards;
 	std::vector<QString> loadedGroups;

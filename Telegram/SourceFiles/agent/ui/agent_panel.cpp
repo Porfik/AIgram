@@ -34,6 +34,11 @@ bool PanelAvailable(not_null<PeerData*> peer) {
 	return peer->session().agent().enabled();
 }
 
+rpl::producer<> PanelAvailabilityChanges(
+		not_null<Main::Session*> session) {
+	return session->agent().enabledValue() | rpl::to_empty;
+}
+
 void TogglePanel(
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer) {

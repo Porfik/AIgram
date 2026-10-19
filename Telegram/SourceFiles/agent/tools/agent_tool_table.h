@@ -112,4 +112,8 @@ namespace FolderTools {
 [[nodiscard]] std::vector<ToolEntry> Entries();
 } // namespace FolderTools
 
+namespace MemoryTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace MemoryTools
+
 } // namespace Agent

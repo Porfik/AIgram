@@ -119,6 +119,7 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(ActionTools::Entries());
 		append(ChatStateTools::Entries());
 		append(FolderTools::Entries());
+		append(MemoryTools::Entries());
 		result.push_back(LoadToolsEntry());
 		return result;
 	}();

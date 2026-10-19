@@ -134,6 +134,7 @@ PRIVATE
     agent/tools/agent_tools_chat_state.cpp
     agent/tools/agent_tools_folders.cpp
     agent/tools/agent_tools_general.cpp
+    agent/tools/agent_tools_memory.cpp
     agent/ui/agent_chats_row.cpp
     agent/ui/agent_chats_row.h
     agent/ui/agent_composer.cpp
@@ -144,6 +145,12 @@ PRIVATE
     agent/ui/agent_feed_items.h
     agent/ui/agent_feed_widget.cpp
     agent/ui/agent_feed_widget.h
+    agent/ui/agent_history_view.cpp
+    agent/ui/agent_history_view.h
+    agent/ui/agent_memory_list.cpp
+    agent/ui/agent_memory_list.h
+    agent/ui/agent_menus.cpp
+    agent/ui/agent_menus.h
     agent/ui/agent_panel.cpp
     agent/ui/agent_panel.h
     agent/ui/agent_panel_widget.cpp
@@ -154,18 +161,26 @@ PRIVATE
     agent/ui/agent_session_view.h
     agent/ui/agent_sessions_list.cpp
     agent/ui/agent_sessions_list.h
+    agent/ui/agent_spending_format.cpp
+    agent/ui/agent_spending_format.h
     agent/agent_check.cpp
     agent/agent_check.h
+    agent/agent_exclusions.cpp
+    agent/agent_exclusions.h
     agent/agent_http_transport.cpp
     agent/agent_http_transport.h
     agent/agent_manager.cpp
     agent/agent_manager.h
+    agent/agent_memories.cpp
+    agent/agent_memories.h
     agent/agent_session.cpp
     agent/agent_session.h
     agent/agent_session_store.cpp
     agent/agent_session_store.h
     agent/agent_settings.cpp
     agent/agent_settings.h
+    agent/agent_spending_tracker.cpp
+    agent/agent_spending_tracker.h
     api/api_attached_stickers.cpp
     api/api_attached_stickers.h
     api/api_authorizations.cpp

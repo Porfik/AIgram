@@ -18,6 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <rpl/variable.h>
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace Main {
@@ -26,9 +27,12 @@ class Session;
 
 namespace Agent {
 
+class Exclusions;
 class HttpTransport;
+class Memories;
 class Session;
 class SessionStore;
+class SpendingTracker;
 class Transport;
 
 struct ScopeActivity {
@@ -54,6 +58,7 @@ public:
 	[[nodiscard]] int contextWindow() const;
 
 	[[nodiscard]] std::vector<SessionInfo> list(const Scope &scope) const;
+	[[nodiscard]] std::optional<SessionInfo> info(const QString &id) const;
 	[[nodiscard]] rpl::producer<Scope> listChanges() const;
 	[[nodiscard]] ScopeActivity activity(const Scope &scope) const;
 	[[nodiscard]] rpl::producer<ScopeActivity> activityValue(
@@ -63,6 +68,11 @@ public:
 	[[nodiscard]] Session *open(const QString &id);
 	void rename(const QString &id, const QString &title);
 	void remove(const QString &id);
+	void clearAllData();
+
+	[[nodiscard]] Memories &memories() const;
+	[[nodiscard]] Exclusions &exclusions() const;
+	[[nodiscard]] SpendingTracker &spending() const;
 
 	[[nodiscard]] Transport &transport() const;
 	void save(not_null<Session*> session);
@@ -85,6 +95,9 @@ private:
 	const not_null<Main::Session*> _session;
 	const std::unique_ptr<SessionStore> _store;
 	const std::unique_ptr<HttpTransport> _transport;
+	const std::unique_ptr<Memories> _memories;
+	const std::unique_ptr<Exclusions> _exclusions;
+	const std::unique_ptr<SpendingTracker> _spending;
 	ProvidersState _providers;
 	rpl::variable<bool> _enabled = false;
 	std::vector<SessionInfo> _index;
