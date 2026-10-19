@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "ui/widgets/chat_filters_tabs_strip.h"
 
+#include "agent/ui/agent_menus.h"
 #include "api/api_chat_filters_remove_manager.h"
 #include "boxes/choose_filter_box.h"
 #include "boxes/filters/edit_filter_box.h"
@@ -93,6 +94,7 @@ void ShowMenu(
 			[=] { return session->data().chatsFilters().chatsList(id); },
 			addAction);
 
+		Agent::Ui::FillFolderMenu(controller, id, addAction);
 		auto showRemoveBox = [=] {
 			state->removeApi.request(base::make_weak(parent), controller, id);
 		};

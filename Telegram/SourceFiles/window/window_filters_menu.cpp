@@ -42,6 +42,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "boxes/premium_limits_box.h"
 #include "settings/sections/settings_folders.h"
 #include "storage/storage_media_prepare.h"
+#include "agent/ui/agent_menus.h"
 #include "api/api_chat_filters.h"
 #include "apiwrap.h"
 #include "styles/style_widgets.h"
@@ -771,6 +772,7 @@ void FiltersMenu::showMenu(QPoint position, FilterId id) {
 			std::move(filteredChats),
 			addAction);
 
+		Agent::Ui::FillFolderMenu(_session, id, addAction);
 		addAction({
 			.text = tr::lng_filters_context_remove(tr::now),
 			.handler = crl::guard(&_outer, [=, this] {

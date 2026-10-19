@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_peer_menu.h"
 
+#include "agent/ui/agent_menus.h"
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
 #include "menu/menu_mark_as_read.h"
@@ -1922,6 +1923,9 @@ void Filler::fillContextMenuActions() {
 	addToggleUnreadMark();
 	addToggleTopicClosed();
 	addToggleFolder();
+	if (_peer) {
+		Agent::Ui::FillPeerMenu(_controller, _peer, _addAction);
+	}
 	if (const auto user = _peer->asUser()) {
 		if (!user->isContact()) {
 			addBlockUser();
@@ -1932,6 +1936,9 @@ void Filler::fillContextMenuActions() {
 	addDeleteChat();
 	addLeaveChat();
 	addDeleteTopic();
+	if (_peer) {
+		Agent::Ui::FillPeerMenu(_controller, _peer, _addAction);
+	}
 }
 
 void Filler::fillHistoryActions() {
@@ -1951,6 +1958,9 @@ void Filler::fillHistoryActions() {
 	addDirectMessages();
 	addExportChat();
 	addTranslate();
+	if (_peer) {
+		Agent::Ui::FillPeerMenu(_controller, _peer, _addAction);
+	}
 	addReport();
 	addClearHistory();
 	addDeleteChat();
