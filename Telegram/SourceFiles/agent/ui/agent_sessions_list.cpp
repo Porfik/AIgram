@@ -7,8 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_sessions_list.h"
 
+#include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
+#include "agent/agent_settings.h"
 #include "agent/core/agent_record.h"
+#include "agent/ui/agent_spending_format.h"
 #include "data/data_changes.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
@@ -99,6 +102,14 @@ SessionsList::SessionsList(
 			rebuild();
 		}
 	}, lifetime());
+	Agent::ProvidersChanged(
+	) | rpl::on_next([=] {
+		rebuild();
+	}, lifetime());
+	_manager->exclusions().changes(
+	) | rpl::on_next([=] {
+		rebuild();
+	}, lifetime());
 	rebuild();
 }
 
@@ -114,13 +125,20 @@ void SessionsList::rebuild() {
 	_rows.reserve(list.size());
 	constexpr auto kMaxUserpics = 3;
 	for (const auto &info : list) {
+		auto date = FormatDateTime(
+			QDateTime::fromSecsSinceEpoch(info.updated));
+		if (_manager->providers().showSpending) {
+			const auto spending = FormatSpending(UsageTotals(info.usage));
+			if (!spending.isEmpty()) {
+				date += u" · "_q + spending;
+			}
+		}
 		auto &row = _rows.emplace_back(Row{
 			.id = info.id,
 			.title = !info.title.isEmpty()
 				? info.title
 				: tr::lng_agent_session_untitled(tr::now),
-			.date = FormatDateTime(
-				QDateTime::fromSecsSinceEpoch(info.updated)),
+			.date = std::move(date),
 		});
 		if (_scope.kind != ScopeKind::Account) {
 			continue;
@@ -128,6 +146,9 @@ void SessionsList::rebuild() {
 		for (const auto key : info.touched) {
 			if (row.userpics.size() == kMaxUserpics) {
 				break;
+			}
+			if (_manager->exclusions().excluded(key)) {
+				continue;
 			}
 			const auto peer = _manager->session().data().peerLoaded(
 				PeerId(key));
