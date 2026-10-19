@@ -68,6 +68,7 @@ private:
 	void relayoutOverlay();
 	void rebuildFeed();
 	void applyState();
+	void refreshSpending();
 	void sendCurrentText(const QString &text);
 	void handoffRequested(const QString &text);
 	void refreshHandoffNote();

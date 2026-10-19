@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_feed.h"
+#include "agent/core/agent_spending.h"
 #include "agent/ui/agent_feed_items.h"
 #include "base/timer.h"
 #include "ui/rp_widget.h"
@@ -24,6 +25,7 @@ public:
 	void rebuild(const std::vector<FeedItem> &items);
 	void handleLiveEvent(const EngineEvent &event);
 	void setStatus(const SessionState &state);
+	void setSpending(const SpendingTotals &totals);
 	void setContentMaxWidth(int width);
 	void scrollToBottom();
 	[[nodiscard]] bool empty() const;
@@ -55,6 +57,7 @@ private:
 	object_ptr<ScrollArea> _scroll;
 	not_null<VerticalLayout*> _list;
 	object_ptr<FeedStatusWidget> _status;
+	object_ptr<Ui::FlatLabel> _spending;
 	FeedContext _context;
 	std::vector<Row> _rows;
 	std::vector<FeedItemWidget*> _live;

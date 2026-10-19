@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_widget.h"
 
 #include "agent/ui/agent_feed_cards.h"
+#include "agent/ui/agent_spending_format.h"
 #include "base/variant.h"
 #include "lang/lang_keys.h"
 #include "ui/wrap/vertical_layout.h"
@@ -50,6 +51,7 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 , _scroll(this, st::defaultScrollArea)
 , _list(_scroll->setOwnedWidget(object_ptr<VerticalLayout>(_scroll.data())))
 , _status(this)
+, _spending(this, QString(), st::agentFeedSpendingLabel)
 , _context(std::move(context))
 , _unfreezeStick([=] {
 	_stickFrozen = false;
@@ -60,6 +62,7 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 			_scroll->scrollToY(_scroll->scrollTop() + pixels);
 		};
 	}
+	_spending->hide();
 	_scroll->scrollTopChanges(
 	) | rpl::on_next([=] {
 		updateStick();
@@ -281,6 +284,20 @@ void FeedWidget::setStatus(const SessionState &state) {
 	relayout();
 }
 
+void FeedWidget::setSpending(const SpendingTotals &totals) {
+	if (totals.empty()) {
+		_spending->hide();
+	} else {
+		_spending->setText(tr::lng_agent_spending_session(
+			tr::now,
+			lt_text,
+			FormatSpending(totals)));
+		_spending->setToolTip(FormatSpendingDetails(totals));
+		_spending->show();
+	}
+	relayout();
+}
+
 void FeedWidget::setContentMaxWidth(int width) {
 	if (_contentMaxWidth == width) {
 		return;
@@ -331,12 +348,29 @@ void FeedWidget::relayout() {
 		? _contentMaxWidth
 		: width;
 	const auto left = (width - inner) / 2;
+	if (!_spending->isHidden()) {
+		_spending->resizeToWidth(std::max(
+			inner - st::agentFeedSpendingMargin.left()
+				- st::agentFeedSpendingMargin.right(),
+			1));
+	}
 	if (!_status->isHidden()) {
 		_status->resizeToWidth(inner);
 	}
 	const auto statusHeight = _status->isHidden() ? 0 : _status->height();
+	const auto footerHeight = _spending->isHidden() ? 0
+		: st::agentFeedSpendingMargin.top()
+			+ _spending->height()
+			+ st::agentFeedSpendingMargin.bottom();
+	if (footerHeight) {
+		_spending->moveToLeft(
+			left + st::agentFeedSpendingMargin.left(),
+			height() - statusHeight - footerHeight
+				+ st::agentFeedSpendingMargin.top(),
+			width);
+	}
 	_status->moveToLeft(left, height() - statusHeight, width);
-	_scroll->setGeometry(0, 0, width, height() - statusHeight);
+	_scroll->setGeometry(0, 0, width, height() - statusHeight - footerHeight);
 	_list->resizeToWidth(inner);
 	_list->moveToLeft(left, 0, width);
 	applyStick();

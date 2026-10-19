@@ -11,6 +11,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_feed.h"
 #include "agent/core/agent_prompts.h"
+#include "agent/core/agent_spending.h"
+#include "agent/ui/agent_spending_format.h"
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
 #include "agent/agent_manager.h"
@@ -123,6 +125,7 @@ SessionView::SessionView(
 	Agent::ProvidersChanged(
 	) | rpl::on_next([=] {
 		refreshProviderState();
+		refreshSpending();
 	}, lifetime());
 
 	_openSettings->setClickedCallback([=] {
@@ -178,6 +181,7 @@ void SessionView::showSession(Session *session) {
 		_feed->setStatus(SessionState{});
 		_composer->setWorking(false);
 		_composer->setQueued({});
+		refreshSpending();
 		relayout();
 	}
 	_sessionChanges.fire_copy(_session);
@@ -278,6 +282,15 @@ void SessionView::rebuildFeed() {
 		session->record().cards,
 		ActionToolNames()));
 	applyState();
+	refreshSpending();
+}
+
+void SessionView::refreshSpending() {
+	auto totals = SpendingTotals();
+	if (_session && _manager->providers().showSpending) {
+		totals = UsageTotals(_session->record().info.usage);
+	}
+	_feed->setSpending(totals);
 }
 
 void SessionView::applyState() {
