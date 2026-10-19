@@ -224,6 +224,7 @@ constexpr auto kDefaultMembersLimit = 50;
 struct ParsedSlice {
 	std::vector<not_null<HistoryItem*>> items;
 	int total = -1;
+	int nextRate = 0;
 };
 
 [[nodiscard]] ParsedSlice ParseMessagesSlice(
@@ -254,6 +255,7 @@ struct ParsedSlice {
 		},
 		[&](const MTPDmessages_messagesSlice &data) {
 			parsed.total = data.vcount().v;
+			parsed.nextRate = data.vnext_rate().value_or_empty();
 			session->data().processUsers(data.vusers());
 			session->data().processChats(data.vchats());
 			append(data.vmessages().v);
@@ -338,6 +340,81 @@ void OnFullPeer(not_null<PendingCall*> call, Fn<void()> ready) {
 		trigger();
 	}, call->lifetime);
 	call->lifetime.make_state<base::Timer>(trigger)->callOnce(5 * 1000);
+}
+
+void DeliverGlobalSearch(
+		not_null<PendingCall*> call,
+		const QString &query,
+		int minDate,
+		int maxDate,
+		const QString &cursor,
+		int limit) {
+	auto offsetRate = 0;
+	auto offsetPeer = (PeerData*)nullptr;
+	auto offsetId = 0;
+	if (!cursor.isEmpty()) {
+		const auto parts = cursor.split('_');
+		if (parts.size() != 3) {
+			call->fail(u"Malformed search offset."_q);
+			return;
+		}
+		auto okRate = false;
+		auto okPeer = false;
+		auto okId = false;
+		offsetRate = parts[0].toInt(&okRate);
+		const auto peerId = parts[1].toULongLong(&okPeer);
+		offsetId = parts[2].toInt(&okId);
+		if (!okRate || !okPeer || !okId) {
+			call->fail(u"Malformed search offset."_q);
+			return;
+		}
+		offsetPeer = call->session->data().peerLoaded(PeerId(peerId));
+		if (!offsetPeer) {
+			call->fail(u"Unknown chat in the search offset."_q);
+			return;
+		}
+	}
+	const auto finish = [call, limit](const MTPmessages_Messages &result) {
+		const auto parsed = ParseMessagesSlice(call->session, result);
+		auto messages = QJsonArray();
+		for (auto i = parsed.items.rbegin(); i != parsed.items.rend(); ++i) {
+			const auto peer = (*i)->history()->peer;
+			if (!call->gate->visible(peer->id.value)) {
+				continue;
+			}
+			messages.push_back(ToolFormat::SerializeMessageWithChat(*i));
+		}
+		auto json = QJsonObject();
+		json.insert("messages", messages);
+		json.insert("has_older", QJsonValue(int(parsed.items.size()) == limit));
+		if (int(parsed.items.size()) == limit && !parsed.items.empty()) {
+			const auto last = parsed.items.back();
+			json.insert("next_offset", u"%1_%2_%3"_q
+				.arg(parsed.nextRate)
+				.arg(last->history()->peer->id.value)
+				.arg(last->id.bare));
+		}
+		call->done(std::move(json));
+	};
+	call->api.request(MTPmessages_SearchGlobal(
+		MTP_flags(MTPmessages_SearchGlobal::Flag()),
+		MTP_int(0),
+		MTPInputChannel(),
+		MTP_string(query),
+		MTP_inputMessagesFilterEmpty(),
+		MTP_int(minDate),
+		MTP_int(maxDate),
+		MTP_int(offsetRate),
+		(offsetPeer
+			? offsetPeer->input()
+			: MTP_inputPeerEmpty()),
+		MTP_int(offsetId),
+		MTP_int(limit)
+	)).done([=](const MTPmessages_Messages &result) {
+		finish(result);
+	}).fail([=](const MTP::Error &error) {
+		call->fail(error.type());
+	}).send();
 }
 
 void DeliverBasicGroupMembers(not_null<PendingCall*> call) {
@@ -505,6 +582,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 	const auto maxDateString = input.value("max_date").toString();
 	const auto limitValue = JsonInt(input, "limit", error);
 	const auto offset = JsonInt(input, "offset_id", error);
+	const auto cursor = input.value("offset").toString().trimmed();
 	const auto topic = JsonInt(input, "topic_id", error);
 	if (!error.isEmpty()) {
 		call->fail(error);
@@ -554,6 +632,31 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 	const auto maxDate = error.isEmpty() ? parseDate(maxDateString, true) : 0;
 	if (!error.isEmpty()) {
 		call->fail(error);
+		return;
+	}
+	if (!peer) {
+		if (fromGiven) {
+			call->fail(u"from is only supported when searching a single chat."_q);
+			return;
+		} else if (topic) {
+			call->fail(u"topic_id is only supported in forums."_q);
+			return;
+		} else if (offset.has_value()) {
+			call->fail(
+				u"offset_id is only supported when searching a single chat."_q);
+			return;
+		}
+		DeliverGlobalSearch(
+			call,
+			query,
+			minDate,
+			maxDate,
+			cursor,
+			limit);
+		return;
+	}
+	if (!cursor.isEmpty()) {
+		call->fail(u"offset is only supported when searching all chats."_q);
 		return;
 	}
 	const auto topicId = topic.value_or(0);
@@ -726,7 +829,11 @@ std::vector<ToolEntry> Entries() {
 		50,
 		u"How many messages to return, 1..50, default 20."_q));
 	searchProperties.insert("offset_id", MessageIdProperty(
-		u"Pagination: search older than this message id."_q));
+		u"Pagination in one chat: search older than this message id."_q));
+	searchProperties.insert("offset", StringProperty(
+		u"Pagination for the all-chats search: pass the next_offset"
+		" string from the previous page here. Only valid when no"
+		" chat is given."_q));
 	searchProperties.insert("topic_id", MessageIdProperty(
 		u"Forum topic root message id."_q));
 	auto membersProperties = QJsonObject();
@@ -742,15 +849,17 @@ std::vector<ToolEntry> Entries() {
 		u"Skip this many members."_q));
 	auto push = [&](const QString &name,
 			const QString &description,
+			const QString &generalDescription,
 			QJsonObject schema,
 			ChatParam chatParam,
 			auto run) {
 		result.push_back(ToolEntry{
 			.name = name,
 			.description = description,
+			.generalDescription = generalDescription,
 			.inputSchema = std::move(schema),
 			.policy = ToolPolicy{
-				.general = (chatParam == ChatParam::None),
+				.general = true,
 				.chat = true,
 			},
 			.chatParam = chatParam,
@@ -760,12 +869,16 @@ std::vector<ToolEntry> Entries() {
 	push(
 		u"get_context"_q,
 		u"Get the current time and a summary of this chat."_q,
+		u"Get the current time and your account details."_q,
 		ToolSchema(std::move(empty), QJsonArray()),
 		ChatParam::None,
 		RunGetContext);
 	push(
 		u"read_history"_q,
 		u"Read messages of this chat, oldest to newest. Give at most"
+		" one of around_id, before_id, after_id. Reading never marks"
+		" anything read."_q,
+		u"Read messages of the chat, oldest to newest. Give at most"
 		" one of around_id, before_id, after_id. Reading never marks"
 		" anything read."_q,
 		ToolSchema(std::move(historyProperties), QJsonArray()),
@@ -775,6 +888,10 @@ std::vector<ToolEntry> Entries() {
 		u"search_messages"_q,
 		u"Search messages in this chat, newest matches first. Page"
 		" older results with offset_id from next_offset_id."_q,
+		u"Search messages in the chat, or in all chats when no chat"
+		" is given, newest matches first. Page older results with"
+		" offset_id from next_offset_id in one chat, or with offset"
+		" from next_offset when searching all chats."_q,
 		ToolSchema(
 			std::move(searchProperties),
 			QJsonArray{ QJsonValue(u"query"_q) }),
@@ -784,12 +901,15 @@ std::vector<ToolEntry> Entries() {
 		u"get_peer_info"_q,
 		u"Get details about this chat: title, kind, description,"
 		" members, your role and rights."_q,
+		u"Get details about the chat: title, kind, description,"
+		" members, your role and rights."_q,
 		ToolSchema(QJsonObject(), QJsonArray()),
 		ChatParam::One,
 		RunGetPeerInfo);
 	push(
 		u"list_members"_q,
 		u"List members of this chat with names, usernames and roles."_q,
+		u"List members of the chat with names, usernames and roles."_q,
 		ToolSchema(std::move(membersProperties), QJsonArray()),
 		ChatParam::One,
 		RunListMembers);

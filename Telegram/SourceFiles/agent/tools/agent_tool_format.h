@@ -24,5 +24,6 @@ namespace Agent::ToolFormat {
 [[nodiscard]] QString EntitiesToMarkdown(const TextWithEntities &text);
 [[nodiscard]] QString MediaDescription(not_null<HistoryItem*> item);
 [[nodiscard]] QJsonObject SerializeMessage(not_null<HistoryItem*> item);
+[[nodiscard]] QJsonObject SerializeMessageWithChat(not_null<HistoryItem*> item);
 
 } // namespace Agent::ToolFormat

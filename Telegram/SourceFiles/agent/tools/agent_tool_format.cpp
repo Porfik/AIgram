@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_poll.h"
 #include "data/data_user.h"
+#include "history/history.h"
 #include "history/history_item.h"
 #include "history/history_item_components.h"
 #include "ui/text/text_entity.h"
@@ -227,6 +228,16 @@ QJsonObject SerializeMessage(not_null<HistoryItem*> item) {
 	if (item->Get<HistoryMessageEdited>()) {
 		result.insert("edited", QJsonValue(true));
 	}
+	return result;
+}
+
+QJsonObject SerializeMessageWithChat(not_null<HistoryItem*> item) {
+	auto result = SerializeMessage(item);
+	const auto peer = item->history()->peer;
+	auto chat = QJsonObject();
+	chat.insert("id", QJsonValue(qint64(peer->id.value)));
+	chat.insert("title", peer->name());
+	result.insert("chat", chat);
 	return result;
 }
 
