@@ -299,6 +299,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - The chat panel is an Info section (`Info::Section::Type::Agent`, keyed by
   the peer) built by `MakePanelMemento()`; `TogglePanel()` opens or closes
   it and `PanelAvailable()` says whether a peer can have one.
+- The panel goes to the third column whenever the window fits one without a
+  resize, turning that column on if the profile had it off. Only a narrow
+  window shows it as a layer, sized to fit the window; once the window grows
+  wide enough, the layer moves to the third column, keeping the session, the
+  history list state and the unsent text.
 - The panel has no header of its own: its title (the session title, the
   agent name without a session, "Sessions" with the list open) and the "new
   session" and "history" buttons live in the Info top bar, added by

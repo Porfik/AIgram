@@ -9,6 +9,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/ui/agent_panel_widget.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "data/data_peer.h"
 #include "info/info_content_widget.h"
 #include "info/info_controller.h"
@@ -16,7 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 #include "mainwindow.h"
 #include "mainwidget.h"
-#include "window/window_controller.h"
+#include "window/window_adaptive.h"
 #include "window/window_session_controller.h"
 
 #include "styles/style_agent_panel.h"
@@ -39,12 +41,11 @@ void TogglePanel(
 		peer,
 		Info::Section(Info::Section::Type::Agent));
 	const auto params = Window::SectionShow();
-	auto &window = controller->window();
-	if (window.isLayerShown()
-		&& window.widget()->showSectionInExistingLayer(
+	if (controller->isLayerShown()
+		&& controller->widget()->showSectionInExistingLayer(
 			memento.get(),
 			params)) {
-		window.hideLayer();
+		controller->hideSpecialLayer();
 		return;
 	}
 	if (controller->content()->thirdSectionIsAgentPanel(peer)) {
@@ -53,7 +54,22 @@ void TogglePanel(
 			params.withThirdColumn());
 		return;
 	}
-	controller->showSection(std::move(memento), params.withThirdColumn());
+	const auto enabled = EnableThirdColumn(controller);
+	controller->showSection(
+		std::move(memento),
+		(enabled
+			? Window::SectionShow(anim::type::instant)
+			: params).withThirdColumn());
+}
+
+bool EnableThirdColumn(not_null<Window::SessionController*> controller) {
+	if (controller->adaptive().isThreeColumn()
+		|| !controller->canShowThirdSectionWithoutResize()) {
+		return false;
+	}
+	Core::App().settings().setThirdSectionInfoEnabled(true);
+	Core::App().saveSettingsDelayed();
+	return true;
 }
 
 void SetupPanelTopBar(

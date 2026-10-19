@@ -120,6 +120,15 @@ void Composer::focusField() {
 	_field->setFocus();
 }
 
+QString Composer::draft() const {
+	return _field->getLastText();
+}
+
+void Composer::setDraft(const QString &text) {
+	_field->setText(text);
+	_field->setCursorPosition(text.size());
+}
+
 int Composer::resizeGetHeight(int newWidth) {
 	auto top = st::lineWidth;
 	if (_queued->count() > 0) {

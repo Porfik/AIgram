@@ -41,9 +41,12 @@ public:
 	[[nodiscard]] const QString &sessionId() const;
 	void setListOpen(bool open);
 	[[nodiscard]] bool listOpen() const;
+	void setDraft(const QString &text);
+	[[nodiscard]] const QString &draft() const;
 
 private:
 	QString _sessionId;
+	QString _draft;
 	bool _listOpen = false;
 
 };
@@ -70,6 +73,7 @@ public:
 
 private:
 	class Inner;
+	void setupThirdColumnFollow();
 	void saveState(not_null<Info::ContentMemento*> memento);
 	void restoreState(not_null<Info::ContentMemento*> memento);
 

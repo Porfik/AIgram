@@ -11,6 +11,7 @@ using "info/info.style";
 agentPanelEntryButton: IconButton(topBarSearch) {
 	icon: icon {{ "menu/ai_prompt", menuIconFg }};
 	iconOver: icon {{ "menu/ai_prompt", menuIconFgOver }};
+	iconPosition: point(-1px, -1px);
 }
 
 agentPanelLayerHeight: 720px;

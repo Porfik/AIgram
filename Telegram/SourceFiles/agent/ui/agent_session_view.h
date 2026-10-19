@@ -43,6 +43,8 @@ public:
 
 	void setHintProvider(Fn<QString()> hint);
 	void setInnerFocus();
+	[[nodiscard]] QString draft() const;
+	void setDraft(const QString &text);
 
 private:
 	enum class Mode {

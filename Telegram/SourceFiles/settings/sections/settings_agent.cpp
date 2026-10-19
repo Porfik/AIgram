@@ -395,21 +395,21 @@ void BuildEntryPoints(
 		SectionBuilder &builder,
 		const std::shared_ptr<AgentState> &state) {
 	builder.addSkip();
-	builder.addButton({
+	const auto button = builder.addButton({
 		.id = u"agent/show-entry-points"_q,
 		.title = tr::lng_agent_show_entry_points(),
-		.toggled = state->changed.events_starting_with(
-			rpl::empty_value()
-		) | rpl::map([=](rpl::empty_value) {
-			return state->providers.showEntryPoints;
-		}),
-		.onClick = [=] {
-			state->providers.showEntryPoints
-				= !state->providers.showEntryPoints;
-			SaveState(state.get());
-		},
+		.toggled = rpl::single(state->providers.showEntryPoints),
 		.keywords = { u"show"_q, u"agent"_q, u"chats"_q },
 	});
+	if (button) {
+		button->toggledChanges(
+		) | rpl::filter([=](bool toggled) {
+			return (toggled != state->providers.showEntryPoints);
+		}) | rpl::on_next([=](bool toggled) {
+			state->providers.showEntryPoints = toggled;
+			SaveState(state.get());
+		}, button->lifetime());
+	}
 	builder.add([=](const WidgetContext &ctx) {
 		Ui::AddDividerText(
 			ctx.container,

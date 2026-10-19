@@ -27,6 +27,8 @@ public:
 	[[nodiscard]] rpl::producer<> stops() const;
 	[[nodiscard]] rpl::producer<> heightChanges() const;
 	void focusField();
+	[[nodiscard]] QString draft() const;
+	void setDraft(const QString &text);
 
 protected:
 	int resizeGetHeight(int newWidth) override;

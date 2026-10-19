@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
+#include "agent/ui/agent_panel.h"
 #include "agent/ui/agent_session_view.h"
 #include "agent/ui/agent_sessions_list.h"
 #include "data/data_channel.h"
@@ -16,30 +17,73 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_peer.h"
 #include "data/data_thread.h"
 #include "info/info_controller.h"
+#include "info/info_memento.h"
 #include "info/info_top_bar.h"
 #include "info/info_wrap_widget.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "mainwindow.h"
 #include "ui/rp_widget.h"
 #include "ui/ui_utility.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/scroll_area.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent_panel.h"
+#include "styles/style_info.h"
+#include "styles/style_layers.h"
 
 namespace Agent::Ui {
 namespace {
 
+// WHY: mirrors Info::LayerWidget::countGeometry(), so a short window
+// shows the whole layer with its rounded bottom instead of cutting it.
+[[nodiscard]] int LayerContentHeight(int windowHeight) {
+	const auto margin = std::clamp(
+		windowHeight / 24,
+		st::infoLayerTopMinimal,
+		st::infoLayerTopMaximal);
+	return std::min(
+		st::agentPanelLayerHeight,
+		(windowHeight
+			- 2 * margin
+			- st::boxRadius
+			- st::infoLayerTopBarHeight));
+}
+
 class HeightFiller final : public RpWidget {
 public:
-	using RpWidget::RpWidget;
+	HeightFiller(QWidget *parent, not_null<RpWidget*> window);
 
 	rpl::producer<int> desiredHeightValue() const override;
 
+private:
+	const not_null<RpWidget*> _window;
+
 };
 
+HeightFiller::HeightFiller(QWidget *parent, not_null<RpWidget*> window)
+: RpWidget(parent)
+, _window(window) {
+}
+
 rpl::producer<int> HeightFiller::desiredHeightValue() const {
-	return rpl::single(st::agentPanelLayerHeight);
+	return _window->heightValue() | rpl::map(LayerContentHeight);
+}
+
+void MoveToThirdColumn(
+		not_null<Window::SessionController*> window,
+		std::shared_ptr<Info::ContentMemento> memento) {
+	EnableThirdColumn(window);
+	window->hideSpecialLayer(anim::type::instant);
+	window->showSection(
+		std::make_shared<Info::Memento>(
+			std::vector<std::shared_ptr<Info::ContentMemento>>{
+				std::move(memento),
+			}),
+		Window::SectionShow(
+			Window::SectionShow::Way::ClearStack,
+			anim::type::instant,
+			anim::activation::background).withThirdColumn());
 }
 
 } // namespace
@@ -77,6 +121,14 @@ bool PanelMemento::listOpen() const {
 	return _listOpen;
 }
 
+void PanelMemento::setDraft(const QString &text) {
+	_draft = text;
+}
+
+const QString &PanelMemento::draft() const {
+	return _draft;
+}
+
 class PanelWidget::Inner final : public RpWidget {
 public:
 	Inner(
@@ -84,8 +136,8 @@ public:
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer);
 
-	void restoreState(const QString &sessionId, bool listOpen);
-	[[nodiscard]] std::pair<QString, bool> state() const;
+	void saveState(not_null<PanelMemento*> memento) const;
+	void restoreState(not_null<PanelMemento*> memento);
 	void setInnerFocus();
 	void startNewSession();
 	void toggleHistory();
@@ -235,22 +287,23 @@ void PanelWidget::Inner::updateTitle() {
 	}
 }
 
-void PanelWidget::Inner::restoreState(
-		const QString &sessionId,
-		bool listOpen) {
-	if (!sessionId.isEmpty()) {
-		if (const auto session = _manager->open(sessionId)) {
+void PanelWidget::Inner::saveState(not_null<PanelMemento*> memento) const {
+	const auto session = _sessionView->session();
+	memento->setSessionId(session ? session->id() : QString());
+	memento->setListOpen(_listOpen.current());
+	memento->setDraft(_sessionView->draft());
+}
+
+void PanelWidget::Inner::restoreState(not_null<PanelMemento*> memento) {
+	if (!memento->sessionId().isEmpty()) {
+		if (const auto session = _manager->open(memento->sessionId())) {
 			showSession(session);
 		}
 	}
-	showHistory(listOpen);
-}
-
-std::pair<QString, bool> PanelWidget::Inner::state() const {
-	return {
-		_sessionView->session() ? _sessionView->session()->id() : QString(),
-		_listOpen.current(),
-	};
+	if (!memento->draft().isEmpty()) {
+		_sessionView->setDraft(memento->draft());
+	}
+	showHistory(memento->listOpen());
 }
 
 void PanelWidget::Inner::setInnerFocus() {
@@ -278,15 +331,35 @@ PanelWidget::PanelWidget(
 	not_null<PeerData*> peer)
 : Info::ContentWidget(parent, controller)
 , _peer(peer) {
-	setInnerWidget(object_ptr<HeightFiller>(this));
-	_inner = CreateChild<Inner>(
+	const auto window = controller->parentController();
+	setInnerWidget(object_ptr<HeightFiller>(
 		this,
-		controller->parentController(),
-		peer);
+		window->widget()->bodyWidget()));
+	_inner = CreateChild<Inner>(this, window, peer);
 	scroll()->geometryValue(
 	) | rpl::on_next([=](QRect geometry) {
 		_inner->setGeometry(geometry);
 	}, _inner->lifetime());
+	setupThirdColumnFollow();
+}
+
+void PanelWidget::setupThirdColumnFollow() {
+	const auto window = controller()->parentController();
+	rpl::combine(
+		controller()->wrapValue(),
+		window->widget()->bodyWidget()->widthValue()
+	) | rpl::map([=](Info::Wrap wrap, int) {
+		return (wrap == Info::Wrap::Layer)
+			&& window->canShowThirdSectionWithoutResize();
+	}) | rpl::distinct_until_changed(
+	) | rpl::skip(1) | rpl::filter(
+		rpl::mappers::_1
+	) | rpl::on_next([=] {
+		// Hiding the layer destroys this widget, so leave the resize first.
+		crl::on_main(this, [=] {
+			MoveToThirdColumn(window, doCreateMemento());
+		});
+	}, lifetime());
 }
 
 not_null<PeerData*> PanelWidget::peer() const {
@@ -361,16 +434,14 @@ void PanelWidget::setInternalState(
 }
 
 void PanelWidget::saveState(not_null<Info::ContentMemento*> memento) {
-	if (auto my = dynamic_cast<PanelMemento*>(memento.get())) {
-		const auto state = _inner->state();
-		my->setSessionId(state.first);
-		my->setListOpen(state.second);
+	if (const auto my = dynamic_cast<PanelMemento*>(memento.get())) {
+		_inner->saveState(my);
 	}
 }
 
 void PanelWidget::restoreState(not_null<Info::ContentMemento*> memento) {
-	if (auto my = dynamic_cast<PanelMemento*>(memento.get())) {
-		_inner->restoreState(my->sessionId(), my->listOpen());
+	if (const auto my = dynamic_cast<PanelMemento*>(memento.get())) {
+		_inner->restoreState(my);
 	}
 }
 

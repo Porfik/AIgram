@@ -158,6 +158,14 @@ void SessionView::setInnerFocus() {
 	}
 }
 
+QString SessionView::draft() const {
+	return _composer->draft();
+}
+
+void SessionView::setDraft(const QString &text) {
+	_composer->setDraft(text);
+}
+
 void SessionView::refreshProviderState() {
 	_mode = _manager->available()
 		? Mode::Normal

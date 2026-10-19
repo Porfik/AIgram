@@ -30,6 +30,9 @@ namespace Agent::Ui {
 void TogglePanel(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer);
+
+// Turns the third column on when it fits; returns whether it did.
+bool EnableThirdColumn(not_null<Window::SessionController*> controller);
 void SetupPanelTopBar(
 	not_null<Info::ContentWidget*> content,
 	not_null<Info::TopBar*> topBar,
