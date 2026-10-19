@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_prompts.h"
 #include "base/flat_set.h"
+#include "base/weak_ptr.h"
 
 #include <rpl/event_stream.h>
 
@@ -31,7 +32,9 @@ namespace Agent {
 
 struct PendingCall;
 
-class ToolRegistry final : public ToolExecutor {
+class ToolRegistry final
+	: public ToolExecutor
+	, public base::has_weak_ptr {
 public:
 	ToolRegistry(
 		not_null<Main::Session*> session,
@@ -57,10 +60,23 @@ public:
 		Fn<void(QString error)> done);
 
 private:
+	struct Call;
+
+	void confirmCall(
+		const QString &toolUseId,
+		Card card,
+		Fn<void(Card decided)> execute);
+	void finishCard(const QString &toolUseId, Card card);
+	void loadGroup(const QString &toolUseId, QString group);
 	void deliver(
 		const QString &toolUseId,
 		QString content,
 		bool error);
+	void deliver(
+		const QString &toolUseId,
+		QString content,
+		bool error,
+		bool untrusted);
 	void deliverJson(
 		const QString &toolUseId,
 		QJsonObject json);
@@ -72,6 +88,12 @@ private:
 	std::vector<QString> _loadedGroups;
 	rpl::event_stream<Card> _cardUpdates;
 	rpl::event_stream<> _loadedGroupsChanges;
+	std::map<QString, Call, std::less<>> _calls;
+	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _finished;
+	std::map<
+		QString,
+		Fn<void(Fn<void(QString error)> finished)>,
+		std::less<>> _undo;
 
 };
 

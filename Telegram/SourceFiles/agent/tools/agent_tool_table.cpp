@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/tools/agent_tool_table.h"
 
 #include "data/data_histories.h"
+#include "data/data_peer_id.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
 
@@ -34,7 +35,41 @@ void PendingCall::cancel() {
 PeerData *ResolveChatRef(
 		not_null<Main::Session*> session,
 		const QJsonValue &value) {
-	return nullptr;
+	if (value.isDouble()) {
+		return session->data().peerLoaded(
+			PeerId(uint64(int64(value.toDouble()))));
+	} else if (!value.isString()) {
+		return nullptr;
+	}
+	auto text = value.toString().trimmed();
+	if (text.isEmpty()) {
+		return nullptr;
+	}
+	auto ok = false;
+	const auto number = text.toLongLong(&ok);
+	if (ok) {
+		return session->data().peerLoaded(PeerId(uint64(number)));
+	}
+	auto lower = text.toLower();
+	if (lower.startsWith(u"https://"_q)) {
+		text = text.mid(8);
+	} else if (lower.startsWith(u"http://"_q)) {
+		text = text.mid(7);
+	}
+	lower = text.toLower();
+	if (lower.startsWith(u"telegram.me/"_q)) {
+		text = text.mid(12);
+	} else if (lower.startsWith(u"t.me/"_q)) {
+		text = text.mid(5);
+	}
+	if (text.startsWith('@')) {
+		text = text.mid(1);
+	}
+	const auto slash = text.indexOf('/');
+	if (slash > 0) {
+		text = text.left(slash);
+	}
+	return session->data().peerByUsername(text);
 }
 
 QJsonObject ToolSchema(QJsonObject properties, QJsonArray required) {

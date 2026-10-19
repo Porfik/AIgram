@@ -38,6 +38,16 @@ constexpr auto kProvisionalTitleLimit = 60;
 	return {};
 }
 
+[[nodiscard]] int CountPendingCards(const std::vector<Card> &cards) {
+	auto result = 0;
+	for (const auto &card : cards) {
+		if (card.status == CardStatus::Pending) {
+			++result;
+		}
+	}
+	return result;
+}
+
 } // namespace
 
 Session::Session(not_null<Manager*> manager, SessionRecord record)
@@ -49,13 +59,52 @@ Session::Session(not_null<Manager*> manager, SessionRecord record)
 	_record.tainted))
 , _tools(std::make_unique<ToolRegistry>(
 	&manager->session(),
-	_gate.get())) {
+	_gate.get(),
+	_record.loadedGroups)) {
+	_repairedOnLoad = CloseInterruptedTurn(_record);
+	_undoneReported = int(_record.undone.size());
+	_state.pendingCards = CountPendingCards(_record.cards);
 	_tools->touched(
 	) | rpl::on_next([=](PeerKey peer) {
 		if (!ranges::contains(_record.info.touched, peer)) {
 			_record.info.touched.push_back(peer);
 		}
 	}, _lifetime);
+	_tools->cardUpdates(
+	) | rpl::on_next([=](Card card) {
+		applyCard(std::move(card));
+	}, _lifetime);
+	_tools->loadedGroupsChanges(
+	) | rpl::on_next([=] {
+		_record.loadedGroups = _tools->loadedGroups();
+		publishRecord();
+	}, _lifetime);
+}
+
+void Session::finishOpen() {
+	if (_repairedOnLoad) {
+		_repairedOnLoad = false;
+		publishRecord();
+	}
+}
+
+void Session::applyCard(Card card) {
+	const auto i = ranges::find(
+		_record.cards,
+		card.toolUseId,
+		&Card::toolUseId);
+	if (i == _record.cards.end()) {
+		_record.cards.push_back(std::move(card));
+	} else {
+		*i = std::move(card);
+	}
+	_state.pendingCards = CountPendingCards(_record.cards);
+	const auto weak = base::make_weak(this);
+	publishRecord();
+	if (!weak) {
+		return;
+	}
+	_stateChanges.fire({});
 }
 
 Session::~Session() = default;
@@ -147,13 +196,68 @@ void Session::retry() {
 void Session::decideCard(
 		const QString &toolUseId,
 		CardDecision decision) {
+	_tools->decide(toolUseId, decision);
 }
 
 bool Session::canUndo(const QString &toolUseId) const {
-	return false;
+	return _tools->canUndo(toolUseId);
 }
 
 void Session::undo(const std::vector<QString> &toolUseIds) {
+	for (const auto &toolUseId : toolUseIds) {
+		if (!_tools->canUndo(toolUseId)) {
+			continue;
+		}
+		const auto weak = base::make_weak(this);
+		_tools->undo(toolUseId, [=](QString error) {
+			if (!weak) {
+				return;
+			} else if (error.isEmpty()) {
+				if (!ranges::contains(_record.undone, toolUseId)) {
+					_record.undone.push_back(toolUseId);
+				}
+				publishRecord();
+				if (!weak) {
+					return;
+				}
+			} else {
+				_undoErrors.fire_copy(std::move(error));
+				if (!weak) {
+					return;
+				}
+			}
+			_undoChanges.fire({});
+		});
+	}
+}
+
+QString Session::undoHint() {
+	if (_record.undone.size() <= _undoneReported) {
+		return {};
+	}
+	auto parts = QStringList();
+	for (auto i = _undoneReported; i < int(_record.undone.size()); ++i) {
+		const auto &toolUseId = _record.undone[i];
+		auto name = QString();
+		for (const auto &message : _record.messages) {
+			for (const auto &block : message.blocks) {
+				if (const auto use = std::get_if<ToolUseBlock>(&block)) {
+					if (use->id == toolUseId) {
+						name = use->name;
+						break;
+					}
+				}
+			}
+			if (!name.isEmpty()) {
+				break;
+			}
+		}
+		parts.push_back(name.isEmpty()
+			? toolUseId
+			: u"%1 (%2)"_q.arg(name, toolUseId));
+	}
+	_undoneReported = int(_record.undone.size());
+	return u"The user undid: %1."_q.arg(parts.join(u", "_q));
 }
 
 rpl::producer<> Session::undoChanges() const {
@@ -171,8 +275,16 @@ void Session::dispatch(SendRequest request) {
 	if (!request.text.isEmpty()) {
 		message.blocks.push_back(TextBlock{ request.text });
 	}
-	if (!request.hint.isEmpty()) {
-		message.blocks.push_back(TextBlock{ HintText(request.hint), true });
+	if (!request.untrusted.isEmpty()) {
+		message.blocks.push_back(
+			TextBlock{ WrapUntrusted(request.untrusted), true });
+	}
+	auto hint = request.hint;
+	if (const auto undone = undoHint(); !undone.isEmpty()) {
+		hint = hint.isEmpty() ? undone : hint + '\n' + undone;
+	}
+	if (!hint.isEmpty()) {
+		message.blocks.push_back(TextBlock{ HintText(hint), true });
 	}
 	Expects(!message.blocks.empty());
 
@@ -188,6 +300,9 @@ void Session::dispatch(SendRequest request) {
 		}
 	}
 	_gate->beginTurn(std::move(named));
+	if (!request.untrusted.isEmpty()) {
+		_gate->markTainted();
+	}
 	_overflowRetried = false;
 	_state.error.reset();
 	_state.lastEnd.reset();

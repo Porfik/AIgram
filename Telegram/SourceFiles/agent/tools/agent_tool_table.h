@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_card.h"
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_types.h"
+#include "base/weak_ptr.h"
 #include "mtproto/core_types.h"
 #include "mtproto/sender.h"
 
@@ -50,7 +51,7 @@ struct ToolEntry {
 	Fn<void(not_null<PendingCall*>)> run;
 };
 
-struct PendingCall final {
+struct PendingCall final : base::has_weak_ptr {
 	explicit PendingCall(not_null<Main::Session*> session);
 
 	not_null<Main::Session*> session;

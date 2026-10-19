@@ -77,6 +77,8 @@ private:
 		const QByteArray &body,
 		const QString &error);
 	[[nodiscard]] Session *findOpen(const QString &id) const;
+	void watchActivity(not_null<Session*> session);
+	void updateActivity(const Scope &scope);
 	void upsertIndex(const SessionInfo &info);
 	void sortIndex();
 
@@ -90,6 +92,9 @@ private:
 	base::flat_map<QString, int> _learnedContext;
 	base::flat_set<QString> _learning;
 	rpl::event_stream<Scope> _listChanges;
+	mutable base::flat_map<
+		PeerKey,
+		std::unique_ptr<rpl::variable<ScopeActivity>>> _activity;
 	rpl::lifetime _lifetime;
 
 };

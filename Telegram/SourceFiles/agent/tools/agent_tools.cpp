@@ -9,7 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_context.h"
 #include "agent/tools/agent_tool_table.h"
+#include "base/algorithm.h"
 #include "crl/crl_on_main.h"
+#include "data/data_peer.h"
+#include "data/data_peer_id.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
 #include "mtproto/sender.h"
@@ -19,6 +22,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent {
 namespace {
+
+const auto kFoldersGroup = u"folders"_q;
 
 QString DenyText(Decision decision) {
 	if (decision.verdict == Verdict::Confirm) {
@@ -38,6 +43,69 @@ QString DenyText(Decision decision) {
 	return u"This action is not allowed."_q;
 }
 
+[[nodiscard]] QString RefName(const QJsonValue &value) {
+	if (value.isString()) {
+		return value.toString().trimmed().left(64);
+	} else if (value.isDouble()) {
+		return QString::number(qint64(value.toDouble()));
+	}
+	return u"value"_q;
+}
+
+[[nodiscard]] QJsonObject WithChatParam(ChatParam param, QJsonObject schema) {
+	if (param == ChatParam::None) {
+		return schema;
+	}
+	auto properties = schema.value("properties").toObject();
+	if (param == ChatParam::Many) {
+		auto item = QJsonObject();
+		item.insert("type", QJsonValue(u"string"_q));
+		auto chats = QJsonObject();
+		chats.insert("type", QJsonValue(u"array"_q));
+		chats.insert("items", item);
+		chats.insert("minItems", QJsonValue(1));
+		chats.insert("maxItems", QJsonValue(100));
+		chats.insert("description", QJsonValue(
+			u"Target chats: 1 to 100 chat ids or @usernames."_q));
+		properties.insert("chats", chats);
+	} else {
+		properties.insert("chat", StringProperty(
+			u"Target chat: a chat id or an @username."_q));
+		if (param == ChatParam::One) {
+			auto required = schema.value("required").toArray();
+			if (!required.contains(QJsonValue(u"chat"_q))) {
+				required.push_back(u"chat"_q);
+				schema.insert("required", required);
+			}
+		}
+	}
+	schema.insert("properties", properties);
+	return schema;
+}
+
+ToolEntry LoadToolsEntry() {
+	auto properties = QJsonObject();
+	properties.insert("group", StringProperty(
+		u"The tool group to load. The only group is \"folders\"."_q));
+	auto description = u"Load an additional group of tools. The only"
+		" group is \"folders\": list_folders, create_folder,"
+		" rename_folder, set_folder_chats, reorder_folders and"
+		" delete_folder."_q;
+	return ToolEntry{
+		.name = u"load_tools"_q,
+		.description = description,
+		.generalDescription = std::move(description),
+		.inputSchema = ToolSchema(
+			std::move(properties),
+			QJsonArray{ QJsonValue(u"group"_q) }),
+		.policy = ToolPolicy{ .risk = Risk::Read },
+		.untrusted = false,
+		.run = [](not_null<PendingCall*> call) {
+			call->loadGroup(call->input.value("group").toString().trimmed());
+		},
+	};
+}
+
 const std::vector<ToolEntry> &ToolsTable() {
 	static const auto table = [] {
 		auto result = std::vector<ToolEntry>();
@@ -51,12 +119,25 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(ActionTools::Entries());
 		append(ChatStateTools::Entries());
 		append(FolderTools::Entries());
+		result.push_back(LoadToolsEntry());
 		return result;
 	}();
 	return table;
 }
 
 } // namespace
+
+struct ToolRegistry::Call {
+	QString tool;
+	ToolPolicy policy;
+	bool untrusted = false;
+	Verdict verdict = Verdict::Allow;
+	bool canAllowForTurn = false;
+	Card card;
+	Fn<void(Card decided)> execute;
+	bool hasCard = false;
+	bool approved = false;
+};
 
 const base::flat_set<QString> &ActionToolNames() {
 	static const auto result = [] {
@@ -87,16 +168,34 @@ ToolRegistry::~ToolRegistry() {
 }
 
 std::vector<ToolSpec> ToolRegistry::tools() const {
+	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	const auto &table = ToolsTable();
 	auto result = std::vector<ToolSpec>();
-	for (const auto &entry : ToolsTable()) {
+	const auto add = [&](const ToolEntry &entry) {
 		if (!_gate->available(entry.policy)) {
-			continue;
+			return;
 		}
 		result.push_back(ToolSpec{
 			.name = entry.name,
-			.description = entry.description,
-			.inputSchema = entry.inputSchema,
+			.description = (account && !entry.generalDescription.isEmpty())
+				? entry.generalDescription
+				: entry.description,
+			.inputSchema = account
+				? WithChatParam(entry.chatParam, entry.inputSchema)
+				: entry.inputSchema,
 		});
+	};
+	for (const auto &entry : table) {
+		if (entry.group.isEmpty()) {
+			add(entry);
+		}
+	}
+	for (const auto &group : _loadedGroups) {
+		for (const auto &entry : table) {
+			if (entry.group == group) {
+				add(entry);
+			}
+		}
 	}
 	return result;
 }
@@ -117,37 +216,21 @@ void ToolRegistry::execute(
 		return;
 	}
 	const auto &entry = *i;
-	const auto scope = _gate->scope();
-	const auto peer = (scope.kind == ScopeKind::Chat)
-		? _session->data().peerLoaded(PeerId(scope.peer))
-		: nullptr;
-	if (scope.kind == ScopeKind::Chat && !peer) {
+	if (!entry.group.isEmpty()
+		&& !ranges::contains(_loadedGroups, entry.group)) {
 		done(ToolResultBlock{
 			.toolUseId = call.id,
-			.content = u"This chat is not loaded yet, try again later."_q,
-			.error = true,
-		});
-		return;
-	}
-	const auto peers = (scope.kind == ScopeKind::Chat)
-		? std::vector<PeerKey>{ scope.peer }
-		: std::vector<PeerKey>();
-	const auto request = ActionRequest{
-		.tool = entry.name,
-		.policy = entry.policy,
-		.peers = peers,
-	};
-	const auto decision = _gate->check(request);
-	if (decision.verdict != Verdict::Allow) {
-		done(ToolResultBlock{
-			.toolUseId = call.id,
-			.content = CapToolResult(DenyText(decision), kToolResultMaxChars),
+			.content = CapToolResult(
+				u"Tool %1 is not loaded. Call load_tools with group"
+				" \"%2\" first."_q.arg(call.name, entry.group),
+				kToolResultMaxChars),
 			.error = true,
 		});
 		return;
 	}
 	auto pending = std::make_unique<PendingCall>(_session);
-	pending->peer = peer;
+	pending->toolUseId = call.id;
+	pending->gate = _gate;
 	pending->input = call.input;
 	pending->result = std::move(done);
 	pending->done = [this, id = call.id](QJsonObject json) {
@@ -156,12 +239,229 @@ void ToolRegistry::execute(
 	pending->fail = [this, id = call.id](QString text) {
 		deliver(id, std::move(text), true);
 	};
+	pending->confirm = [this, id = call.id](
+			Card card,
+			Fn<void(Card decided)> execute) {
+		confirmCall(id, std::move(card), std::move(execute));
+	};
+	pending->finishCard = [this, id = call.id](Card card) {
+		finishCard(id, std::move(card));
+	};
+	pending->undoable = [this, id = call.id](
+			Fn<void(Fn<void(QString error)> finished)> undo) {
+		Expects(_pending.contains(id));
+		_undo[id] = std::move(undo);
+	};
+	pending->loadGroup = [this, id = call.id](QString group) {
+		loadGroup(id, std::move(group));
+	};
 	const auto raw = pending.get();
 	_pending.emplace(call.id, std::move(pending));
-	entry.run(raw);
+	auto &meta = _calls[call.id];
+	meta.tool = entry.name;
+	meta.policy = entry.policy;
+	meta.untrusted = entry.untrusted;
+	const auto scope = _gate->scope();
+	auto peer = (PeerData*)nullptr;
+	auto peers = std::vector<not_null<PeerData*>>();
+	auto resolveError = QString();
 	if (scope.kind == ScopeKind::Chat) {
-		_touched.fire_copy(scope.peer);
+		peer = _session->data().peerLoaded(PeerId(scope.peer));
+		if (!peer) {
+			resolveError = u"This chat is not loaded yet, try again later."_q;
+		} else {
+			peers.push_back(peer);
+		}
+	} else {
+		const auto resolve = [&](const QJsonValue &value) {
+			const auto resolved = ResolveChatRef(_session, value);
+			if (!resolved) {
+				resolveError = u"Unknown chat: %1. Use a chat id from"
+					" an earlier tool result or an @username."_q
+					.arg(RefName(value));
+				return false;
+			} else if (!_gate->visible(resolved->id.value)) {
+				resolveError = u"This chat is hidden from the agent."_q;
+				return false;
+			}
+			peers.push_back(resolved);
+			return true;
+		};
+		switch (entry.chatParam) {
+		case ChatParam::None:
+			break;
+		case ChatParam::One:
+		case ChatParam::OptionalOne: {
+			const auto value = call.input.value("chat");
+			if (value.isUndefined() || value.isNull()) {
+				if (entry.chatParam == ChatParam::One) {
+					resolveError = u"chat is required: a chat id or an"
+						" @username."_q;
+				}
+				break;
+			}
+			if (resolve(value)) {
+				peer = peers.back();
+			}
+			break;
+		}
+		case ChatParam::Many: {
+			const auto value = call.input.value("chats");
+			if (!value.isArray()) {
+				resolveError = u"chats must be an array of chat ids or"
+					" @usernames."_q;
+				break;
+			}
+			const auto list = value.toArray();
+			if (list.isEmpty() || list.size() > 100) {
+				resolveError = u"chats must contain 1 to 100 entries."_q;
+				break;
+			}
+			for (const auto &item : list) {
+				if (!resolve(item)) {
+					break;
+				}
+			}
+			if (resolveError.isEmpty()) {
+				auto unique = std::vector<not_null<PeerData*>>();
+				for (const auto resolved : peers) {
+					if (!ranges::contains(unique, resolved)) {
+						unique.push_back(resolved);
+					}
+				}
+				peers = std::move(unique);
+			}
+			break;
+		}
+		}
 	}
+	if (!resolveError.isEmpty()) {
+		deliver(call.id, std::move(resolveError), true);
+		return;
+	}
+	auto keys = std::vector<PeerKey>();
+	keys.reserve(peers.size());
+	for (const auto resolved : peers) {
+		keys.push_back(resolved->id.value);
+	}
+	const auto decision = _gate->check({ entry.name, entry.policy, keys });
+	meta.verdict = decision.verdict;
+	meta.canAllowForTurn = (decision.verdict == Verdict::Confirm)
+		&& decision.canAllowForTurn;
+	if (decision.verdict == Verdict::Deny) {
+		deliver(call.id, DenyText(decision), true);
+		return;
+	}
+	raw->peer = peer;
+	raw->peers = std::move(peers);
+	entry.run(raw);
+	for (const auto key : keys) {
+		_touched.fire_copy(key);
+	}
+}
+
+void ToolRegistry::confirmCall(
+		const QString &toolUseId,
+		Card card,
+		Fn<void(Card decided)> execute) {
+	const auto i = _calls.find(toolUseId);
+	if (i == _calls.end()) {
+		return;
+	}
+	Expects(!i->second.hasCard);
+	Expects(!i->second.approved);
+	auto call = i->second;
+	call.hasCard = true;
+	call.execute = std::move(execute);
+	card.toolUseId = toolUseId;
+	card.status = CardStatus::Pending;
+	if (card.kind == CardKind::Draft) {
+		call.canAllowForTurn = false;
+	}
+	card.canAllowForTurn = call.canAllowForTurn;
+	const auto autoApproved = (call.verdict == Verdict::Allow)
+		&& (card.kind != CardKind::Draft);
+	if (autoApproved) {
+		card.autoApproved = true;
+		card.status = CardStatus::Running;
+		call.approved = true;
+		call.card = card;
+	} else {
+		call.card = card;
+	}
+	i->second = call;
+	const auto weak = base::make_weak(this);
+	_cardUpdates.fire_copy(card);
+	if (autoApproved && weak) {
+		auto run = call.execute;
+		run(card);
+	}
+}
+
+void ToolRegistry::finishCard(const QString &toolUseId, Card card) {
+	const auto c = _calls.find(toolUseId);
+	if (c == _calls.end()) {
+		return;
+	}
+	const auto bad = c->second.hasCard
+		? !c->second.approved
+		: (c->second.verdict == Verdict::Confirm);
+	const auto tool = c->second.tool;
+	const auto untrusted = c->second.untrusted;
+	if (bad || !CardFinal(card.status)) {
+		LOG(("Agent Warning: tool %1 finished the call %2 not through an"
+			" approved card.").arg(tool, toolUseId));
+		_calls.erase(c);
+		deliver(toolUseId, u"This action was not confirmed."_q, true, false);
+		return;
+	}
+	card.toolUseId = toolUseId;
+	_calls.erase(c);
+	const auto weak = base::make_weak(this);
+	_cardUpdates.fire_copy(card);
+	if (!weak) {
+		return;
+	}
+	deliver(
+		toolUseId,
+		CardResultText(card),
+		card.status == CardStatus::Failed,
+		untrusted);
+}
+
+void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
+	if (!_pending.contains(toolUseId)) {
+		return;
+	}
+	if (group.isEmpty() || group != kFoldersGroup) {
+		deliver(
+			toolUseId,
+			u"Unknown tool group: %1. The only group is \"folders\"."_q
+				.arg(group.isEmpty() ? u"(empty)"_q : group),
+			true);
+		return;
+	}
+	auto json = QJsonObject();
+	json.insert("group", group);
+	json.insert("loaded", QJsonValue(true));
+	auto tools = QJsonArray();
+	for (const auto &entry : ToolsTable()) {
+		if (entry.group == group) {
+			tools.push_back(entry.name);
+		}
+	}
+	json.insert("tools", tools);
+	if (ranges::contains(_loadedGroups, group)) {
+		deliverJson(toolUseId, std::move(json));
+		return;
+	}
+	_loadedGroups.push_back(group);
+	const auto weak = base::make_weak(this);
+	_loadedGroupsChanges.fire({});
+	if (!weak) {
+		return;
+	}
+	deliverJson(toolUseId, std::move(json));
 }
 
 rpl::producer<PeerKey> ToolRegistry::touched() const {
@@ -183,39 +483,135 @@ rpl::producer<> ToolRegistry::loadedGroupsChanges() const {
 void ToolRegistry::decide(
 		const QString &toolUseId,
 		CardDecision decision) {
+	const auto i = _calls.find(toolUseId);
+	if (i == _calls.end()
+		|| !i->second.hasCard
+		|| i->second.card.status != CardStatus::Pending) {
+		return;
+	}
+	auto call = i->second;
+	auto card = ApplyDecision(call.card, decision);
+	if (decision.action == CardAction::Decline) {
+		_calls.erase(i);
+		_cardUpdates.fire_copy(card);
+		deliver(toolUseId, CardResultText(card), false, call.untrusted);
+		return;
+	}
+	if (decision.allowForTurn && call.canAllowForTurn) {
+		_gate->allowForTurn({ call.tool, call.policy, CheckedPeers(card) });
+	}
+	call.card = card;
+	call.approved = true;
+	i->second = call;
+	const auto weak = base::make_weak(this);
+	_cardUpdates.fire_copy(card);
+	if (!weak) {
+		return;
+	}
+	auto run = call.execute;
+	run(card);
 }
 
 bool ToolRegistry::canUndo(const QString &toolUseId) const {
-	return false;
+	return _undo.contains(toolUseId);
 }
 
 void ToolRegistry::undo(
 		const QString &toolUseId,
 		Fn<void(QString error)> done) {
+	const auto i = _undo.find(toolUseId);
+	if (i == _undo.end()) {
+		done(u"This action cannot be undone."_q);
+		return;
+	}
+	const auto weak = base::make_weak(this);
+	const auto run = i->second;
+	run([weak, this, id = toolUseId, done = std::move(done)](
+			QString error) {
+		if (!weak) {
+			return;
+		} else if (!error.isEmpty()) {
+			done(std::move(error));
+			return;
+		}
+		_undo.erase(id);
+		const auto finished = _finished.find(id);
+		if (finished != _finished.end()) {
+			_finished.erase(finished);
+		}
+		done(QString());
+	});
 }
 
 void ToolRegistry::cancel(const QString &toolUseId) {
 	const auto i = _pending.find(toolUseId);
-	if (i == end(_pending)) {
+	if (i == _pending.end()) {
 		return;
 	}
 	auto entry = std::move(i->second);
 	_pending.erase(i);
+	const auto c = _calls.find(toolUseId);
+	if (c != _calls.end()) {
+		auto card = c->second.card;
+		const auto running = (card.status == CardStatus::Running);
+		_calls.erase(c);
+		if (running) {
+			card.status = CardStatus::NotDone;
+		} else {
+			card.status = CardStatus::Declined;
+			card.decided = CardAction::Decline;
+		}
+		_cardUpdates.fire_copy(std::move(card));
+	}
 	entry->cancel();
+	if (_undo.contains(toolUseId)) {
+		_finished.emplace(toolUseId, std::move(entry));
+	} else {
+		crl::on_main([holder = std::move(entry)] {});
+	}
 }
 
 void ToolRegistry::deliver(
 		const QString &toolUseId,
 		QString content,
 		bool error) {
+	if (!_pending.contains(toolUseId)) {
+		return;
+	}
+	const auto c = _calls.find(toolUseId);
+	const auto call = (c != _calls.end()) ? c->second : Call();
+	if (c != _calls.end()) {
+		_calls.erase(c);
+	}
+	if (call.hasCard
+		&& (call.card.status == CardStatus::Pending
+			|| call.card.status == CardStatus::Running)) {
+		auto card = call.card;
+		card.status = CardStatus::Failed;
+		_cardUpdates.fire_copy(card);
+	}
+	if (!error && (call.verdict == Verdict::Confirm || call.hasCard)) {
+		LOG(("Agent Warning: tool %1 finished the call %2 not through an"
+			" approved card.").arg(call.tool, toolUseId));
+		error = true;
+	}
+	deliver(toolUseId, std::move(content), error, call.untrusted);
+}
+
+void ToolRegistry::deliver(
+		const QString &toolUseId,
+		QString content,
+		bool error,
+		bool untrusted) {
 	const auto i = _pending.find(toolUseId);
-	if (i == end(_pending)) {
+	if (i == _pending.end()) {
 		return;
 	}
 	auto entry = std::move(i->second);
 	_pending.erase(i);
 	content = CapToolResult(std::move(content), kToolResultMaxChars);
-	if (!error && _gate->scope().kind == ScopeKind::Chat) {
+	if (!error
+		&& (_gate->scope().kind == ScopeKind::Chat || untrusted)) {
 		content = WrapUntrusted(content);
 		_gate->markTainted();
 	}
@@ -224,7 +620,11 @@ void ToolRegistry::deliver(
 		.content = std::move(content),
 		.error = error,
 	});
-	crl::on_main([holder = std::move(entry)] {});
+	if (_undo.contains(toolUseId)) {
+		_finished.emplace(toolUseId, std::move(entry));
+	} else {
+		crl::on_main([holder = std::move(entry)] {});
+	}
 }
 
 void ToolRegistry::deliverJson(

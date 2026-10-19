@@ -80,6 +80,9 @@ private:
 	friend class Manager;
 
 	void dispatch(SendRequest request);
+	void finishOpen();
+	void applyCard(Card card);
+	[[nodiscard]] QString undoHint();
 	void failWithoutProvider();
 	[[nodiscard]] QString buildSystem() const;
 	[[nodiscard]] int planCompaction(
@@ -114,8 +117,10 @@ private:
 	std::unique_ptr<SingleRequest> _titleRequest;
 	int _loopBase = 0;
 	int _loopContext = 0;
+	int _undoneReported = 0;
 	bool _titleRequested = false;
 	bool _overflowRetried = false;
+	bool _repairedOnLoad = false;
 	rpl::event_stream<> _recordChanges;
 	rpl::event_stream<EngineEvent> _live;
 	rpl::event_stream<> _stateChanges;

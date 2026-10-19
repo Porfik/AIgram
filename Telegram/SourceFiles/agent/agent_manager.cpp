@@ -158,12 +158,43 @@ rpl::producer<Scope> Manager::listChanges() const {
 }
 
 ScopeActivity Manager::activity(const Scope &scope) const {
-	return {};
+	auto result = ScopeActivity();
+	for (const auto &session : _sessions) {
+		if (!(session->scope() == scope)) {
+			continue;
+		}
+		const auto &state = session->state();
+		if (state.status == SessionStatus::Working
+			|| state.status == SessionStatus::Compacting) {
+			result.working = true;
+		}
+		result.pendingCards += state.pendingCards;
+	}
+	return result;
 }
 
 rpl::producer<ScopeActivity> Manager::activityValue(
 		const Scope &scope) const {
-	return rpl::single(ScopeActivity());
+	auto &variable = _activity[scope.peer];
+	if (!variable) {
+		variable = std::make_unique<rpl::variable<ScopeActivity>>(
+			activity(scope));
+	}
+	return variable->value();
+}
+
+void Manager::watchActivity(not_null<Session*> session) {
+	session->stateChanges(
+	) | rpl::on_next([=] {
+		updateActivity(session->scope());
+	}, _lifetime);
+}
+
+void Manager::updateActivity(const Scope &scope) {
+	const auto i = _activity.find(scope.peer);
+	if (i != _activity.end()) {
+		*i->second = activity(scope);
+	}
 }
 
 not_null<Session*> Manager::create(const Scope &scope) {
@@ -172,7 +203,9 @@ not_null<Session*> Manager::create(const Scope &scope) {
 	record.info.scope = scope;
 	record.info.created = record.info.updated = base::unixtime::now();
 	_sessions.push_back(std::make_unique<Session>(this, std::move(record)));
-	return _sessions.back().get();
+	const auto result = _sessions.back().get();
+	watchActivity(result);
+	return result;
 }
 
 Session *Manager::findOpen(const QString &id) const {
@@ -193,7 +226,10 @@ Session *Manager::open(const QString &id) {
 		return nullptr;
 	}
 	_sessions.push_back(std::make_unique<Session>(this, std::move(*record)));
-	return _sessions.back().get();
+	const auto result = _sessions.back().get();
+	result->finishOpen();
+	watchActivity(result);
+	return result;
 }
 
 void Manager::rename(const QString &id, const QString &title) {
@@ -231,6 +267,7 @@ void Manager::remove(const QString &id) {
 		[&](const auto &session) { return session->id() == id; });
 	if (it != end(_sessions)) {
 		_sessions.erase(it);
+		updateActivity(scope);
 	}
 	for (const auto &entry : _index) {
 		if (entry.id == id) {
