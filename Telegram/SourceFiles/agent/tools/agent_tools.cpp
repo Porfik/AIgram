@@ -275,6 +275,10 @@ void ToolRegistry::execute(
 	}
 }
 
+rpl::producer<PeerKey> ToolRegistry::touched() const {
+	return _touched.events();
+}
+
 void ToolRegistry::cancel(const QString &toolUseId) {
 	const auto i = _pending.find(toolUseId);
 	if (i == end(_pending)) {
