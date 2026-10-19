@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_widget.h"
 #include "ui/rp_widget.h"
 
+#include <optional>
 #include <rpl/event_stream.h>
 #include <rpl/lifetime.h>
 
@@ -68,6 +69,8 @@ private:
 	void rebuildFeed();
 	void applyState();
 	void sendCurrentText(const QString &text);
+	void handoffRequested(const QString &text);
+	void refreshHandoffNote();
 	void sessionGone();
 	void resizeEvent(QResizeEvent *e) override;
 
@@ -76,11 +79,14 @@ private:
 	const Scope _scope;
 	Session *_session = nullptr;
 	Mode _mode = Mode::Normal;
+	int _contentMaxWidth = 0;
+	std::optional<HandoffDraft> _handoff;
 	Fn<QString()> _hint;
 	object_ptr<FeedWidget> _feed;
 	object_ptr<Composer> _composer;
 	object_ptr<RpWidget> _welcome;
 	object_ptr<Ui::FlatLabel> _welcomeLabel;
+	object_ptr<Ui::FlatLabel> _handoffNote;
 	object_ptr<RpWidget> _noProvider;
 	object_ptr<Ui::FlatLabel> _noProviderLabel;
 	object_ptr<Ui::RoundButton> _openSettings;

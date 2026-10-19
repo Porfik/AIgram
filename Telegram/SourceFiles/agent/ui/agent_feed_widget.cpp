@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_feed_widget.h"
 
+#include "agent/ui/agent_feed_cards.h"
 #include "base/variant.h"
 #include "lang/lang_keys.h"
 #include "ui/wrap/vertical_layout.h"
@@ -108,8 +109,11 @@ object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
 		[&](const FeedSummary &data) -> Result {
 			return object_ptr<FeedSummaryWidget>(_list);
 		},
-		[&](const auto &data) -> Result {
-			return object_ptr<FeedItemWidget>(_list);
+		[&](const FeedActions &data) -> Result {
+			return object_ptr<FeedActionsWidget>(_list, _context, data);
+		},
+		[&](const FeedCard &data) -> Result {
+			return object_ptr<FeedCardWidget>(_list, _context, data);
 		});
 }
 
@@ -225,7 +229,12 @@ void FeedWidget::setStatus(const SessionState &state) {
 	using Kind = FeedStatusWidget::Kind;
 	_working = (state.status == SessionStatus::Working)
 		|| (state.status == SessionStatus::Compacting);
-	if (state.status == SessionStatus::Working) {
+	if (state.status == SessionStatus::Working
+		&& state.pendingCards > 0) {
+		_status->showStatus(
+			Kind::Working,
+			tr::lng_agent_waiting_card(tr::now));
+	} else if (state.status == SessionStatus::Working) {
 		_status->showStatus(Kind::Working, tr::lng_agent_working(tr::now));
 	} else if (state.status == SessionStatus::Compacting) {
 		_status->showStatus(
@@ -272,6 +281,14 @@ void FeedWidget::setStatus(const SessionState &state) {
 	relayout();
 }
 
+void FeedWidget::setContentMaxWidth(int width) {
+	if (_contentMaxWidth == width) {
+		return;
+	}
+	_contentMaxWidth = width;
+	relayout();
+}
+
 void FeedWidget::scrollToBottom() {
 	_stickFrozen = false;
 	_unfreezeStick.cancel();
@@ -310,13 +327,18 @@ void FeedWidget::dropLive() {
 
 void FeedWidget::relayout() {
 	const auto width = this->width();
+	const auto inner = (_contentMaxWidth > 0 && width > _contentMaxWidth)
+		? _contentMaxWidth
+		: width;
+	const auto left = (width - inner) / 2;
 	if (!_status->isHidden()) {
-		_status->resizeToWidth(width);
+		_status->resizeToWidth(inner);
 	}
 	const auto statusHeight = _status->isHidden() ? 0 : _status->height();
-	_status->moveToLeft(0, height() - statusHeight, width);
+	_status->moveToLeft(left, height() - statusHeight, width);
 	_scroll->setGeometry(0, 0, width, height() - statusHeight);
-	_list->resizeToWidth(width);
+	_list->resizeToWidth(inner);
+	_list->moveToLeft(left, 0, width);
 	applyStick();
 }
 

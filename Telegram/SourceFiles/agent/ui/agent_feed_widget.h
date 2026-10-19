@@ -24,6 +24,7 @@ public:
 	void rebuild(const std::vector<FeedItem> &items);
 	void handleLiveEvent(const EngineEvent &event);
 	void setStatus(const SessionState &state);
+	void setContentMaxWidth(int width);
 	void scrollToBottom();
 	[[nodiscard]] bool empty() const;
 	[[nodiscard]] rpl::producer<> retryRequests() const;
@@ -59,6 +60,7 @@ private:
 	std::vector<FeedItemWidget*> _live;
 	FeedAssistantWidget *_liveAssistant = nullptr;
 	base::Timer _unfreezeStick;
+	int _contentMaxWidth = 0;
 	bool _working = false;
 	bool _stick = true;
 	bool _stickFrozen = false;

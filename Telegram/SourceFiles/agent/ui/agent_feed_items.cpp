@@ -40,17 +40,30 @@ namespace {
 constexpr auto kStreamRenderDelay = crl::time(100);
 constexpr auto kMaxResultChars = 3000;
 
-[[nodiscard]] QString ToolTitleText(const QString &name) {
+[[nodiscard]] QString ToolTitleText(const ToolUseBlock &call) {
+	const auto &name = call.name;
 	if (name == u"get_context"_q) {
 		return tr::lng_agent_tool_get_context(tr::now);
 	} else if (name == u"read_history"_q) {
 		return tr::lng_agent_tool_read_history(tr::now);
 	} else if (name == u"search_messages"_q) {
-		return tr::lng_agent_tool_search_messages(tr::now);
+		return call.input.value("chat").isUndefined()
+			? tr::lng_agent_tool_search_global(tr::now)
+			: tr::lng_agent_tool_search_messages(tr::now);
 	} else if (name == u"get_peer_info"_q) {
 		return tr::lng_agent_tool_get_peer_info(tr::now);
 	} else if (name == u"list_members"_q) {
 		return tr::lng_agent_tool_list_members(tr::now);
+	} else if (name == u"list_chats"_q) {
+		return tr::lng_agent_tool_list_chats(tr::now);
+	} else if (name == u"find_setting"_q) {
+		return tr::lng_agent_tool_find_setting(tr::now);
+	} else if (name == u"open"_q) {
+		return tr::lng_agent_tool_open(tr::now);
+	} else if (name == u"load_tools"_q) {
+		return tr::lng_agent_tool_load_tools(tr::now);
+	} else if (name == u"list_folders"_q) {
+		return tr::lng_agent_tool_list_folders(tr::now);
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
 }
@@ -603,7 +616,7 @@ QString FeedStepsWidget::Step::title() const {
 	return v::match(_data, [](const FeedThinking &) {
 		return tr::lng_agent_thinking(tr::now);
 	}, [](const FeedTool &data) {
-		return ToolTitleText(data.call.name);
+		return ToolTitleText(data.call);
 	});
 }
 

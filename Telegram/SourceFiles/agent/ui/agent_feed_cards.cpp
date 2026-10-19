@@ -799,7 +799,8 @@ void FeedActionsWidget::updatePayload(const FeedItem &item) {
 }
 
 bool FeedActionsWidget::undoable(int index) const {
-	return !_actions.actions[index].result->error
+	const auto &result = _actions.actions[index].result;
+	return result && !result->error
 		&& _context.delegate.canUndo(
 			_actions.actions[index].call.id)
 		&& !_context.delegate.isUndone(

@@ -7,14 +7,22 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_session_view.h"
 
+#include "base/algorithm.h"
+#include "agent/core/agent_context.h"
 #include "agent/core/agent_feed.h"
+#include "agent/core/agent_prompts.h"
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
+#include "agent/tools/agent_tools.h"
+#include "agent/ui/agent_section.h"
 #include "iv/markdown/iv_markdown_math_renderer.h"
 #include "lang/lang_keys.h"
+#include "data/data_peer.h"
+#include "data/data_session.h"
+#include "main/main_session.h"
 #include "settings/sections/settings_agent.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/buttons.h"
@@ -36,7 +44,31 @@ SessionView::SessionView(
 , _feed(this, FeedContext{
 	.controller = controller,
 	.renderer = std::make_shared<Iv::Markdown::MathRenderer>(),
-})
+	.delegate = {
+		.decideCard = [=](
+				const QString &toolUseId,
+				CardDecision decision) {
+			if (_session) {
+				_session->decideCard(toolUseId, std::move(decision));
+			}
+		},
+		.canUndo = [=](const QString &toolUseId) {
+			return _session && _session->canUndo(toolUseId);
+		},
+		.isUndone = [=](const QString &toolUseId) {
+			return _session && ranges::contains(
+				_session->record().undone,
+				toolUseId);
+		},
+		.undo = [=](const std::vector<QString> &toolUseIds) {
+			if (_session) {
+				_session->undo(toolUseIds);
+			}
+		},
+		.startHandoff = [=](const QString &text) {
+			handoffRequested(text);
+		},
+	},})
 , _composer(this)
 , _welcome(this)
 , _welcomeLabel(
@@ -44,6 +76,10 @@ SessionView::SessionView(
 	(_scope.kind == ScopeKind::Chat
 		? tr::lng_agent_chat_welcome(tr::now)
 		: tr::lng_agent_title(tr::now)),
+	st::agentWelcomeLabel)
+, _handoffNote(
+	_welcome,
+	QString(),
 	st::agentWelcomeLabel)
 , _noProvider(this)
 , _noProviderLabel(
@@ -54,6 +90,7 @@ SessionView::SessionView(
 	_noProvider,
 	tr::lng_agent_open_settings(),
 	st::agentOverlayOpenSettings) {
+	_handoffNote->hide();
 	_composer->sends(
 	) | rpl::on_next([=](const QString &text) {
 		sendCurrentText(text);
@@ -106,6 +143,7 @@ void SessionView::showSession(Session *session) {
 	_sessionLifetime.destroy();
 	_session = session;
 	if (session) {
+		_handoff.reset();
 		std::move(session->recordChanges()
 		) | rpl::on_next_error_done(
 			[=] {
@@ -124,6 +162,13 @@ void SessionView::showSession(Session *session) {
 		std::move(session->live()
 		) | rpl::on_next([=](const EngineEvent &event) {
 			_feed->handleLiveEvent(event);
+		}, _sessionLifetime);
+		std::move(session->undoErrors()
+		) | rpl::on_next([=](const QString &error) {
+			_controller->showToast(tr::lng_agent_undo_failed(
+				tr::now,
+				lt_error,
+				error));
 		}, _sessionLifetime);
 		rebuildFeed();
 		_feed->scrollToBottom();
@@ -167,9 +212,52 @@ void SessionView::setDraft(const QString &text) {
 }
 
 void SessionView::setContentMaxWidth(int width) {
+	if (_contentMaxWidth == width) {
+		return;
+	}
+	_contentMaxWidth = width;
+	relayout();
 }
 
 void SessionView::startHandoff(HandoffDraft draft) {
+	showSession(nullptr);
+	_handoff = std::move(draft);
+	setDraft(_handoff->text);
+	refreshHandoffNote();
+	relayout();
+}
+
+void SessionView::handoffRequested(const QString &text) {
+	const auto session = _session;
+	if (!session || _scope.kind != ScopeKind::Chat) {
+		return;
+	}
+	const auto peer = _controller->session().data().peer(
+		PeerId(_scope.peer));
+	auto draft = HandoffDraft{
+		.text = text,
+		.untrusted = HandoffText(session->record(), peer->name()),
+		.from = _scope.peer,
+	};
+	ShowGeneralAgent(_controller, std::move(draft));
+}
+
+void SessionView::refreshHandoffNote() {
+	_handoffNote->resizeToNaturalWidth(std::max(
+		width() - st::agentOverlayMargin.left()
+			- st::agentOverlayMargin.right(),
+		1));
+	if (!_handoff) {
+		_handoffNote->hide();
+		return;
+	}
+	const auto peer = _controller->session().data().peer(
+		PeerId(_handoff->from));
+	_handoffNote->setText(tr::lng_agent_handoff_from(
+		tr::now,
+		lt_chat,
+		peer->name()));
+	_handoffNote->show();
 }
 
 void SessionView::refreshProviderState() {
@@ -186,7 +274,9 @@ void SessionView::rebuildFeed() {
 	}
 	_feed->rebuild(BuildFeed(
 		session->record().messages,
-		session->record().summaryUntil));
+		session->record().summaryUntil,
+		session->record().cards,
+		ActionToolNames()));
 	applyState();
 }
 
@@ -210,11 +300,14 @@ void SessionView::sendCurrentText(const QString &text) {
 		showSession(session);
 	}
 	_feed->scrollToBottom();
+	auto handoff = base::take(_handoff);
 	session->send({
 		.text = text,
 		.mentions = {},
 		.hint = _hint ? _hint() : QString(),
+		.untrusted = handoff ? handoff->untrusted : QString(),
 	});
+	_handoffNote->hide();
 }
 
 void SessionView::sessionGone() {
@@ -235,10 +328,18 @@ void SessionView::relayout() {
 	}
 	_noProvider->hide();
 	_composer->show();
-	_composer->resizeToWidth(w);
+	const auto content = (_contentMaxWidth > 0 && w > _contentMaxWidth)
+		? _contentMaxWidth
+		: w;
+	_composer->resizeToWidth(content);
 	const auto composerHeight = _composer->height();
-	_composer->setGeometry(0, h - composerHeight, w, composerHeight);
+	_composer->setGeometry(
+		(w - content) / 2,
+		h - composerHeight,
+		content,
+		composerHeight);
 	_feed->setGeometry(0, 0, w, h - composerHeight);
+	_feed->setContentMaxWidth(_contentMaxWidth);
 	_feed->show();
 	relayoutOverlay();
 }
@@ -269,9 +370,20 @@ void SessionView::relayoutOverlay() {
 	const auto w = _welcome->width();
 	const auto avail = std::max(w - inset, 0);
 	_welcomeLabel->resizeToNaturalWidth(avail);
+	_handoffNote->resizeToNaturalWidth(avail);
+	const auto note = _handoffNote->isHidden() ? 0
+		: _handoffNote->height() + st::agentOverlayGap;
+	const auto total = _welcomeLabel->height() + note;
+	const auto top = std::max((_welcome->height() - total) / 2, 0);
+	if (note) {
+		_handoffNote->move(
+			(w - _handoffNote->width()) / 2,
+			top);
+		_handoffNote->show();
+	}
 	_welcomeLabel->move(
 		(w - _welcomeLabel->width()) / 2,
-		std::max((_welcome->height() - _welcomeLabel->height()) / 2, 0));
+		top + note);
 }
 
 void SessionView::resizeEvent(QResizeEvent *e) {
