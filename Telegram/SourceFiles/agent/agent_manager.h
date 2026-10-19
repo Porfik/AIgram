@@ -87,6 +87,7 @@ private:
 		const QByteArray &body,
 		const QString &error);
 	[[nodiscard]] Session *findOpen(const QString &id) const;
+	void stopExcluded();
 	void watchActivity(not_null<Session*> session);
 	void updateActivity(const Scope &scope);
 	void upsertIndex(const SessionInfo &info);

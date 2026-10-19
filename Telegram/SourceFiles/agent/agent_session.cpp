@@ -8,11 +8,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 
 #include "agent/agent_manager.h"
+#include "agent/agent_exclusions.h"
+#include "agent/agent_memories.h"
+#include "agent/agent_spending_tracker.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_loop.h"
+#include "agent/core/agent_memory.h"
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_prompts.h"
 #include "agent/core/agent_request.h"
+#include "agent/core/agent_spending.h"
 #include "agent/tools/agent_tools.h"
 #include "base/algorithm.h"
 #include "base/unixtime.h"
@@ -55,7 +60,7 @@ Session::Session(not_null<Manager*> manager, SessionRecord record)
 , _record(std::move(record))
 , _gate(std::make_unique<PolicyGate>(
 	_record.info.scope,
-	nullptr,
+	[=](PeerKey peer) { return manager->exclusions().excluded(peer); },
 	_record.tainted))
 , _tools(std::make_unique<ToolRegistry>(
 	&manager->session(),
@@ -341,6 +346,14 @@ void Session::failWithoutProvider() {
 		TurnEnd::Failed);
 }
 
+void Session::accountUsage(
+		const Usage &usage,
+		const ProviderSettings &provider) {
+	const auto priced = PriceUsage(usage, provider);
+	_record.info.usage += priced;
+	_manager->spending().add(priced);
+}
+
 QString Session::buildSystem() const {
 	auto brief = std::optional<ChatBrief>();
 	if (_record.info.scope.kind == ScopeKind::Chat) {
@@ -353,7 +366,8 @@ QString Session::buildSystem() const {
 		.scope = _record.info.scope,
 		.account = AccountLine(&_manager->session()),
 		.instructions = _manager->providers().instructions,
-		.memory = QString(),
+		.memory = FormatMemory(
+			_manager->memories().get(_record.info.scope.peer)),
 		.chat = brief,
 	});
 }
@@ -387,6 +401,7 @@ void Session::startCompaction(int until) {
 	if (!applyState(SessionStatus::Compacting)) {
 		return;
 	}
+	const auto providerCopy = *provider;
 	_compaction = std::make_unique<SingleRequest>(
 		std::move(adapter),
 		&_manager->transport(),
@@ -397,6 +412,7 @@ void Session::startCompaction(int until) {
 			if (response.error) {
 				LOG(("Agent Warning: session compaction failed."));
 			} else {
+				accountUsage(response.usage, providerCopy);
 				const auto text = ResponseText(response.message);
 				if (!text.isEmpty()) {
 					_record.summary = text;
@@ -444,6 +460,7 @@ void Session::runLoop(const ProviderSettings &provider) {
 		ContextMessages(_record));
 	_loopContext = int(_loop->history().size());
 	_loopBase = int(_record.messages.size());
+	_loopProvider = provider;
 	_loop->events(
 	) | rpl::on_next([=](EngineEvent event) {
 		handleEvent(std::move(event));
@@ -461,7 +478,8 @@ void Session::handleEvent(EngineEvent event) {
 			return;
 		}
 	} else if (const auto usage = std::get_if<UsageReported>(&event)) {
-		_record.info.usage += usage->usage;
+		Expects(_loopProvider.has_value());
+		accountUsage(usage->usage, *_loopProvider);
 	} else if (const auto finished = std::get_if<TurnFinished>(&event)) {
 		const auto turn = *finished;
 		if (!handleTurnFinished(turn)) {
@@ -588,12 +606,20 @@ void Session::startTitleRequest() {
 		return;
 	}
 	_titleRequested = true;
+	const auto providerCopy = *provider;
 	_titleRequest = std::make_unique<SingleRequest>(
 		std::move(adapter),
 		&_manager->transport(),
 		TitleRequest(_record, provider->model),
 		[=](Response response) {
 			base::take(_titleRequest);
+			const auto weak = base::make_weak(this);
+			if (!response.error) {
+				accountUsage(response.usage, providerCopy);
+				if (!weak) {
+					return;
+				}
+			}
 			if (response.error || _record.info.titleFinal) {
 				return;
 			}

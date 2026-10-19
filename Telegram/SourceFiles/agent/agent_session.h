@@ -84,6 +84,7 @@ private:
 	void applyCard(Card card);
 	[[nodiscard]] QString undoHint();
 	void failWithoutProvider();
+	void accountUsage(const Usage &usage, const ProviderSettings &provider);
 	[[nodiscard]] QString buildSystem() const;
 	[[nodiscard]] int planCompaction(
 		const ProviderSettings &provider,
@@ -115,6 +116,7 @@ private:
 	std::vector<SendRequest> _queue;
 	std::unique_ptr<SingleRequest> _compaction;
 	std::unique_ptr<SingleRequest> _titleRequest;
+	std::optional<ProviderSettings> _loopProvider;
 	int _loopBase = 0;
 	int _loopContext = 0;
 	int _undoneReported = 0;

@@ -18,6 +18,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_openai.h"
 #include "base/algorithm.h"
 #include "base/unixtime.h"
+#include "main/main_session.h"
+#include "storage/storage_account.h"
 
 #include <rpl/producer.h>
 
@@ -47,6 +49,10 @@ Manager::Manager(not_null<Main::Session*> session)
 	}, _lifetime);
 	_index = _store->readIndex();
 	sortIndex();
+	_exclusions->changes(
+	) | rpl::on_next([=] {
+		stopExcluded();
+	}, _lifetime);
 	refresh();
 }
 
@@ -308,7 +314,49 @@ void Manager::remove(const QString &id) {
 	}
 }
 
+void Manager::stopExcluded() {
+	auto stopping = std::vector<not_null<Session*>>();
+	for (const auto &session : _sessions) {
+		const auto &scope = session->scope();
+		if (scope.kind == ScopeKind::Chat
+			&& _exclusions->excluded(scope.peer)) {
+			stopping.push_back(session.get());
+		}
+	}
+	for (const auto session : stopping) {
+		session->stop();
+	}
+}
+
 void Manager::clearAllData() {
+	auto scopes = std::vector<Scope>();
+	const auto addScope = [&](const Scope &scope) {
+		if (!ranges::contains(scopes, scope)) {
+			scopes.push_back(scope);
+		}
+	};
+	for (const auto &session : _sessions) {
+		addScope(session->scope());
+	}
+	for (const auto &entry : _index) {
+		addScope(entry.scope);
+	}
+	auto sessions = base::take(_sessions);
+	for (const auto &session : sessions) {
+		session->stop();
+	}
+	for (const auto &entry : _index) {
+		_store->removeSession(entry.id);
+	}
+	_index.clear();
+	_session->local().removeAgentValue(u"index"_q);
+	_memories->clearAll();
+	_spending->reset();
+	sessions.clear();
+	for (const auto &scope : scopes) {
+		updateActivity(scope);
+		_listChanges.fire_copy(scope);
+	}
 }
 
 Memories &Manager::memories() const {
