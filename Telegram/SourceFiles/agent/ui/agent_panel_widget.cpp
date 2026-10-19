@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
+#include "agent/ui/agent_history_view.h"
 #include "agent/ui/agent_panel.h"
 #include "agent/ui/agent_session_view.h"
 #include "agent/ui/agent_sessions_list.h"
@@ -26,7 +27,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/rp_widget.h"
 #include "ui/ui_utility.h"
 #include "ui/widgets/buttons.h"
-#include "ui/widgets/scroll_area.h"
+#include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent_panel.h"
 #include "styles/style_info.h"
@@ -129,6 +130,14 @@ const QString &PanelMemento::draft() const {
 	return _draft;
 }
 
+void PanelMemento::setHistoryTab(HistoryTab tab) {
+	_historyTab = tab;
+}
+
+HistoryTab PanelMemento::historyTab() const {
+	return _historyTab;
+}
+
 class PanelWidget::Inner final : public RpWidget {
 public:
 	Inner(
@@ -141,8 +150,10 @@ public:
 	void setInnerFocus();
 	void startNewSession();
 	void toggleHistory();
+	void showSessionMenu(not_null<QWidget*> button);
 	[[nodiscard]] rpl::producer<QString> titleValue() const;
 	[[nodiscard]] rpl::producer<bool> listOpenValue() const;
+	[[nodiscard]] rpl::producer<bool> hasSessionValue() const;
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
@@ -159,11 +170,12 @@ private:
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	SessionView *_sessionView = nullptr;
-	ScrollArea *_scroll = nullptr;
-	SessionsList *_sessionsList = nullptr;
+	HistoryView *_history = nullptr;
 	Fn<QString()> _hintProvider;
 	rpl::variable<bool> _listOpen = false;
+	rpl::variable<bool> _hasSession = false;
 	rpl::variable<QString> _title;
+	base::unique_qptr<PopupMenu> _menu;
 	rpl::lifetime _sessionLifetime;
 
 };
@@ -201,18 +213,12 @@ PanelWidget::Inner::Inner(
 		_controller,
 		_manager,
 		_scope);
-	_scroll = Ui::CreateChild<ScrollArea>(this);
-	_sessionsList = _scroll->setOwnedWidget(
-		object_ptr<SessionsList>(
-			_scroll,
-			_controller,
-			_manager,
-			_scope));
-	_scroll->widthValue(
-	) | rpl::on_next([=](int width) {
-		_sessionsList->resizeToWidth(width);
-	}, lifetime());
-	_sessionsList->openSessionRequests(
+	_history = Ui::CreateChild<HistoryView>(
+		this,
+		_controller,
+		_manager,
+		_scope);
+	_history->openSessionRequests(
 	) | rpl::on_next([=](const QString &id) {
 		showSession(_manager->open(id));
 	}, lifetime());
@@ -232,7 +238,7 @@ PanelWidget::Inner::Inner(
 void PanelWidget::Inner::showHistory(bool shown) {
 	_listOpen = shown;
 	_sessionView->setVisible(!shown);
-	_scroll->setVisible(shown);
+	_history->setVisible(shown);
 	updateTitle();
 	updateControlsGeometry();
 }
@@ -257,6 +263,16 @@ rpl::producer<bool> PanelWidget::Inner::listOpenValue() const {
 	return _listOpen.value();
 }
 
+rpl::producer<bool> PanelWidget::Inner::hasSessionValue() const {
+	return _hasSession.value();
+}
+
+void PanelWidget::Inner::showSessionMenu(not_null<QWidget*> button) {
+	if (const auto session = _sessionView->session()) {
+		ShowSessionMenu(_controller, _manager, button, session->id(), _menu);
+	}
+}
+
 void PanelWidget::Inner::showSession(Session *session) {
 	_sessionView->showSession(session);
 	trackSession(session);
@@ -265,6 +281,7 @@ void PanelWidget::Inner::showSession(Session *session) {
 
 void PanelWidget::Inner::trackSession(Session *session) {
 	_sessionLifetime = rpl::lifetime();
+	_hasSession = (session != nullptr);
 	if (session) {
 		session->recordChanges(
 		) | rpl::on_next([=] {
@@ -276,7 +293,7 @@ void PanelWidget::Inner::trackSession(Session *session) {
 
 void PanelWidget::Inner::updateTitle() {
 	if (_listOpen.current()) {
-		_title = tr::lng_agent_sessions_tab(tr::now);
+		_title = tr::lng_agent_history(tr::now);
 	} else if (const auto session = _sessionView->session()) {
 		const auto title = session->record().info.title;
 		_title = title.isEmpty()
@@ -292,6 +309,7 @@ void PanelWidget::Inner::saveState(not_null<PanelMemento*> memento) const {
 	memento->setSessionId(session ? session->id() : QString());
 	memento->setListOpen(_listOpen.current());
 	memento->setDraft(_sessionView->draft());
+	memento->setHistoryTab(_history->tab());
 }
 
 void PanelWidget::Inner::restoreState(not_null<PanelMemento*> memento) {
@@ -303,12 +321,13 @@ void PanelWidget::Inner::restoreState(not_null<PanelMemento*> memento) {
 	if (!memento->draft().isEmpty()) {
 		_sessionView->setDraft(memento->draft());
 	}
+	_history->showTab(memento->historyTab());
 	showHistory(memento->listOpen());
 }
 
 void PanelWidget::Inner::setInnerFocus() {
 	if (_listOpen.current()) {
-		_sessionsList->setFocus();
+		_history->setInnerFocus();
 	} else {
 		_sessionView->setInnerFocus();
 	}
@@ -321,7 +340,7 @@ void PanelWidget::Inner::resizeEvent(QResizeEvent *e) {
 
 void PanelWidget::Inner::updateControlsGeometry() {
 	const auto geometry = rect();
-	_scroll->setGeometry(geometry);
+	_history->setGeometry(geometry);
 	_sessionView->setGeometry(geometry);
 }
 
@@ -341,6 +360,29 @@ PanelWidget::PanelWidget(
 		_inner->setGeometry(geometry);
 	}, _inner->lifetime());
 	setupThirdColumnFollow();
+	setupCloseOnExclusion();
+}
+
+void PanelWidget::setupCloseOnExclusion() {
+	const auto window = controller()->parentController();
+	PanelAvailabilityChanges(
+		&_peer->session()
+	) | rpl::filter([=] {
+		return !PanelAvailable(_peer);
+	}) | rpl::take(1) | rpl::on_next([=] {
+		const auto peer = _peer;
+		const auto layer = (controller()->wrap() == Info::Wrap::Layer);
+		// Both calls destroy this widget, so leave the event first.
+		crl::on_main(this, [=] {
+			if (layer) {
+				window->hideSpecialLayer();
+			} else {
+				window->showSection(
+					std::make_shared<Info::Memento>(peer),
+					Window::SectionShow().withThirdColumn());
+			}
+		});
+	}, lifetime());
 }
 
 void PanelWidget::setupThirdColumnFollow() {
@@ -383,6 +425,21 @@ void PanelWidget::setupTopBar(
 		Info::Wrap wrap) {
 	_topBar = topBar.get();
 	const auto layer = (wrap == Info::Wrap::Layer);
+	const auto menu = topBar->addButton(
+		base::make_unique_q<IconButton>(
+			topBar,
+			(layer ? st::infoLayerTopBarMenu : st::infoTopBarMenu)));
+	menu->setAccessibleName(tr::lng_agent_session_more(tr::now));
+	menu->setClickedCallback([=] {
+		_inner->showSessionMenu(menu);
+	});
+	_inner->hasSessionValue(
+	) | rpl::on_next([=](bool has) {
+		menu->setDisabled(!has);
+		menu->setIconOverride(
+			has ? nullptr : &st::agentPanelTopBarMenuDisabled,
+			has ? nullptr : &st::agentPanelTopBarMenuDisabled);
+	}, menu->lifetime());
 	const auto history = topBar->addButton(
 		base::make_unique_q<IconButton>(
 			topBar,

@@ -41,6 +41,12 @@ void ShowDeleteSessionBox(
 	not_null<Window::SessionController*> controller,
 	not_null<Manager*> manager,
 	const QString &id);
+void ShowSessionMenu(
+	not_null<Window::SessionController*> controller,
+	not_null<Manager*> manager,
+	not_null<QWidget*> button,
+	const QString &id,
+	base::unique_qptr<PopupMenu> &menu);
 
 class SessionsList final : public RpWidget {
 public:

@@ -18,9 +18,18 @@ namespace Agent {
 class Manager;
 } // namespace Agent
 
+namespace Ui {
+class PlainShadow;
+class ScrollArea;
+class SettingsSlider;
+} // namespace Ui
+
 namespace Agent::Ui {
 
 using namespace ::Ui;
+
+class MemoryList;
+class SessionsList;
 
 enum class HistoryTab : uchar {
 	Sessions,
@@ -41,11 +50,22 @@ public:
 	[[nodiscard]] HistoryTab tab() const;
 	void setInnerFocus();
 
+protected:
+	void resizeEvent(QResizeEvent *e) override;
+
 private:
+	void updateControlsGeometry();
+
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	HistoryTab _tab = HistoryTab::Sessions;
+	SettingsSlider *_tabs = nullptr;
+	PlainShadow *_shadow = nullptr;
+	ScrollArea *_sessionsScroll = nullptr;
+	SessionsList *_sessions = nullptr;
+	ScrollArea *_memoryScroll = nullptr;
+	MemoryList *_memory = nullptr;
 	rpl::event_stream<QString> _openSessionRequests;
 
 };

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_scope.h"
+#include "agent/ui/agent_history_view.h"
 #include "info/info_content_widget.h"
 
 #include <QtCore/QPointer>
@@ -43,11 +44,14 @@ public:
 	[[nodiscard]] bool listOpen() const;
 	void setDraft(const QString &text);
 	[[nodiscard]] const QString &draft() const;
+	void setHistoryTab(HistoryTab tab);
+	[[nodiscard]] HistoryTab historyTab() const;
 
 private:
 	QString _sessionId;
 	QString _draft;
 	bool _listOpen = false;
+	HistoryTab _historyTab = HistoryTab::Sessions;
 
 };
 
@@ -74,6 +78,7 @@ public:
 private:
 	class Inner;
 	void setupThirdColumnFollow();
+	void setupCloseOnExclusion();
 	void saveState(not_null<Info::ContentMemento*> memento);
 	void restoreState(not_null<Info::ContentMemento*> memento);
 

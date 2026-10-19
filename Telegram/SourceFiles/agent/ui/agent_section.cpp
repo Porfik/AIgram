@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/ui/agent_chats_row.h"
+#include "agent/ui/agent_history_view.h"
 #include "agent/ui/agent_session_view.h"
 #include "agent/ui/agent_sessions_list.h"
 #include "lang/lang_keys.h"
@@ -21,7 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/ui_utility.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
-#include "ui/widgets/scroll_area.h"
+#include "ui/widgets/popup_menu.h"
 #include "ui/widgets/shadow.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent_general.h"
@@ -49,10 +50,13 @@ public:
 	const QString &draft() const;
 	void setHandoff(std::optional<HandoffDraft> draft);
 	const std::optional<HandoffDraft> &handoff() const;
+	void setHistoryTab(HistoryTab tab);
+	HistoryTab historyTab() const;
 
 private:
 	QString _sessionId;
 	bool _listOpen = false;
+	HistoryTab _historyTab = HistoryTab::Sessions;
 	QString _draft;
 	std::optional<HandoffDraft> _handoff;
 
@@ -140,6 +144,14 @@ const std::optional<HandoffDraft> &GeneralAgentMemento::handoff() const {
 	return _handoff;
 }
 
+void GeneralAgentMemento::setHistoryTab(HistoryTab tab) {
+	_historyTab = tab;
+}
+
+HistoryTab GeneralAgentMemento::historyTab() const {
+	return _historyTab;
+}
+
 class GeneralAgentSection::Inner final : public RpWidget {
 public:
 	Inner(
@@ -174,12 +186,13 @@ private:
 	RpWidget *_topBar = nullptr;
 	Ui::IconButton *_back = nullptr;
 	Ui::FlatLabel *_title = nullptr;
+	Ui::IconButton *_menu = nullptr;
 	Ui::IconButton *_history = nullptr;
 	Ui::IconButton *_new = nullptr;
 	Ui::PlainShadow *_shadow = nullptr;
 	SessionView *_sessionView = nullptr;
-	ScrollArea *_scroll = nullptr;
-	SessionsList *_sessionsList = nullptr;
+	HistoryView *_historyView = nullptr;
+	base::unique_qptr<PopupMenu> _menuPopup;
 	rpl::variable<bool> _listOpen = false;
 	rpl::variable<QString> _titleText;
 	rpl::lifetime _sessionLifetime;
@@ -202,18 +215,12 @@ GeneralAgentSection::Inner::Inner(
 		_manager,
 		_scope);
 	_sessionView->setContentMaxWidth(st::agentGeneralContentMaxWidth);
-	_scroll = Ui::CreateChild<ScrollArea>(this);
-	_sessionsList = _scroll->setOwnedWidget(
-		object_ptr<SessionsList>(
-			_scroll,
-			_controller,
-			_manager,
-			_scope));
-	_scroll->widthValue(
-	) | rpl::on_next([=](int width) {
-		_sessionsList->resizeToWidth(width);
-	}, lifetime());
-	_sessionsList->openSessionRequests(
+	_historyView = Ui::CreateChild<HistoryView>(
+		this,
+		_controller,
+		_manager,
+		_scope);
+	_historyView->openSessionRequests(
 	) | rpl::on_next([=](const QString &id) {
 		showSession(_manager->open(id));
 	}, lifetime());
@@ -241,6 +248,18 @@ void GeneralAgentSection::Inner::setupTopBar() {
 		st::infoTopBarTitle);
 	_title->show();
 	_title->setAttribute(Qt::WA_TransparentForMouseEvents);
+	_menu = Ui::CreateChild<Ui::IconButton>(_topBar, st::infoTopBarMenu);
+	_menu->setAccessibleName(tr::lng_agent_session_more(tr::now));
+	_menu->setClickedCallback([=] {
+		if (const auto session = _sessionView->session()) {
+			ShowSessionMenu(
+				_controller,
+				_manager,
+				_menu,
+				session->id(),
+				_menuPopup);
+		}
+	});
 	_history = Ui::CreateChild<Ui::IconButton>(
 		_topBar,
 		st::agentPanelTopBarHistory);
@@ -296,7 +315,7 @@ void GeneralAgentSection::Inner::updateBackVisibility() {
 void GeneralAgentSection::Inner::showHistory(bool shown) {
 	_listOpen = shown;
 	_sessionView->setVisible(!shown);
-	_scroll->setVisible(shown);
+	_historyView->setVisible(shown);
 	updateTitle();
 	updateControlsGeometry();
 }
@@ -309,6 +328,8 @@ void GeneralAgentSection::Inner::showSession(Session *session) {
 
 void GeneralAgentSection::Inner::trackSession(Session *session) {
 	_sessionLifetime = rpl::lifetime();
+	_menu->setVisible(session != nullptr);
+	updateControlsGeometry();
 	if (session) {
 		session->recordChanges(
 		) | rpl::on_next([=] {
@@ -320,7 +341,7 @@ void GeneralAgentSection::Inner::trackSession(Session *session) {
 
 void GeneralAgentSection::Inner::updateTitle() {
 	if (_listOpen.current()) {
-		_titleText = tr::lng_agent_sessions_tab(tr::now);
+		_titleText = tr::lng_agent_history(tr::now);
 	} else if (const auto session = _sessionView->session()) {
 		const auto title = session->record().info.title;
 		_titleText = title.isEmpty()
@@ -342,6 +363,7 @@ void GeneralAgentSection::Inner::saveState(
 	memento->setSessionId(session ? session->id() : QString());
 	memento->setListOpen(_listOpen.current());
 	memento->setDraft(_sessionView->draft());
+	memento->setHistoryTab(_historyView->tab());
 }
 
 void GeneralAgentSection::Inner::restoreState(
@@ -354,12 +376,13 @@ void GeneralAgentSection::Inner::restoreState(
 	if (!memento->draft().isEmpty()) {
 		_sessionView->setDraft(memento->draft());
 	}
+	_historyView->showTab(memento->historyTab());
 	showHistory(memento->listOpen());
 }
 
 void GeneralAgentSection::Inner::setInnerFocus() {
 	if (_listOpen.current()) {
-		_sessionsList->setFocus();
+		_historyView->setInnerFocus();
 	} else {
 		_sessionView->setInnerFocus();
 	}
@@ -384,12 +407,12 @@ void GeneralAgentSection::Inner::resizeEvent(QResizeEvent *e) {
 
 QRect GeneralAgentSection::Inner::floatPlayerRect() const {
 	return _listOpen.current()
-		? _scroll->geometry()
+		? _historyView->geometry()
 		: _sessionView->geometry();
 }
 
 bool GeneralAgentSection::Inner::floatPlayerWheel(QEvent *e) {
-	return _listOpen.current() ? _scroll->viewportEvent(e) : false;
+	return false;
 }
 
 void GeneralAgentSection::Inner::updateControlsGeometry() {
@@ -401,15 +424,19 @@ void GeneralAgentSection::Inner::updateControlsGeometry() {
 		width(),
 		st::lineWidth);
 
-	const auto historyRight = _history->width();
-	_history->moveToRight(0, 0, width());
-	_new->moveToRight(historyRight, 0, width());
+	auto right = 0;
+	if (!_menu->isHidden()) {
+		_menu->moveToRight(right, 0, width());
+		right += _menu->width();
+	}
+	_history->moveToRight(right, 0, width());
+	right += _history->width();
+	_new->moveToRight(right, 0, width());
+	right += _new->width();
 	const auto left = (_back && !_back->isHidden())
 		? st::infoTopBar.back.width
 		: st::infoTopBar.titlePosition.x();
-	const auto available = std::max(
-		width() - historyRight - _new->width() - left,
-		0);
+	const auto available = std::max(width() - right - left, 0);
 	_title->resizeToWidth(available);
 	_title->moveToLeft(
 		left,
@@ -421,7 +448,7 @@ void GeneralAgentSection::Inner::updateControlsGeometry() {
 		contentTop(),
 		width(),
 		height() - contentTop());
-	_scroll->setGeometry(content);
+	_historyView->setGeometry(content);
 	_sessionView->setGeometry(content);
 }
 

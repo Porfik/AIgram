@@ -18,6 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "ui/boxes/confirm_box.h"
+#include "ui/effects/panel_animation.h"
 #include "ui/empty_userpic.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
@@ -32,6 +33,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_agent_panel.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
+#include "styles/style_widgets.h"
 
 namespace Agent::Ui {
 
@@ -84,6 +86,28 @@ void ShowDeleteSessionBox(
 		},
 		.confirmText = tr::lng_box_delete(),
 	}));
+}
+
+void ShowSessionMenu(
+		not_null<Window::SessionController*> controller,
+		not_null<Manager*> manager,
+		not_null<QWidget*> button,
+		const QString &id,
+		base::unique_qptr<PopupMenu> &menu) {
+	menu = base::make_unique_q<PopupMenu>(button, st::popupMenuWithIcons);
+	const auto addAction = Menu::CreateAddActionCallback(menu);
+	addAction(tr::lng_agent_session_rename(tr::now), [=] {
+		ShowRenameSessionBox(controller, manager, id);
+	}, &st::menuIconEdit);
+	addAction({
+		.text = tr::lng_agent_session_delete_current(tr::now),
+		.handler = [=] { ShowDeleteSessionBox(controller, manager, id); },
+		.icon = &st::menuIconDeleteAttention,
+		.isAttention = true,
+	});
+	menu->setForcedOrigin(PanelAnimation::Origin::TopRight);
+	menu->popup(button->mapToGlobal(
+		QPoint(button->width(), button->height())));
 }
 
 SessionsList::SessionsList(

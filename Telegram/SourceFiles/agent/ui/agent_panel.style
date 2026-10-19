@@ -36,6 +36,7 @@ agentPanelLayerTopBarHistory: IconButton(agentPanelLayerTopBarNew) {
 	icon: icon {{ "menu/reschedule", boxTitleCloseFg }};
 	iconOver: icon {{ "menu/reschedule", boxTitleCloseFgOver }};
 }
+agentPanelTopBarMenuDisabled: icon {{ "title_menu_dots", menuFgDisabled }};
 
 agentSessionListEmptyHeight: 120px;
 agentSessionListRowHeight: 60px;
