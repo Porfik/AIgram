@@ -30,6 +30,8 @@ agentHiddenRowShow: IconButton(defaultIconButton) {
 agentHiddenRowHeight: 44px;
 agentHiddenRowSkip: 10px;
 agentHiddenRowName: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
 	maxHeight: 20px;
 }
 agentHiddenRowIcon: icon {{ "menu/chats", menuIconColor }};
+agentHiddenAddIcon: icon {{ "menu/add", lightButtonFg }};

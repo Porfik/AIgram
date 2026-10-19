@@ -174,9 +174,7 @@ void HiddenChatsBox(
 			if (title.isEmpty()) {
 				return;
 			}
-			const auto row = rows->add(
-				object_ptr<Ui::RpWidget>(rows),
-				st::boxRowPadding);
+			const auto row = rows->add(object_ptr<Ui::RpWidget>(rows));
 			row->resize(row->width(), st::agentHiddenRowHeight);
 			const auto icon = Ui::CreateChild<Ui::RpWidget>(row);
 			icon->resize(
@@ -201,6 +199,7 @@ void HiddenChatsBox(
 			show->setClickedCallback([=] {
 				exclusions->setFolderExcluded(folderId, false);
 			});
+			row->showChildren();
 			row->sizeValue(
 			) | rpl::on_next([=](QSize size) {
 				icon->moveToLeft(
@@ -223,9 +222,7 @@ void HiddenChatsBox(
 		};
 		const auto addChatRow = [=](not_null<PeerData*> peer) {
 			const auto key = peer->id.value;
-			const auto row = rows->add(
-				object_ptr<Ui::RpWidget>(rows),
-				st::boxRowPadding);
+			const auto row = rows->add(object_ptr<Ui::RpWidget>(rows));
 			row->resize(row->width(), st::agentHiddenRowHeight);
 			const auto userpic = Ui::CreateChild<Ui::UserpicButton>(
 				row,
@@ -243,6 +240,7 @@ void HiddenChatsBox(
 			show->setClickedCallback([=] {
 				exclusions->setPeerExcluded(key, false);
 			});
+			row->showChildren();
 			row->sizeValue(
 			) | rpl::on_next([=](QSize size) {
 				userpic->moveToLeft(
@@ -317,11 +315,11 @@ void HiddenChatsBox(
 	}, container->lifetime());
 	fill();
 	Ui::AddSkip(container);
-	const auto add = container->add(
-		object_ptr<Ui::SettingsButton>(
-			container,
-			tr::lng_agent_hidden_add(),
-			st::defaultSettingsButton));
+	const auto add = AddButtonWithIcon(
+		container,
+		tr::lng_agent_hidden_add(),
+		st::settingsButtonActive,
+		{ &st::agentHiddenAddIcon });
 	add->setClickedCallback([=] {
 		const auto picker = std::make_shared<
 			base::weak_qptr<Ui::BoxContent>>();
