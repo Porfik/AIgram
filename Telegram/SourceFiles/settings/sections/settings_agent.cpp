@@ -856,6 +856,7 @@ void BuildClearData(
 					controller->showToast(
 						tr::lng_agent_clear_data_done(tr::now));
 				},
+				.confirmText = tr::lng_box_delete(),
 				.confirmStyle = &st::attentionBoxButton,
 			}));
 		},

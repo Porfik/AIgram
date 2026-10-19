@@ -674,22 +674,25 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `SessionsList` or its `MemoryList` (owner `Scope::peer`). With it open
   the top bar title is "History"; mementos keep the open tab.
 - `MemoryList` shows the owner's facts in order, each wrapping, with
-  "Edit" and "Delete" on hover; below them "Add a fact" and, when there
-  are facts, "Clear memory", then an explanation. Add and edit use a box
+  "Edit" and "Delete" icons always shown at the right; below them "Add a
+  fact" and, when there are facts, "Clear memory", then an explanation. Add and edit use a box
   with one field limited to `kMemoryMaxChars`; delete and clear ask first.
   It rebuilds on `Memories::changes()` of its owner.
-- The panel and the general screen have a "⋮" button in the top bar while
-  a session is open, with "Rename" and "Delete session" through
-  `ShowRenameSessionBox()` and `ShowDeleteSessionBox()`; after a delete
-  the view shows the new-session state.
+- The panel and the general screen have a "⋮" button in the top bar that
+  opens `ShowSessionMenu()`: "Rename" and "Delete session" through
+  `ShowRenameSessionBox()` and `ShowDeleteSessionBox()`. Without a session
+  it is hidden on the general screen and disabled in the panel, because an
+  `Info::TopBar` button keeps its place when hidden. After a delete the
+  view shows the new-session state.
 - `SessionsList` shows a delete icon at the right of the hovered row,
   which opens `ShowDeleteSessionBox()`; the context menu stays. With
   `ProvidersState::showSpending` the date line adds
   `FormatSpending(UsageTotals(info.usage))`. The userpic stack skips
   excluded peers.
-- With `showSpending` the feed ends with a gray "This session: …" line
-  for a session with usage, with `FormatSpendingDetails()` as its
-  tooltip. Memory action rows read "Remembered: …", "Updated memory: …"
+- With `showSpending` a gray "This session: …" line for a session with
+  usage is pinned under the feed, above the status line, with
+  `FormatSpendingDetails()` as its tooltip; it stays out of the list so
+  live rows keep appending at the end. Memory action rows read "Remembered: …", "Updated memory: …"
   or "Forgot: …" with the result's `fact.text`.
 - `PanelAvailable()` is also false for an excluded peer;
   `PanelAvailabilityChanges()` fires on `enabledValue()` and exclusion
