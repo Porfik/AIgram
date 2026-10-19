@@ -34,7 +34,8 @@ QString DenyText(Decision decision) {
 	case DenyReason::NotInMode:
 		return u"This tool is not available here."_q;
 	case DenyReason::Excluded:
-		return u"This chat is hidden from the agent."_q;
+		return u"The user hid this chat from the agent. Tell the user you"
+			" can't see it and don't try to reach it another way."_q;
 	case DenyReason::OutOfScope:
 		return u"This chat is outside of this agent's scope."_q;
 	case DenyReason::Forbidden:
@@ -282,7 +283,9 @@ void ToolRegistry::execute(
 					.arg(RefName(value));
 				return false;
 			} else if (!_gate->visible(resolved->id.value)) {
-				resolveError = u"This chat is hidden from the agent."_q;
+				resolveError = u"The user hid this chat from the agent. Tell"
+					" the user you can't see it and don't try to reach it"
+					" another way."_q;
 				return false;
 			}
 			peers.push_back(resolved);

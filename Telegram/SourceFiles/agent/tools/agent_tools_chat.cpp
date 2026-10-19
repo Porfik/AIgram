@@ -170,7 +170,9 @@ constexpr auto kDefaultMembersLimit = 50;
 	return result;
 }
 
-[[nodiscard]] QJsonObject BuildPeerInfoJson(not_null<PeerData*> peer) {
+[[nodiscard]] QJsonObject BuildPeerInfoJson(
+		not_null<PeerData*> peer,
+		not_null<const PolicyGate*> gate) {
 	auto result = QJsonObject();
 	result.insert("id", QJsonValue(qint64(peer->id.value)));
 	result.insert("kind", ToolFormat::PeerKind(peer));
@@ -203,7 +205,8 @@ constexpr auto kDefaultMembersLimit = 50;
 			result.insert("slow_mode", QJsonValue(seconds));
 		}
 	}
-	if (const auto linked = PeerLinkedChat(peer)) {
+	if (const auto linked = PeerLinkedChat(peer);
+			linked && gate->visible(linked->id.value)) {
 		auto json = QJsonObject();
 		json.insert("id", QJsonValue(qint64(linked->id.value)));
 		json.insert("title", linked->name());
@@ -709,7 +712,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 
 void RunGetPeerInfo(not_null<PendingCall*> call) {
 	OnFullPeer(call, [call] {
-		call->done(BuildPeerInfoJson(call->peer));
+		call->done(BuildPeerInfoJson(call->peer, call->gate));
 	});
 }
 

@@ -327,7 +327,8 @@ void RunForwardMessages(not_null<PendingCall*> call) {
 			" result or an @username."_q);
 		return;
 	} else if (!call->gate->visible(from->id.value)) {
-		call->fail(u"This chat is hidden from the agent."_q);
+		call->fail(u"The user hid this chat from the agent. Tell the user"
+			" you can't see it and don't try to reach it another way."_q);
 		return;
 	}
 	WithMessages(call, from, ids, [=](HistoryItemsList items) {
