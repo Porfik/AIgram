@@ -33,6 +33,9 @@ public:
 	[[nodiscard]] rpl::producer<> changes() const;
 
 private:
+	void load();
+	void save();
+
 	const not_null<Main::Session*> _session;
 	ExclusionList _list;
 	rpl::event_stream<> _changes;

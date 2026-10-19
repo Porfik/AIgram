@@ -37,6 +37,7 @@ private:
 
 	const not_null<Main::Session*> _session;
 	SpendingStats _stats;
+	bool _savePending = false;
 	base::Timer _saveTimer;
 	rpl::event_stream<> _changes;
 
