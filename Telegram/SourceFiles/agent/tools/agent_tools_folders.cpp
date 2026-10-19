@@ -5,6 +5,8 @@ the official desktop application for the Telegram messaging service.
 For license and copyright information please follow this link:
 https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
+#include "agent/agent_exclusions.h"
+#include "agent/agent_manager.h"
 #include "agent/tools/agent_tool_table.h"
 
 #include "apiwrap.h"
@@ -29,6 +31,12 @@ constexpr auto kMaxTitleLength = 12;
 [[nodiscard]] const Data::ChatFilters &ChatFilters(
 		not_null<Main::Session*> session) {
 	return session->data().chatsFilters();
+}
+
+[[nodiscard]] bool FolderHidden(
+		not_null<Main::Session*> session,
+		FilterId id) {
+	return session->agent().exclusions().folderExcluded(id);
 }
 
 [[nodiscard]] QString FolderTitle(const Data::ChatFilter &filter) {
@@ -81,6 +89,11 @@ void DeliverChatResults(
 		return std::nullopt;
 	}
 	return id;
+}
+
+[[nodiscard]] QString HiddenFolderError() {
+	return u"The user hid this folder from the agent. Tell the user you"
+		" can't see it and don't change it another way."_q;
 }
 
 [[nodiscard]] QString JsonTitle(
@@ -203,7 +216,7 @@ void RunListFolders(not_null<PendingCall*> call) {
 	}
 	auto folders = QJsonArray();
 	for (const auto &filter : list) {
-		if (!filter.id()) {
+		if (!filter.id() || FolderHidden(call->session, filter.id())) {
 			continue;
 		}
 		auto item = QJsonObject();
@@ -312,6 +325,9 @@ void RunRenameFolder(not_null<PendingCall*> call) {
 	if (!was) {
 		call->fail(u"Unknown folder_id."_q);
 		return;
+	} else if (FolderHidden(session, *id)) {
+		call->fail(HiddenFolderError());
+		return;
 	}
 	if (FolderTitle(*was) == title) {
 		auto folder = QJsonObject();
@@ -365,6 +381,9 @@ void RunSetFolderChats(not_null<PendingCall*> call) {
 	const auto was = FindFolder(session, *id);
 	if (!was) {
 		call->fail(u"Unknown folder_id."_q);
+		return;
+	} else if (FolderHidden(session, *id)) {
+		call->fail(HiddenFolderError());
 		return;
 	}
 	if (was->chatlist()) {
@@ -428,6 +447,16 @@ void RunReorderFolders(not_null<PendingCall*> call) {
 		return;
 	}
 	const auto &list = ChatFilters(session).list();
+	const auto &exclusions = session->agent().exclusions();
+	auto currentIds = std::vector<FilterId>();
+	auto visibleIds = std::vector<FilterId>();
+	currentIds.reserve(list.size());
+	for (const auto &filter : list) {
+		if (filter.id() && !exclusions.folderExcluded(filter.id())) {
+			visibleIds.push_back(filter.id());
+		}
+		currentIds.push_back(filter.id());
+	}
 	auto ids = std::vector<FilterId>();
 	for (const auto &item : value.toArray()) {
 		if (!item.isDouble()) {
@@ -435,42 +464,40 @@ void RunReorderFolders(not_null<PendingCall*> call) {
 			return;
 		}
 		const auto id = FilterId(item.toInt());
-		if (id <= 0 || !ranges::contains(list, id, &Data::ChatFilter::id)) {
+		if (id <= 0 || !ranges::contains(currentIds, id)) {
 			call->fail(u"Unknown folder id in order."_q);
+			return;
+		} else if (exclusions.folderExcluded(id)) {
+			call->fail(HiddenFolderError());
+			return;
+		} else if (ranges::contains(ids, id)) {
+			call->fail(u"order must contain every folder id exactly once."_q);
 			return;
 		}
 		ids.push_back(id);
 	}
-	auto sortedIds = ids;
-	ranges::sort(sortedIds);
-	auto sortedCurrent = std::vector<FilterId>();
-	sortedCurrent.reserve(list.size());
-	for (const auto &filter : list) {
-		if (filter.id() != 0) {
-			sortedCurrent.push_back(filter.id());
-		}
-	}
-	ranges::sort(sortedCurrent);
-	if (sortedIds != sortedCurrent) {
-		call->fail(u"order must contain every folder id exactly once."_q);
+	if (ids.size() != visibleIds.size()
+		|| ranges::any_of(visibleIds, [&](FilterId id) {
+			return !ranges::contains(ids, id);
+		})) {
+		call->fail(u"order must contain every visible folder id exactly"
+			" once."_q);
 		return;
 	}
 	auto wasOrder = std::vector<FilterId>();
+	auto wanted = std::vector<FilterId>();
 	wasOrder.reserve(list.size());
-	for (const auto &filter : list) {
-		wasOrder.push_back(filter.id());
-	}
-	auto wanted = ids;
-	if (!ranges::contains(wanted, FilterId(0))) {
-		auto position = 0;
-		for (const auto &filter : list) {
-			if (!filter.id()) {
-				break;
-			}
-			++position;
+	wanted.reserve(list.size());
+	auto next = begin(ids);
+	for (const auto id : currentIds) {
+		wasOrder.push_back(id);
+		if (!id || exclusions.folderExcluded(id)) {
+			wanted.push_back(id);
+		} else {
+			wanted.push_back(*next++);
 		}
-		wanted.insert(begin(wanted) + position, FilterId(0));
 	}
+	Expects(next == end(ids));
 	auto mtpIds = QVector<MTPint>();
 	mtpIds.reserve(int(wanted.size()));
 	for (const auto id : wanted) {
@@ -515,6 +542,9 @@ void RunDeleteFolder(not_null<PendingCall*> call) {
 	const auto was = FindFolder(session, *id);
 	if (!was) {
 		call->fail(u"Unknown folder_id."_q);
+		return;
+	} else if (FolderHidden(session, *id)) {
+		call->fail(HiddenFolderError());
 		return;
 	}
 	if (was->chatlist()) {
