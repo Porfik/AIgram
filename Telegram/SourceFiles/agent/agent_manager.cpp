@@ -157,6 +157,15 @@ rpl::producer<Scope> Manager::listChanges() const {
 	return _listChanges.events();
 }
 
+ScopeActivity Manager::activity(const Scope &scope) const {
+	return {};
+}
+
+rpl::producer<ScopeActivity> Manager::activityValue(
+		const Scope &scope) const {
+	return rpl::single(ScopeActivity());
+}
+
 not_null<Session*> Manager::create(const Scope &scope) {
 	auto record = SessionRecord();
 	record.info.id = GenerateSessionId();

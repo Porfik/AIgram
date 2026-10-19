@@ -124,12 +124,22 @@ PRIVATE
 
     agent/tools/agent_tool_format.cpp
     agent/tools/agent_tool_format.h
+    agent/tools/agent_tool_table.cpp
+    agent/tools/agent_tool_table.h
     agent/tools/agent_tools.cpp
     agent/tools/agent_tools.h
+    agent/tools/agent_tools_actions.cpp
     agent/tools/agent_tools_chat.cpp
     agent/tools/agent_tools_chat.h
+    agent/tools/agent_tools_chat_state.cpp
+    agent/tools/agent_tools_folders.cpp
+    agent/tools/agent_tools_general.cpp
+    agent/ui/agent_chats_row.cpp
+    agent/ui/agent_chats_row.h
     agent/ui/agent_composer.cpp
     agent/ui/agent_composer.h
+    agent/ui/agent_feed_cards.cpp
+    agent/ui/agent_feed_cards.h
     agent/ui/agent_feed_items.cpp
     agent/ui/agent_feed_items.h
     agent/ui/agent_feed_widget.cpp
@@ -138,6 +148,8 @@ PRIVATE
     agent/ui/agent_panel.h
     agent/ui/agent_panel_widget.cpp
     agent/ui/agent_panel_widget.h
+    agent/ui/agent_section.cpp
+    agent/ui/agent_section.h
     agent/ui/agent_session_view.cpp
     agent/ui/agent_session_view.h
     agent/ui/agent_sessions_list.cpp

@@ -11,6 +11,8 @@ add_library(tdesktop::td_agent ALIAS td_agent)
 nice_target_sources(td_agent ${src_loc}
 PRIVATE
     agent/core/agent_adapter.h
+    agent/core/agent_card.cpp
+    agent/core/agent_card.h
     agent/core/agent_context.cpp
     agent/core/agent_context.h
     agent/core/agent_engine.h
@@ -18,6 +20,8 @@ PRIVATE
     agent/core/agent_feed.h
     agent/core/agent_loop.cpp
     agent/core/agent_loop.h
+    agent/core/agent_navigation.cpp
+    agent/core/agent_navigation.h
     agent/core/agent_openai.cpp
     agent/core/agent_openai.h
     agent/core/agent_policy.cpp
@@ -53,9 +57,11 @@ init_non_host_target(td_agent_test "(agent)")
 
 nice_target_sources(td_agent_test ${src_loc}
 PRIVATE
+    agent/core/tests/agent_card_tests.cpp
     agent/core/tests/agent_context_tests.cpp
     agent/core/tests/agent_feed_tests.cpp
     agent/core/tests/agent_loop_tests.cpp
+    agent/core/tests/agent_navigation_tests.cpp
     agent/core/tests/agent_openai_tests.cpp
     agent/core/tests/agent_policy_tests.cpp
     agent/core/tests/agent_prompts_tests.cpp

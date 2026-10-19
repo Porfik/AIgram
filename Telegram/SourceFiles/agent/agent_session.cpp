@@ -144,6 +144,26 @@ void Session::retry() {
 	}
 }
 
+void Session::decideCard(
+		const QString &toolUseId,
+		CardDecision decision) {
+}
+
+bool Session::canUndo(const QString &toolUseId) const {
+	return false;
+}
+
+void Session::undo(const std::vector<QString> &toolUseIds) {
+}
+
+rpl::producer<> Session::undoChanges() const {
+	return _undoChanges.events();
+}
+
+rpl::producer<QString> Session::undoErrors() const {
+	return _undoErrors.events();
+}
+
 void Session::dispatch(SendRequest request) {
 	Expects(!request.text.isEmpty() || !request.hint.isEmpty());
 

@@ -29,7 +29,9 @@ namespace {
 			[](const FeedUser &data) { return data.index; },
 			[](const FeedAssistant &data) { return data.index; },
 			[](const FeedSteps &data) { return data.index; },
-			[](const FeedSummary &data) { return data.until; });
+			[](const FeedSummary &data) { return data.until; },
+			[](const FeedActions &data) { return data.index; },
+			[](const FeedCard &data) { return data.index; });
 		result.push_back(u"%1:%2:%3"_q.arg(kind).arg(index).arg(
 			counts[{ index, kind }]++));
 	}
@@ -105,6 +107,9 @@ object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
 		},
 		[&](const FeedSummary &data) -> Result {
 			return object_ptr<FeedSummaryWidget>(_list);
+		},
+		[&](const auto &data) -> Result {
+			return object_ptr<FeedItemWidget>(_list);
 		});
 }
 

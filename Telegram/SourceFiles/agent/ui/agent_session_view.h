@@ -28,6 +28,12 @@ namespace Agent::Ui {
 
 using namespace ::Ui;
 
+struct HandoffDraft {
+	QString text;
+	QString untrusted;
+	PeerKey from = 0;
+};
+
 class SessionView final : public RpWidget {
 public:
 	SessionView(
@@ -45,6 +51,8 @@ public:
 	void setInnerFocus();
 	[[nodiscard]] QString draft() const;
 	void setDraft(const QString &text);
+	void setContentMaxWidth(int width);
+	void startHandoff(HandoffDraft draft);
 
 private:
 	enum class Mode {

@@ -8,7 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/tools/agent_tools.h"
 
 #include "agent/core/agent_context.h"
-#include "agent/tools/agent_tools_chat.h"
+#include "agent/tools/agent_tool_table.h"
 #include "crl/crl_on_main.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
@@ -17,52 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 
-#include <limits>
-
 namespace Agent {
 namespace {
-
-using ChatTools::PendingCall;
-
-struct TableEntry {
-	QString name;
-	QString description;
-	QJsonObject inputSchema;
-	ToolPolicy policy;
-	Fn<void(not_null<PendingCall*>)> run;
-};
-
-QJsonObject Schema(QJsonObject properties, QJsonArray required) {
-	auto result = QJsonObject();
-	result.insert("type", QJsonValue(u"object"_q));
-	result.insert("properties", properties);
-	result.insert("required", required);
-	result.insert("additionalProperties", QJsonValue(false));
-	return result;
-}
-
-QJsonObject StringProperty(QString description) {
-	auto result = QJsonObject();
-	result.insert("type", QJsonValue(u"string"_q));
-	result.insert("description", description);
-	return result;
-}
-
-QJsonObject IntProperty(int minimum, int maximum, QString description) {
-	auto result = QJsonObject();
-	result.insert("type", QJsonValue(u"integer"_q));
-	result.insert("description", description);
-	result.insert("minimum", QJsonValue(minimum));
-	result.insert("maximum", QJsonValue(maximum));
-	return result;
-}
-
-QJsonObject MessageIdProperty(QString description) {
-	return IntProperty(
-		1,
-		std::numeric_limits<int>::max(),
-		std::move(description));
-}
 
 QString DenyText(Decision decision) {
 	if (decision.verdict == Verdict::Confirm) {
@@ -82,101 +38,19 @@ QString DenyText(Decision decision) {
 	return u"This action is not allowed."_q;
 }
 
-const std::vector<TableEntry> &ToolsTable() {
+const std::vector<ToolEntry> &ToolsTable() {
 	static const auto table = [] {
-		auto result = std::vector<TableEntry>();
-		auto empty = QJsonObject();
-		auto historyProperties = QJsonObject();
-		historyProperties.insert("around_id", MessageIdProperty(
-			u"Read a window centered on this message id."_q));
-		historyProperties.insert("before_id", MessageIdProperty(
-			u"Read only messages older than this id."_q));
-		historyProperties.insert("after_id", MessageIdProperty(
-			u"Read only messages newer than this id."_q));
-		historyProperties.insert("limit", IntProperty(
-			1,
-			100,
-			u"How many messages to return, 1..100, default 30."_q));
-		historyProperties.insert("topic_id", MessageIdProperty(
-			u"Forum topic root message id."_q));
-		auto searchProperties = QJsonObject();
-		searchProperties.insert("query", StringProperty(
-			u"Text to search for."_q));
-		searchProperties.insert("from", StringProperty(
-			u"\"me\", a numeric user id or @username, resolved among"
-			" locally known users only."_q));
-		searchProperties.insert("min_date", StringProperty(
-			u"Only messages sent on or after this local date YYYY-MM-DD."_q));
-		searchProperties.insert("max_date", StringProperty(
-			u"Only messages sent on or before this local date YYYY-MM-DD."_q));
-		searchProperties.insert("limit", IntProperty(
-			1,
-			50,
-			u"How many messages to return, 1..50, default 20."_q));
-		searchProperties.insert("offset_id", MessageIdProperty(
-			u"Pagination: search older than this message id."_q));
-		searchProperties.insert("topic_id", MessageIdProperty(
-			u"Forum topic root message id."_q));
-		auto membersProperties = QJsonObject();
-		membersProperties.insert("query", StringProperty(
-			u"Search members by name or username."_q));
-		membersProperties.insert("limit", IntProperty(
-			1,
-			100,
-			u"How many members to return, 1..100, default 50."_q));
-		membersProperties.insert("offset", IntProperty(
-			0,
-			std::numeric_limits<int>::max(),
-			u"Skip this many members."_q));
-		auto push = [&](const QString &name,
-				const QString &description,
-				QJsonObject schema,
-				bool chat,
-				auto run) {
-			result.push_back(TableEntry{
-				.name = name,
-				.description = description,
-				.inputSchema = std::move(schema),
-				.policy = ToolPolicy{ .general = !chat, .chat = true },
-				.run = run,
-			});
+		auto result = std::vector<ToolEntry>();
+		const auto append = [&](std::vector<ToolEntry> &&entries) {
+			for (auto &entry : entries) {
+				result.push_back(std::move(entry));
+			}
 		};
-		push(
-			u"get_context"_q,
-			u"Get the current time and a summary of this chat."_q,
-			Schema(std::move(empty), QJsonArray()),
-			false,
-			ChatTools::RunGetContext);
-		push(
-			u"read_history"_q,
-			u"Read messages of this chat, oldest to newest. Give at most"
-			" one of around_id, before_id, after_id. Reading never marks"
-			" anything read."_q,
-			Schema(std::move(historyProperties), QJsonArray()),
-			true,
-			ChatTools::RunReadHistory);
-		push(
-			u"search_messages"_q,
-			u"Search messages in this chat, newest matches first. Page"
-			" older results with offset_id from next_offset_id."_q,
-			Schema(
-				std::move(searchProperties),
-				QJsonArray{ QJsonValue(u"query"_q) }),
-			true,
-			ChatTools::RunSearchMessages);
-		push(
-			u"get_peer_info"_q,
-			u"Get details about this chat: title, kind, description,"
-			" members, your role and rights."_q,
-			Schema(QJsonObject(), QJsonArray()),
-			true,
-			ChatTools::RunGetPeerInfo);
-		push(
-			u"list_members"_q,
-			u"List members of this chat with names, usernames and roles."_q,
-			Schema(std::move(membersProperties), QJsonArray()),
-			true,
-			ChatTools::RunListMembers);
+		append(ChatTools::Entries());
+		append(GeneralTools::Entries());
+		append(ActionTools::Entries());
+		append(ChatStateTools::Entries());
+		append(FolderTools::Entries());
 		return result;
 	}();
 	return table;
@@ -184,11 +58,26 @@ const std::vector<TableEntry> &ToolsTable() {
 
 } // namespace
 
+const base::flat_set<QString> &ActionToolNames() {
+	static const auto result = [] {
+		auto names = base::flat_set<QString>();
+		for (const auto &entry : ToolsTable()) {
+			if (entry.action) {
+				names.emplace(entry.name);
+			}
+		}
+		return names;
+	}();
+	return result;
+}
+
 ToolRegistry::ToolRegistry(
 	not_null<Main::Session*> session,
-	not_null<PolicyGate*> gate)
+	not_null<PolicyGate*> gate,
+	std::vector<QString> loadedGroups)
 : _session(session)
-, _gate(gate) {
+, _gate(gate)
+, _loadedGroups(std::move(loadedGroups)) {
 }
 
 ToolRegistry::~ToolRegistry() {
@@ -216,7 +105,7 @@ void ToolRegistry::execute(
 		ToolUseBlock call,
 		Fn<void(ToolResultBlock)> done) {
 	const auto &table = ToolsTable();
-	const auto i = ranges::find(table, call.name, &TableEntry::name);
+	const auto i = ranges::find(table, call.name, &ToolEntry::name);
 	if (i == end(table)) {
 		done(ToolResultBlock{
 			.toolUseId = call.id,
@@ -277,6 +166,32 @@ void ToolRegistry::execute(
 
 rpl::producer<PeerKey> ToolRegistry::touched() const {
 	return _touched.events();
+}
+
+rpl::producer<Card> ToolRegistry::cardUpdates() const {
+	return _cardUpdates.events();
+}
+
+const std::vector<QString> &ToolRegistry::loadedGroups() const {
+	return _loadedGroups;
+}
+
+rpl::producer<> ToolRegistry::loadedGroupsChanges() const {
+	return _loadedGroupsChanges.events();
+}
+
+void ToolRegistry::decide(
+		const QString &toolUseId,
+		CardDecision decision) {
+}
+
+bool ToolRegistry::canUndo(const QString &toolUseId) const {
+	return false;
+}
+
+void ToolRegistry::undo(
+		const QString &toolUseId,
+		Fn<void(QString error)> done) {
 }
 
 void ToolRegistry::cancel(const QString &toolUseId) {

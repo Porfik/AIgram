@@ -31,6 +31,15 @@ class Session;
 class SessionStore;
 class Transport;
 
+struct ScopeActivity {
+	bool working = false;
+	int pendingCards = 0;
+
+	friend inline bool operator==(
+		const ScopeActivity &,
+		const ScopeActivity &) = default;
+};
+
 class Manager final : public base::has_weak_ptr {
 public:
 	explicit Manager(not_null<Main::Session*> session);
@@ -46,6 +55,9 @@ public:
 
 	[[nodiscard]] std::vector<SessionInfo> list(const Scope &scope) const;
 	[[nodiscard]] rpl::producer<Scope> listChanges() const;
+	[[nodiscard]] ScopeActivity activity(const Scope &scope) const;
+	[[nodiscard]] rpl::producer<ScopeActivity> activityValue(
+		const Scope &scope) const;
 
 	[[nodiscard]] not_null<Session*> create(const Scope &scope);
 	[[nodiscard]] Session *open(const QString &id);

@@ -166,6 +166,12 @@ void SessionView::setDraft(const QString &text) {
 	_composer->setDraft(text);
 }
 
+void SessionView::setContentMaxWidth(int width) {
+}
+
+void SessionView::startHandoff(HandoffDraft draft) {
+}
+
 void SessionView::refreshProviderState() {
 	_mode = _manager->available()
 		? Mode::Normal

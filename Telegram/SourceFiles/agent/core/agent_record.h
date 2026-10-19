@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_card.h"
 #include "agent/core/agent_scope.h"
 #include "agent/core/agent_types.h"
 
@@ -32,6 +33,9 @@ struct SessionRecord {
 	QString summary;
 	Usage usage;
 	bool tainted = false;
+	std::vector<Card> cards;
+	std::vector<QString> loadedGroups;
+	std::vector<QString> undone;
 };
 
 [[nodiscard]] QString GenerateSessionId();
@@ -39,6 +43,8 @@ struct SessionRecord {
 [[nodiscard]] QByteArray SerializeSession(const SessionRecord &record);
 [[nodiscard]] std::optional<SessionRecord> DeserializeSession(
 	const QByteArray &bytes);
+
+bool CloseInterruptedTurn(SessionRecord &record);
 
 [[nodiscard]] QByteArray SerializeIndex(const std::vector<SessionInfo> &list);
 [[nodiscard]] std::optional<std::vector<SessionInfo>> DeserializeIndex(

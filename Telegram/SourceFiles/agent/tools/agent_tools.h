@@ -7,9 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_card.h"
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_prompts.h"
+#include "base/flat_set.h"
 
 #include <rpl/event_stream.h>
 
@@ -27,15 +29,14 @@ class Session;
 
 namespace Agent {
 
-namespace ChatTools {
 struct PendingCall;
-} // namespace ChatTools
 
 class ToolRegistry final : public ToolExecutor {
 public:
 	ToolRegistry(
 		not_null<Main::Session*> session,
-		not_null<PolicyGate*> gate);
+		not_null<PolicyGate*> gate,
+		std::vector<QString> loadedGroups = {});
 	~ToolRegistry();
 
 	[[nodiscard]] std::vector<ToolSpec> tools() const override;
@@ -45,6 +46,15 @@ public:
 	void cancel(const QString &toolUseId) override;
 
 	[[nodiscard]] rpl::producer<PeerKey> touched() const;
+	[[nodiscard]] rpl::producer<Card> cardUpdates() const;
+	[[nodiscard]] const std::vector<QString> &loadedGroups() const;
+	[[nodiscard]] rpl::producer<> loadedGroupsChanges() const;
+
+	void decide(const QString &toolUseId, CardDecision decision);
+	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
+	void undo(
+		const QString &toolUseId,
+		Fn<void(QString error)> done);
 
 private:
 	void deliver(
@@ -58,9 +68,14 @@ private:
 	const not_null<Main::Session*> _session;
 	const not_null<PolicyGate*> _gate;
 	rpl::event_stream<PeerKey> _touched;
-	std::map<QString, std::unique_ptr<ChatTools::PendingCall>, std::less<>> _pending;
+	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _pending;
+	std::vector<QString> _loadedGroups;
+	rpl::event_stream<Card> _cardUpdates;
+	rpl::event_stream<> _loadedGroupsChanges;
 
 };
+
+[[nodiscard]] const base::flat_set<QString> &ActionToolNames();
 
 [[nodiscard]] ChatBrief MakeChatBrief(not_null<PeerData*> peer);
 [[nodiscard]] std::vector<PeerName> NameCandidates(

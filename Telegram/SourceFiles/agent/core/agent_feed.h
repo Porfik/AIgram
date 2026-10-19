@@ -7,7 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_card.h"
 #include "agent/core/agent_types.h"
+#include "base/flat_set.h"
 
 #include <optional>
 #include <variant>
@@ -47,14 +49,30 @@ struct FeedSummary {
 	int until = 0;
 };
 
+struct FeedActions {
+	int index = 0;
+	std::vector<FeedTool> actions;
+};
+
+struct FeedCard {
+	int index = 0;
+	ToolUseBlock call;
+	std::optional<ToolResultBlock> result;
+	Card card;
+};
+
 using FeedItem = std::variant<
 	FeedUser,
 	FeedAssistant,
 	FeedSteps,
-	FeedSummary>;
+	FeedSummary,
+	FeedActions,
+	FeedCard>;
 
 [[nodiscard]] std::vector<FeedItem> BuildFeed(
 	const std::vector<Message> &messages,
-	int summaryUntil);
+	int summaryUntil,
+	const std::vector<Card> &cards = {},
+	const base::flat_set<QString> &actionTools = {});
 
 } // namespace Agent

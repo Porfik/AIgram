@@ -38,6 +38,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonDocument>
 #include <QtCore/QLocale>
 
+#include <limits>
+
 #include <rpl/rpl.h>
 
 namespace Agent {
@@ -273,7 +275,7 @@ enum class Page : uchar {
 };
 
 void DeliverMessagesPage(
-		not_null<ChatTools::PendingCall*> call,
+		not_null<PendingCall*> call,
 		ParsedSlice parsed,
 		int limit,
 		Page page,
@@ -314,7 +316,7 @@ void DeliverMessagesPage(
 	call->done(std::move(json));
 }
 
-void OnFullPeer(not_null<ChatTools::PendingCall*> call, Fn<void()> ready) {
+void OnFullPeer(not_null<PendingCall*> call, Fn<void()> ready) {
 	const auto peer = call->peer;
 	if (peer->isFullLoaded()) {
 		ready();
@@ -338,7 +340,7 @@ void OnFullPeer(not_null<ChatTools::PendingCall*> call, Fn<void()> ready) {
 	call->lifetime.make_state<base::Timer>(trigger)->callOnce(5 * 1000);
 }
 
-void DeliverBasicGroupMembers(not_null<ChatTools::PendingCall*> call) {
+void DeliverBasicGroupMembers(not_null<PendingCall*> call) {
 	const auto chat = call->peer->asChat();
 	auto members = QJsonArray();
 	for (const auto &user : chat->participants) {
@@ -358,22 +360,6 @@ void DeliverBasicGroupMembers(not_null<ChatTools::PendingCall*> call) {
 } // namespace
 
 namespace ChatTools {
-
-PendingCall::PendingCall(not_null<Main::Session*> session)
-: session(session)
-, api(&session->mtp()) {
-}
-
-void PendingCall::setRequestId(mtpRequestId id) {
-	historiesRequestId = id;
-}
-
-void PendingCall::cancel() {
-	if (historiesRequestId) {
-		session->data().histories().cancelRequest(
-			base::take(historiesRequestId));
-	}
-}
 
 void RunGetContext(not_null<PendingCall*> call) {
 	const auto session = call->session;
@@ -708,6 +694,109 @@ void RunListMembers(not_null<PendingCall*> call) {
 		call->fail(error.type());
 	}).send();
 }
+
+std::vector<ToolEntry> Entries() {
+	auto result = std::vector<ToolEntry>();
+	auto empty = QJsonObject();
+	auto historyProperties = QJsonObject();
+	historyProperties.insert("around_id", MessageIdProperty(
+		u"Read a window centered on this message id."_q));
+	historyProperties.insert("before_id", MessageIdProperty(
+		u"Read only messages older than this id."_q));
+	historyProperties.insert("after_id", MessageIdProperty(
+		u"Read only messages newer than this id."_q));
+	historyProperties.insert("limit", IntProperty(
+		1,
+		100,
+		u"How many messages to return, 1..100, default 30."_q));
+	historyProperties.insert("topic_id", MessageIdProperty(
+		u"Forum topic root message id."_q));
+	auto searchProperties = QJsonObject();
+	searchProperties.insert("query", StringProperty(
+		u"Text to search for."_q));
+	searchProperties.insert("from", StringProperty(
+		u"\"me\", a numeric user id or @username, resolved among"
+		" locally known users only."_q));
+	searchProperties.insert("min_date", StringProperty(
+		u"Only messages sent on or after this local date YYYY-MM-DD."_q));
+	searchProperties.insert("max_date", StringProperty(
+		u"Only messages sent on or before this local date YYYY-MM-DD."_q));
+	searchProperties.insert("limit", IntProperty(
+		1,
+		50,
+		u"How many messages to return, 1..50, default 20."_q));
+	searchProperties.insert("offset_id", MessageIdProperty(
+		u"Pagination: search older than this message id."_q));
+	searchProperties.insert("topic_id", MessageIdProperty(
+		u"Forum topic root message id."_q));
+	auto membersProperties = QJsonObject();
+	membersProperties.insert("query", StringProperty(
+		u"Search members by name or username."_q));
+	membersProperties.insert("limit", IntProperty(
+		1,
+		100,
+		u"How many members to return, 1..100, default 50."_q));
+	membersProperties.insert("offset", IntProperty(
+		0,
+		std::numeric_limits<int>::max(),
+		u"Skip this many members."_q));
+	auto push = [&](const QString &name,
+			const QString &description,
+			QJsonObject schema,
+			ChatParam chatParam,
+			auto run) {
+		result.push_back(ToolEntry{
+			.name = name,
+			.description = description,
+			.inputSchema = std::move(schema),
+			.policy = ToolPolicy{
+				.general = (chatParam == ChatParam::None),
+				.chat = true,
+			},
+			.chatParam = chatParam,
+			.run = run,
+		});
+	};
+	push(
+		u"get_context"_q,
+		u"Get the current time and a summary of this chat."_q,
+		ToolSchema(std::move(empty), QJsonArray()),
+		ChatParam::None,
+		RunGetContext);
+	push(
+		u"read_history"_q,
+		u"Read messages of this chat, oldest to newest. Give at most"
+		" one of around_id, before_id, after_id. Reading never marks"
+		" anything read."_q,
+		ToolSchema(std::move(historyProperties), QJsonArray()),
+		ChatParam::One,
+		RunReadHistory);
+	push(
+		u"search_messages"_q,
+		u"Search messages in this chat, newest matches first. Page"
+		" older results with offset_id from next_offset_id."_q,
+		ToolSchema(
+			std::move(searchProperties),
+			QJsonArray{ QJsonValue(u"query"_q) }),
+		ChatParam::OptionalOne,
+		RunSearchMessages);
+	push(
+		u"get_peer_info"_q,
+		u"Get details about this chat: title, kind, description,"
+		" members, your role and rights."_q,
+		ToolSchema(QJsonObject(), QJsonArray()),
+		ChatParam::One,
+		RunGetPeerInfo);
+	push(
+		u"list_members"_q,
+		u"List members of this chat with names, usernames and roles."_q,
+		ToolSchema(std::move(membersProperties), QJsonArray()),
+		ChatParam::One,
+		RunListMembers);
+	return result;
+}
+
+
 
 } // namespace ChatTools
 

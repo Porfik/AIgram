@@ -347,4 +347,10 @@ bool IsContextOverflow(const Error &error) {
 	return false;
 }
 
+QString HandoffText(
+		const SessionRecord &record,
+		const QString &chatTitle) {
+	return QString();
+}
+
 } // namespace Agent

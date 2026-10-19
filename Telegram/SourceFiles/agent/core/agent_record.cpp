@@ -355,4 +355,8 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 	return list;
 }
 
+bool CloseInterruptedTurn(SessionRecord &record) {
+	return false;
+}
+
 } // namespace Agent

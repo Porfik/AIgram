@@ -29,6 +29,8 @@ namespace {
 	append(ContextChecks());
 	append(PromptsChecks());
 	append(RequestChecks());
+	append(CardChecks());
+	append(NavigationChecks());
 	return result;
 }
 

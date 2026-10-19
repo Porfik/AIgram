@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_card.h"
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_providers.h"
 #include "agent/core/agent_record.h"
@@ -31,6 +32,7 @@ struct SendRequest {
 	QString text;
 	std::vector<PeerKey> mentions;
 	QString hint;
+	QString untrusted;
 };
 
 enum class SessionStatus : uchar {
@@ -45,6 +47,7 @@ struct SessionState {
 	std::optional<Error> error;
 	std::optional<TurnEnd> lastEnd;
 	std::vector<QString> queued;
+	int pendingCards = 0;
 };
 
 class Session final : public base::has_weak_ptr {
@@ -66,6 +69,12 @@ public:
 	void send(SendRequest request);
 	void stop();
 	void retry();
+
+	void decideCard(const QString &toolUseId, CardDecision decision);
+	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
+	void undo(const std::vector<QString> &toolUseIds);
+	[[nodiscard]] rpl::producer<> undoChanges() const;
+	[[nodiscard]] rpl::producer<QString> undoErrors() const;
 
 private:
 	friend class Manager;
@@ -110,6 +119,8 @@ private:
 	rpl::event_stream<> _recordChanges;
 	rpl::event_stream<EngineEvent> _live;
 	rpl::event_stream<> _stateChanges;
+	rpl::event_stream<> _undoChanges;
+	rpl::event_stream<QString> _undoErrors;
 	rpl::lifetime _loopLifetime;
 	rpl::lifetime _lifetime;
 

@@ -15,6 +15,7 @@ namespace Agent {
 
 inline constexpr auto kDefaultContextWindow = 32768;
 inline constexpr auto kToolResultMaxChars = 12000;
+inline constexpr auto kHandoffMaxChars = 24000;
 
 [[nodiscard]] int EstimateTokens(const QString &text);
 [[nodiscard]] int EstimateTokens(const Message &message);
@@ -35,6 +36,10 @@ inline constexpr auto kToolResultMaxChars = 12000;
 [[nodiscard]] Request TitleRequest(
 	const SessionRecord &record,
 	const QString &model);
+
+[[nodiscard]] QString HandoffText(
+	const SessionRecord &record,
+	const QString &chatTitle);
 
 [[nodiscard]] QString ResponseText(const Message &message);
 [[nodiscard]] QString CleanTitle(const QString &text);

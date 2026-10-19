@@ -13,7 +13,9 @@ namespace Agent {
 
 std::vector<FeedItem> BuildFeed(
 		const std::vector<Message> &messages,
-		int summaryUntil) {
+		int summaryUntil,
+		const std::vector<Card> &cards,
+		const base::flat_set<QString> &actionTools) {
 	auto result = std::vector<FeedItem>();
 	result.reserve(messages.size());
 	auto pending = std::vector<std::pair<int, int>>();

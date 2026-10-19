@@ -40,5 +40,7 @@ struct Check {
 [[nodiscard]] std::vector<Check> ContextChecks();
 [[nodiscard]] std::vector<Check> PromptsChecks();
 [[nodiscard]] std::vector<Check> RequestChecks();
+[[nodiscard]] std::vector<Check> CardChecks();
+[[nodiscard]] std::vector<Check> NavigationChecks();
 
 } // namespace Agent::Tests
