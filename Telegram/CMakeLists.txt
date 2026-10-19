@@ -163,6 +163,8 @@ PRIVATE
     agent/ui/agent_sessions_list.h
     agent/ui/agent_spending_format.cpp
     agent/ui/agent_spending_format.h
+    agent/ui/agent_userpic.cpp
+    agent/ui/agent_userpic.h
     agent/agent_check.cpp
     agent/agent_check.h
     agent/agent_exclusions.cpp

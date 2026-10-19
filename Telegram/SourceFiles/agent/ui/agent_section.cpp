@@ -12,11 +12,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_chats_row.h"
 #include "agent/ui/agent_history_view.h"
 #include "agent/ui/agent_session_view.h"
+#include "agent/ui/agent_userpic.h"
 #include "agent/ui/agent_sessions_list.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mainwidget.h"
+#include "ui/painter.h"
 #include "ui/rp_widget.h"
+#include "ui/abstract_button.h"
+#include "ui/text/text.h"
 #include "window/section_memento.h"
 #include "window/section_widget.h"
 #include "ui/ui_utility.h"
@@ -27,6 +31,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_session_controller.h"
 #include "styles/style_agent_general.h"
 #include "styles/style_agent_panel.h"
+#include "styles/style_chat.h"
+#include "styles/style_dialogs.h"
 #include "styles/style_info.h"
 
 namespace Agent::Ui {
@@ -62,6 +68,22 @@ private:
 
 };
 
+class TitleButton final : public Ui::AbstractButton {
+public:
+	explicit TitleButton(QWidget *parent);
+
+	void setStatus(const QString &text, bool active);
+
+protected:
+	void paintEvent(QPaintEvent *e) override;
+
+private:
+	Ui::Text::String _name;
+	QString _status;
+	bool _statusActive = false;
+
+};
+
 class GeneralAgentSection final : public Window::SectionWidget {
 public:
 	GeneralAgentSection(
@@ -93,6 +115,50 @@ private:
 	object_ptr<Inner> _inner;
 
 };
+
+TitleButton::TitleButton(QWidget *parent)
+: AbstractButton(parent) {
+	_name.setText(st::msgNameStyle, tr::lng_agent_row_title(tr::now));
+}
+
+void TitleButton::setStatus(const QString &text, bool active) {
+	if (_status == text && _statusActive == active) {
+		return;
+	}
+	_status = text;
+	_statusActive = active;
+	update();
+}
+
+void TitleButton::paintEvent(QPaintEvent *e) {
+	auto p = Painter(this);
+	const auto size = st::topBarInfoButtonInnerSize;
+	PaintAgentUserpic(
+		p,
+		st::topBarInfoButtonInnerPosition.x(),
+		(height() - size) / 2,
+		width(),
+		size);
+	const auto left = st::topBarInfoButtonSize.width();
+	const auto available = std::max(
+		width() - left - st::topBarNameRightPadding,
+		0);
+	p.setPen(st::dialogsNameFg);
+	_name.draw(p, {
+		.position = { left, st::topBarArrowPadding.top() },
+		.availableWidth = available,
+		.elisionLines = 1,
+	});
+	p.setFont(st::dialogsTextFont);
+	p.setPen(_statusActive ? st::historyStatusFgTyping : st::historyStatusFg);
+	p.drawTextLeft(
+		left,
+		(height()
+			- st::topBarArrowPadding.bottom()
+			- st::dialogsTextFont->height),
+		width(),
+		st::dialogsTextFont->elided(_status, available));
+}
 
 } // namespace
 
@@ -185,7 +251,7 @@ private:
 	const Scope _scope;
 	RpWidget *_topBar = nullptr;
 	Ui::IconButton *_back = nullptr;
-	Ui::FlatLabel *_title = nullptr;
+	TitleButton *_title = nullptr;
 	Ui::IconButton *_menu = nullptr;
 	Ui::IconButton *_history = nullptr;
 	Ui::IconButton *_new = nullptr;
@@ -242,12 +308,14 @@ void GeneralAgentSection::Inner::setupTopBar() {
 		p.fillRect(clip, st::windowBg);
 	}, _topBar->lifetime());
 
-	_title = Ui::CreateChild<Ui::FlatLabel>(
-		_topBar,
-		_titleText.value(),
-		st::infoTopBarTitle);
+	_title = Ui::CreateChild<TitleButton>(_topBar);
 	_title->show();
-	_title->setAttribute(Qt::WA_TransparentForMouseEvents);
+	_title->setClickedCallback([=] {
+		showHistory(!_listOpen.current());
+		if (!_listOpen.current()) {
+			_sessionView->setInnerFocus();
+		}
+	});
 	_menu = Ui::CreateChild<Ui::IconButton>(_topBar, st::infoTopBarMenu);
 	_menu->setAccessibleName(tr::lng_agent_session_more(tr::now));
 	_menu->setClickedCallback([=] {
@@ -331,7 +399,9 @@ void GeneralAgentSection::Inner::trackSession(Session *session) {
 	_menu->setVisible(session != nullptr);
 	updateControlsGeometry();
 	if (session) {
-		session->recordChanges(
+		rpl::merge(
+			session->recordChanges(),
+			session->stateChanges()
 		) | rpl::on_next([=] {
 			updateTitle();
 		}, _sessionLifetime);
@@ -340,15 +410,26 @@ void GeneralAgentSection::Inner::trackSession(Session *session) {
 }
 
 void GeneralAgentSection::Inner::updateTitle() {
+	const auto session = _sessionView->session();
 	if (_listOpen.current()) {
 		_titleText = tr::lng_agent_history(tr::now);
-	} else if (const auto session = _sessionView->session()) {
+	} else if (session) {
 		const auto title = session->record().info.title;
 		_titleText = title.isEmpty()
 			? tr::lng_agent_session_untitled(tr::now)
 			: title;
 	} else {
-		_titleText = tr::lng_agent_title(tr::now);
+		_titleText = tr::lng_agent_new_session(tr::now);
+	}
+	const auto &state = session ? session->state() : SessionState();
+	const auto working = (state.status == SessionStatus::Working)
+		|| (state.status == SessionStatus::Compacting);
+	if (!_listOpen.current() && state.pendingCards > 0) {
+		_title->setStatus(tr::lng_agent_waiting_card(tr::now), true);
+	} else if (!_listOpen.current() && working) {
+		_title->setStatus(tr::lng_agent_working(tr::now), true);
+	} else {
+		_title->setStatus(_titleText.current(), false);
 	}
 }
 
@@ -435,13 +516,9 @@ void GeneralAgentSection::Inner::updateControlsGeometry() {
 	right += _new->width();
 	const auto left = (_back && !_back->isHidden())
 		? st::infoTopBar.back.width
-		: st::infoTopBar.titlePosition.x();
+		: st::topBarArrowPadding.right();
 	const auto available = std::max(width() - right - left, 0);
-	_title->resizeToWidth(available);
-	_title->moveToLeft(
-		left,
-		st::infoTopBar.titlePosition.y(),
-		width());
+	_title->setGeometry(left, 0, available, st::infoTopBarHeight);
 
 	const auto content = QRect(
 		0,

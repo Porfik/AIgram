@@ -590,6 +590,9 @@ bool Session::applyState(
 bool Session::publishRecord() {
 	_record.tainted = _gate->tainted();
 	_record.info.updated = base::unixtime::now();
+	const auto preview = MakeSessionPreview(_record);
+	_record.info.preview = preview.text;
+	_record.info.previewOutgoing = preview.outgoing;
 	const auto weak = base::make_weak(this);
 	_manager->save(this);
 	if (!weak) {

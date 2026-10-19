@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_settings.h"
 #include "agent/core/agent_record.h"
 #include "agent/ui/agent_spending_format.h"
+#include "agent/ui/agent_userpic.h"
 #include "data/data_changes.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
@@ -211,15 +212,7 @@ void SessionsList::paintUserpicStack(Painter &p, Row &row, int top) {
 	const auto x = padding.left();
 	const auto y = top + (st::agentSessionListRowHeight - size) / 2;
 	if (row.userpics.empty()) {
-		p.setPen(Qt::NoPen);
-		p.setBrush(st::windowBgActive);
-		p.drawEllipse(x, y, size, size);
-		st::agentChatsRowIcon.paint(
-			p,
-			QPoint(
-				x + (size - st::agentChatsRowIcon.width()) / 2,
-				y + (size - st::agentChatsRowIcon.height()) / 2),
-			x + size);
+		PaintAgentUserpic(p, x, y, width(), size);
 		return;
 	}
 	auto left = x;

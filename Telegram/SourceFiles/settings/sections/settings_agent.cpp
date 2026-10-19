@@ -714,9 +714,50 @@ void BuildCheckButton(
 	) | rpl::on_next(update, builder.container()->lifetime());
 }
 
+[[nodiscard]] QString RowPreviewText(::Agent::RowPreview mode) {
+	switch (mode) {
+	case ::Agent::RowPreview::LastMessage:
+		return tr::lng_agent_row_preview_message(tr::now);
+	case ::Agent::RowPreview::SessionTitle:
+		return tr::lng_agent_row_preview_session(tr::now);
+	case ::Agent::RowPreview::Hint:
+		return tr::lng_agent_row_preview_hint(tr::now);
+	}
+	Unexpected("Mode in RowPreviewText.");
+}
+
+void RowPreviewBox(
+		not_null<Ui::GenericBox*> box,
+		std::shared_ptr<AgentState> state) {
+	using Mode = ::Agent::RowPreview;
+	box->setTitle(tr::lng_agent_row_preview_title());
+	const auto group = std::make_shared<Ui::RadioenumGroup<Mode>>(
+		state->providers.rowPreview);
+	const auto modes = { Mode::LastMessage, Mode::SessionTitle, Mode::Hint };
+	for (const auto mode : modes) {
+		box->addRow(
+			object_ptr<Ui::Radioenum<Mode>>(
+				box,
+				group,
+				mode,
+				RowPreviewText(mode),
+				st::defaultBoxCheckbox),
+			st::settingsSendTypePadding);
+	}
+	group->setChangedCallback([=](Mode mode) {
+		state->providers.rowPreview = mode;
+		SaveState(state.get());
+		box->closeBox();
+	});
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
+}
+
 void BuildEntryPoints(
 		SectionBuilder &builder,
-		const std::shared_ptr<AgentState> &state) {
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
 	builder.addSkip();
 	const auto button = builder.addButton({
 		.id = u"agent/show-entry-points"_q,
@@ -733,6 +774,19 @@ void BuildEntryPoints(
 			SaveState(state.get());
 		}, button->lifetime());
 	}
+	builder.addButton({
+		.id = u"agent/row-preview"_q,
+		.title = tr::lng_agent_row_preview(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return RowPreviewText(state->providers.rowPreview);
+		}),
+		.onClick = [=] {
+			controller->show(Box(RowPreviewBox, state));
+		},
+		.keywords = { u"row"_q, u"preview"_q, u"agent"_q },
+	});
 	builder.add([=](const WidgetContext &ctx) {
 		Ui::AddDividerText(
 			ctx.container,
@@ -892,7 +946,7 @@ void Agent::setupContent() {
 		BuildProviders(builder, state, controller);
 		BuildInstructions(builder, state);
 		BuildCheckButton(builder, state, controller);
-		BuildEntryPoints(builder, state);
+		BuildEntryPoints(builder, state, controller);
 		BuildSpending(builder, state, controller);
 		BuildHiddenChats(builder, state, controller);
 		BuildClearData(builder, state, controller);

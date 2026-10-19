@@ -15,7 +15,8 @@ agentSessionListUserpicSize: 36px;
 agentSessionListUserpicGap: 12px;
 agentSessionListUserpicShift: 12px;
 
-agentChatsRowIcon: icon {{ "menu/ai_prompt", windowFgActive }};
+agentUserpicIcon: icon {{ "menu/ai_prompt", historyPeerUserpicFg }};
+agentUserpicIconBase: 42px;
 
 agentHiddenRowUserpicSize: 32px;
 agentHiddenRowUserpic: UserpicButton(defaultUserpicButton) {

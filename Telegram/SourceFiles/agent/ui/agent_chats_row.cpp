@@ -8,10 +8,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_chats_row.h"
 
 #include "agent/agent_manager.h"
+#include "agent/agent_settings.h"
 #include "agent/ui/agent_section.h"
+#include "agent/ui/agent_userpic.h"
 #include "base/flat_set.h"
+#include "base/unixtime.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "ui/text/format_values.h"
 #include "ui/text/text.h"
 #include "ui/unread_badge_paint.h"
 #include "ui/widgets/buttons.h"
@@ -45,6 +49,7 @@ public:
 	void setShown(bool shown);
 	void setActivity(ScopeActivity activity);
 	void setScreenShown(bool shown);
+	void refreshLatest();
 
 protected:
 	void paintEvent(QPaintEvent *e) override;
@@ -52,13 +57,18 @@ protected:
 
 private:
 	void updateStatus();
+	[[nodiscard]] QString previewText() const;
 
 	const not_null<Window::SessionController*> _controller;
+	const not_null<Manager*> _manager;
 	bool _shown = false;
 	bool _screenShown = false;
 	bool _narrow = false;
 	bool _working = false;
+	bool _outgoing = false;
 	int _pending = 0;
+	std::optional<SessionInfo> _latest;
+	QString _date;
 	::Ui::Text::String _title;
 	::Ui::Text::String _status;
 
@@ -68,21 +78,47 @@ RowWidget::RowWidget(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
 : ::Ui::RippleButton(parent, st::dialogsRipple)
-, _controller(controller) {
+, _controller(controller)
+, _manager(&controller->session().agent()) {
 	_title.setText(st::semiboldTextStyle, tr::lng_agent_row_title(tr::now));
-	updateStatus();
+	refreshLatest();
 	resizeToWidth(width());
 }
 
+void RowWidget::refreshLatest() {
+	const auto list = _manager->list(Scope::Account());
+	_latest = list.empty()
+		? std::nullopt
+		: std::make_optional(list.front());
+	_date = _latest
+		? ::Ui::FormatDialogsDate(base::unixtime::parse(_latest->updated))
+		: QString();
+	updateStatus();
+	update();
+}
+
+QString RowWidget::previewText() const {
+	const auto mode = _manager->providers().rowPreview;
+	if (_latest && mode == RowPreview::LastMessage) {
+		if (!_latest->preview.isEmpty()) {
+			return _latest->preview;
+		}
+	}
+	if (_latest && mode != RowPreview::Hint && !_latest->title.isEmpty()) {
+		return _latest->title;
+	}
+	return tr::lng_agent_row_about(tr::now);
+}
+
 void RowWidget::updateStatus() {
-	const auto count = _pending;
+	_outgoing = !_working
+		&& _latest
+		&& (_manager->providers().rowPreview == RowPreview::LastMessage)
+		&& !_latest->preview.isEmpty()
+		&& _latest->previewOutgoing;
 	_status.setText(
 		st::dialogsTextStyle,
-		count
-			? tr::lng_agent_row_pending(tr::now, lt_count, count)
-			: _working
-			? tr::lng_agent_row_working(tr::now)
-			: tr::lng_agent_row_about(tr::now));
+		_working ? tr::lng_agent_row_working(tr::now) : previewText());
 }
 
 void RowWidget::setShown(bool shown) {
@@ -116,7 +152,13 @@ void RowWidget::paintEvent(QPaintEvent *e) {
 	auto p = QPainter(this);
 	const auto active = _screenShown;
 	const auto selected = isOver() && !active;
-	p.fillRect(e->rect(), active ? st::dialogsBgActive : st::dialogsBg);
+	p.fillRect(
+		e->rect(),
+		(active
+			? st::dialogsBgActive
+			: selected
+			? st::dialogsBgOver
+			: st::dialogsBg));
 	if (!active) {
 		paintRipple(p, 0, 0);
 	}
@@ -132,21 +174,12 @@ void RowWidget::paintEvent(QPaintEvent *e) {
 		? st::dialogsTextFgOver
 		: st::dialogsTextFg;
 
-	p.setPen(Qt::NoPen);
-	p.setBrush(st::windowBgActive);
-	p.drawEllipse(
+	PaintAgentUserpic(
+		p,
 		st.padding.left(),
 		st.padding.top(),
-		st.photoSize,
+		width(),
 		st.photoSize);
-	st::agentChatsRowIcon.paint(
-		p,
-		QPoint(
-			st.padding.left()
-				+ (st.photoSize - st::agentChatsRowIcon.width()) / 2,
-			st.padding.top()
-				+ (st.photoSize - st::agentChatsRowIcon.height()) / 2),
-		width());
 
 	if (_narrow) {
 		if (_pending) {
@@ -163,9 +196,30 @@ void RowWidget::paintEvent(QPaintEvent *e) {
 		return;
 	}
 
-	const auto nameWidth = width()
-		- st.nameLeft
-		- st.padding.right();
+	auto nameWidth = width() - st.nameLeft - st.padding.right();
+	if (!_date.isEmpty()) {
+		const auto dateWidth = st::dialogsDateFont->width(_date);
+		nameWidth -= dateWidth + st::dialogsDateSkip;
+		p.setFont(st::dialogsDateFont);
+		p.setPen(active
+			? st::dialogsDateFgActive
+			: selected
+			? st::dialogsDateFgOver
+			: st::dialogsDateFg);
+		p.drawText(
+			width() - st.padding.right() - dateWidth,
+			st.nameTop + st::semiboldFont->height - st::normalFont->descent,
+			_date);
+	}
+	if (_outgoing) {
+		nameWidth -= st::dialogsSendStateSkip;
+		const auto &icon = active
+			? st::dialogsReceivedIcon.active
+			: selected
+			? st::dialogsReceivedIcon.over
+			: st::dialogsReceivedIcon.icon;
+		icon.paint(p, st.nameLeft + nameWidth, st.nameTop, width());
+	}
 	p.setFont(st::semiboldFont);
 	p.setPen(nameFg);
 	_title.draw(p, {
@@ -174,29 +228,37 @@ void RowWidget::paintEvent(QPaintEvent *e) {
 		.elisionLines = 1,
 	});
 
-	p.setFont(st::dialogsTextFont);
-	p.setPen(textFg);
-	_status.draw(p, {
-		.position = { st.textLeft, st.textTop },
-		.availableWidth = nameWidth,
-		.elisionLines = 1,
-	});
-
+	auto textWidth = width() - st.textLeft - st.padding.right();
 	if (_pending) {
 		auto style = ::Ui::UnreadBadgeStyle();
 		style.active = active;
+		style.selected = selected;
 		style.align = style::al_right;
 		const auto top = st.textTop
 			+ st::dialogsTextFont->ascent
 			- st::dialogsUnreadFont->ascent
 			- (st::dialogsUnreadHeight - st::dialogsUnreadFont->height) / 2;
-		::Ui::PaintUnreadBadge(
+		const auto badge = ::Ui::PaintUnreadBadge(
 			p,
 			QString::number(_pending),
 			width() - st.padding.right(),
 			top,
 			style);
+		textWidth -= badge.width() + st::dialogsUnreadPadding;
 	}
+	p.setFont(st::dialogsTextFont);
+	p.setPen(_working
+		? (active
+			? st::dialogsTextFgServiceActive
+			: selected
+			? st::dialogsTextFgServiceOver
+			: st::dialogsTextFgService)
+		: textFg);
+	_status.draw(p, {
+		.position = { st.textLeft, st.textTop },
+		.availableWidth = std::max(textWidth, 0),
+		.elisionLines = 1,
+	});
 }
 
 int RowWidget::resizeGetHeight(int newWidth) {
@@ -229,6 +291,14 @@ void SetupChatsListRow(
 		Scope::Account()
 	) | rpl::on_next([=](ScopeActivity activity) {
 		row->setActivity(activity);
+	}, row->lifetime());
+	rpl::merge(
+		manager->listChanges() | rpl::filter([](const Scope &scope) {
+			return scope == Scope::Account();
+		}) | rpl::to_empty,
+		Agent::ProvidersChanged()
+	) | rpl::on_next([=] {
+		row->refreshLatest();
 	}, row->lifetime());
 	GeneralAgentShownValue(
 		controller

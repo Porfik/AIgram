@@ -271,6 +271,10 @@ void Manager::rename(const QString &id, const QString &title) {
 	}
 	record->info.title = trimmed;
 	record->info.titleFinal = true;
+	if (const auto known = info(id)) {
+		record->info.preview = known->preview;
+		record->info.previewOutgoing = known->previewOutgoing;
+	}
 	_store->writeSession(*record);
 	upsertIndex(record->info);
 	_store->writeIndex(_index);

@@ -146,6 +146,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   dollars per million tokens, zero when unset) after `vision` of each
   provider and `showSpending` (default false) after `showEntryPoints`.
   Versions 1 and 2 load with zero prices and `showSpending` false.
+- Version 4 appends `rowPreview` (what the "✦ Agent" row shows under its
+  name; default `LastMessage`).
 - `Agent::SaveProviders()` fires `Agent::ProvidersChanged()` after writing.
 
 ## Scope (`agent_scope.h`)
@@ -242,7 +244,13 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   records still load with them empty. Version 3 keeps `info.usage` with
   `cost` and `hasCost`; older records load their usage into `info.usage`
   without a cost. Index version 2 adds `usage` (with the cost) to every
-  entry; version 1 indexes load with zero usage.
+  entry; version 1 indexes load with zero usage. Index version 3 adds
+  `preview` and `previewOutgoing`; older indexes load them empty.
+- `MakeSessionPreview()` is the last message with visible text, its text
+  blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
+  `#` and `>`) removed, whitespace simplified and capped at 120
+  characters; `outgoing` when the user wrote it. The session sets it into
+  `info` on every save; the record itself does not store it.
 - `CloseInterruptedTurn()` repairs a record saved while a turn ran: every
   `Pending` or `Running` card becomes `NotDone`, and when the last message
   is an assistant message with tool uses, one user message is appended
@@ -666,9 +674,19 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   the section stack, and its sessions keep running in the background.
 - `SetupChatsListRow()` puts the "✦ Agent" row on top of the dialogs list
   while `shown` (only the main "All chats" list, without search, folders
-  or forums) and `Manager::enabled()`. It shows "Working..." or the
-  number of waiting cards from `Manager::activityValue()` and opens the
-  general agent screen.
+  or forums) and `Manager::enabled()`. It is painted like a dialog row:
+  `PaintAgentUserpic()` (a smooth purple gradient circle with the ✦ icon,
+  shared with the sessions list and the general screen), the name, the
+  newest account session's `updated` as the date, a read check when the
+  preview is the user's own message, and under the name per `rowPreview`
+  the session's `preview`, its title or the hint (each falling back to the
+  next). While working it shows "Working..." in the service color like
+  "typing", waiting cards show as an unread badge. It opens the general
+  agent screen.
+- The general screen's top bar shows the agent like a chat partner: the
+  userpic, "Agent" and a status line (the session title, "New session" or
+  "History"; "Working..." or "Waiting for your decision..." in the typing
+  color). Clicking it toggles the history.
 - `HistoryView` is the history pane of the panel and the general screen:
   "Sessions" and "Memory" tabs over a scroll area with the scope's
   `SessionsList` or its `MemoryList` (owner `Scope::peer`). With it open

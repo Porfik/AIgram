@@ -1605,6 +1605,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_clear_data" = "Delete agent data";
 "lng_agent_clear_data_sure" = "Delete all agent sessions, memory and spending statistics of this account? Hidden chats stay hidden.";
 "lng_agent_clear_data_done" = "Agent data deleted.";
+"lng_agent_row_preview" = "Agent row shows";
+"lng_agent_row_preview_title" = "Agent Row";
+"lng_agent_row_preview_message" = "Last message";
+"lng_agent_row_preview_session" = "Session title";
+"lng_agent_row_preview_hint" = "Hint";
 
 "lng_passkey_touch" = "Touch your security key";
 "lng_passkey_insert" = "Insert your security key, then touch it to continue.";
