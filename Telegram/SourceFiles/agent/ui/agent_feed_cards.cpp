@@ -86,6 +86,36 @@ private:
 
 };
 
+class FeedCardWidget::RunningRow final : public RpWidget {
+public:
+	RunningRow(QWidget *parent);
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+	void paintEvent(QPaintEvent *e) override;
+
+private:
+	Ui::InfiniteRadialAnimation _animation;
+	object_ptr<Ui::FlatLabel> _label;
+
+};
+
+class FeedCardWidget::CardButtonsRow final : public RpWidget {
+public:
+	CardButtonsRow(QWidget *parent)
+	: RpWidget(parent) {
+	}
+
+	Ui::RoundButton *add(object_ptr<Ui::RoundButton> button);
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+
+private:
+	std::vector<object_ptr<Ui::RoundButton>> _buttons;
+
+};
+
 FeedCardWidget::CardSpinner::CardSpinner(
 	QWidget *parent,
 	const style::InfiniteRadialAnimation &st)
@@ -107,14 +137,73 @@ void FeedCardWidget::CardSpinner::paintEvent(QPaintEvent *e) {
 		width());
 }
 
+FeedCardWidget::RunningRow::RunningRow(QWidget *parent)
+: RpWidget(parent)
+, _animation([=] { update(); }, st::agentFeedCardSpinner)
+, _label(
+	this,
+	tr::lng_agent_card_running(tr::now),
+	st::agentFeedCardDetailLabel) {
+	_animation.start();
+}
+
+int FeedCardWidget::RunningRow::resizeGetHeight(int newWidth) {
+	const auto size = st::agentFeedCardSpinnerSize;
+	_label->resizeToNaturalWidth(
+		std::max(newWidth - size.width() - st::agentFeedCardGap, 1));
+	_label->moveToLeft(size.width() + st::agentFeedCardGap, 0, newWidth);
+	return std::max(size.height(), _label->height());
+}
+
+void FeedCardWidget::RunningRow::paintEvent(QPaintEvent *e) {
+	auto p = QPainter(this);
+	const auto size = st::agentFeedCardSpinnerSize;
+	_animation.draw(
+		p,
+		QPoint(0, (_label->height() - size.height()) / 2),
+		size,
+		width());
+}
+
+Ui::RoundButton *FeedCardWidget::CardButtonsRow::add(
+		object_ptr<Ui::RoundButton> button) {
+	const auto raw = button.data();
+	_buttons.push_back(std::move(button));
+	raw->widthValue(
+	) | rpl::on_next([=] {
+		if (width() > 0) {
+			resize(width(), resizeGetHeight(width()));
+		}
+	}, raw->lifetime());
+	return raw;
+}
+
+int FeedCardWidget::CardButtonsRow::resizeGetHeight(int newWidth) {
+	const auto gap = st::agentFeedCardButtonsGap;
+	auto x = 0;
+	auto y = 0;
+	auto rowHeight = 0;
+	for (const auto &button : _buttons) {
+		const auto w = button->width();
+		if (x > 0 && x + w > newWidth) {
+			x = 0;
+			y += rowHeight + gap;
+			rowHeight = 0;
+		}
+		button->moveToLeft(x, y, newWidth);
+		x += w + gap;
+		rowHeight = std::max(rowHeight, button->height());
+	}
+	return y + rowHeight;
+}
+
 FeedCardWidget::FeedCardWidget(
 	QWidget *parent,
 	FeedContext context,
 	const FeedCard &data)
 : FeedItemWidget(parent)
 , _context(std::move(context))
-, _card(data.card)
-, _spinner([=] { update(); }, st::agentFeedCardSpinner) {
+, _card(data.card) {
 	_payload.checked.reserve(_card.targets.size());
 	for (const auto &target : _card.targets) {
 		_payload.checked.push_back(target.checked);
@@ -129,6 +218,27 @@ void FeedCardWidget::updatePayload(const FeedItem &item) {
 	const auto data = std::get_if<FeedCard>(&item);
 	Expects(data != nullptr);
 
+	const auto sameTargets = [&] {
+		if (_card.targets.size() != data->card.targets.size()) {
+			return false;
+		}
+		for (auto i = 0; i != int(_card.targets.size()); ++i) {
+			const auto &a = _card.targets[i];
+			const auto &b = data->card.targets[i];
+			if (a.peer != b.peer
+				|| a.messageId != b.messageId
+				|| a.title != b.title
+				|| a.preview != b.preview
+				|| a.error != b.error) {
+				return false;
+			}
+		}
+		return true;
+	}();
+	if (_card.status == data->card.status && sameTargets) {
+		_card = data->card;
+		return;
+	}
 	if (pending()) {
 		capturePayload();
 	}
@@ -153,8 +263,7 @@ void FeedCardWidget::capturePayload() {
 }
 
 bool FeedCardWidget::pending() const {
-	return (_card.status == CardStatus::Pending)
-		|| (_card.status == CardStatus::Running);
+	return _card.status == CardStatus::Pending;
 }
 
 bool FeedCardWidget::running() const {
@@ -216,16 +325,6 @@ void FeedCardWidget::paintEvent(QPaintEvent *e) {
 		rect,
 		st::agentFeedCardRadius,
 		st::agentFeedCardRadius);
-	if (running()) {
-		_spinner.draw(
-			p,
-			QPoint(
-				cardWidth - st::agentFeedCardSpinnerSize.width()
-					- st::agentFeedCardPadding.right(),
-				st::agentFeedCardPadding.top()),
-			st::agentFeedCardSpinnerSize,
-			width());
-	}
 }
 
 void FeedCardWidget::build() {
@@ -233,6 +332,7 @@ void FeedCardWidget::build() {
 	_targetCheckboxes.clear();
 	_option = _allow = nullptr;
 	_execute = _alternate = nullptr;
+	_buttonsRow = nullptr;
 	_field = nullptr;
 	_inner.create(this);
 	const auto gap = st::agentFeedCardGap;
@@ -244,6 +344,14 @@ void FeedCardWidget::build() {
 		CardTitleText(_card.kind),
 		st::agentFeedCardTitleLabel));
 	const auto pendingNow = pending();
+	if (_card.kind == CardKind::Forward && !_card.text.isEmpty()) {
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				_card.text,
+				st::agentFeedTextLabel),
+			addGap(gap));
+	}
 	if (_card.kind == CardKind::Handoff) {
 		_inner->add(
 			object_ptr<Ui::FlatLabel>(
@@ -261,7 +369,7 @@ void FeedCardWidget::build() {
 			object_ptr<Ui::RoundButton>(
 				_inner,
 				tr::lng_agent_card_handoff_button(),
-				st::agentFeedCardButton),
+				st::agentFeedCardButtonMain),
 			addGap(gap));
 		const auto text = _card.text;
 		_execute->setClickedCallback([=] {
@@ -273,9 +381,13 @@ void FeedCardWidget::build() {
 		});
 		_inner->heightValue(
 		) | rpl::on_next([=](int height) {
-			resize(width(), height);
+			if (width() > 0) {
+				resize(width(), height);
+			}
 		}, _inner->lifetime());
-		resize(width(), resizeGetHeight(width()));
+		if (width() > 0) {
+			resize(width(), resizeGetHeight(width()));
+		}
 		update();
 		return;
 	}
@@ -400,11 +512,6 @@ void FeedCardWidget::build() {
 						: tr::lng_agent_card_text_placeholder())),
 				addGap(gap));
 			_field->setText(_payload.text);
-			_field->heightChanges(
-			) | rpl::on_next([=] {
-				resize(width(), resizeGetHeight(width()));
-				refreshButtons();
-			}, _field->lifetime());
 			_field->changes(
 			) | rpl::on_next([=] {
 				_payload.text = _field->getLastText();
@@ -419,6 +526,7 @@ void FeedCardWidget::build() {
 					_payload.option,
 					st::agentFeedCardCheckbox),
 				addGap(gap));
+			_option->setAllowTextLines(2);
 			_option->checkedChanges(
 			) | rpl::on_next([=](bool checked) {
 				_payload.option = checked;
@@ -432,11 +540,15 @@ void FeedCardWidget::build() {
 					_payload.allowForTurn,
 					st::agentFeedCardCheckbox),
 				addGap(gap));
+			_allow->setAllowTextLines(2);
 			_allow->checkedChanges(
 			) | rpl::on_next([=](bool checked) {
 				_payload.allowForTurn = checked;
 			}, _allow->lifetime());
 		}
+		_buttonsRow = _inner->add(
+			object_ptr<CardButtonsRow>(_inner),
+			addGap(gap));
 		const auto executeText = [&] {
 			if (_card.kind == CardKind::Send) {
 				return (hasTargets() && _card.targets.size() > 1)
@@ -452,38 +564,41 @@ void FeedCardWidget::build() {
 					checkedCount())
 				: tr::lng_agent_card_confirm(tr::now);
 		};
-		_execute = _inner->add(
+		_execute = _buttonsRow->add(
 			object_ptr<Ui::RoundButton>(
-				_inner,
+				_buttonsRow,
 				rpl::single(executeText()),
-				st::agentFeedCardButton),
-			addGap(gap));
+				st::agentFeedCardButtonMain));
 		_execute->setClickedCallback([=] {
 			decide(CardAction::Execute);
 		});
 		if (hasAlternate()) {
-			_alternate = _inner->add(
+			_alternate = _buttonsRow->add(
 				object_ptr<Ui::RoundButton>(
-					_inner,
+					_buttonsRow,
 					(_card.kind == CardKind::Send
 						? tr::lng_agent_card_to_draft()
 						: tr::lng_agent_card_append()),
-					st::agentFeedCardButton),
-				addGap(st::agentFeedCardButtonsGap));
+					st::agentFeedCardButton));
 			_alternate->setClickedCallback([=] {
 				decide(CardAction::Alternate);
 			});
 		}
-		_inner->add(
+		_buttonsRow->add(
 			object_ptr<Ui::RoundButton>(
-				_inner,
-				tr::lng_agent_card_decline(),
-				st::agentFeedCardButtonDanger),
-			addGap(st::agentFeedCardButtonsGap)
+				_buttonsRow,
+				(_card.kind == CardKind::Draft
+					? tr::lng_agent_card_cancel()
+					: tr::lng_agent_card_decline()),
+				st::agentFeedCardButtonDanger)
 		)->setClickedCallback([=] {
 			decide(CardAction::Decline);
 		});
 		refreshButtons();
+	} else if (running()) {
+		_inner->add(
+			object_ptr<RunningRow>(_inner),
+			addGap(gap));
 	} else {
 		const auto count = int(_card.targets.size());
 		auto failed = 0;
@@ -516,6 +631,30 @@ void FeedCardWidget::build() {
 				return QString();
 			}
 		}();
+		if (!_card.text.isEmpty()
+			&& (_card.kind == CardKind::Send
+				|| _card.kind == CardKind::Draft)) {
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					_card.text,
+					st::agentFeedTextLabel),
+				addGap(gap));
+		} else if (_card.kind == CardKind::Edit
+			&& !_card.text.isEmpty()) {
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					tr::lng_agent_card_new_text(tr::now),
+					st::agentFeedCardDetailLabel),
+				addGap(gap));
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					_card.text,
+					st::agentFeedTextLabel),
+				addGap(0));
+		}
 		_inner->add(
 			object_ptr<Ui::FlatLabel>(
 				_inner,
@@ -542,14 +681,13 @@ void FeedCardWidget::build() {
 	}
 	_inner->heightValue(
 	) | rpl::on_next([=](int height) {
-		resize(width(), height);
+		if (width() > 0) {
+			resize(width(), height);
+		}
 	}, _inner->lifetime());
-	if (running()) {
-		_spinner.start();
-	} else {
-		_spinner.stop(anim::type::instant);
+	if (width() > 0) {
+		resize(width(), resizeGetHeight(width()));
 	}
-	resize(width(), resizeGetHeight(width()));
 	update();
 }
 
@@ -601,10 +739,11 @@ void FeedCardWidget::decide(CardAction action) {
 struct ParsedAction {
 	QStringList done;
 	QStringList failed;
+	QStringList failedTitles;
 	QString folder;
 
 	[[nodiscard]] QString chats() const {
-		return done.join(u", "_q);
+		return (done.isEmpty() ? failedTitles : done).join(u", "_q);
 	}
 };
 
@@ -632,6 +771,9 @@ struct ParsedAction {
 		const auto entry = value.toObject();
 		const auto title = entry.value("title").toString();
 		const auto error = entry.value("error").toString();
+		if (!title.isEmpty()) {
+			parsed.failedTitles.push_back(title);
+		}
 		if (!error.isEmpty()) {
 			parsed.failed.push_back(tr::lng_agent_action_failed(
 				tr::now,
@@ -699,7 +841,7 @@ class FeedActionsWidget::ActionRow final : public RpWidget {
 public:
 	ActionRow(QWidget *parent, const FeedTool &tool);
 
-	void showUndone(bool undone);
+	void refreshUndo(bool undoable, bool undone);
 	[[nodiscard]] rpl::producer<> undoClicks() const;
 
 protected:
@@ -750,8 +892,10 @@ FeedActionsWidget::ActionRow::ActionRow(
 	_undone->hide();
 }
 
-void FeedActionsWidget::ActionRow::showUndone(bool undone) {
-	_undo->setVisible(!undone);
+void FeedActionsWidget::ActionRow::refreshUndo(
+		bool undoable,
+		bool undone) {
+	_undo->setVisible(undoable && !undone);
 	_undone->setVisible(undone);
 }
 
@@ -802,8 +946,6 @@ bool FeedActionsWidget::undoable(int index) const {
 	const auto &result = _actions.actions[index].result;
 	return result && !result->error
 		&& _context.delegate.canUndo(
-			_actions.actions[index].call.id)
-		&& !_context.delegate.isUndone(
 			_actions.actions[index].call.id);
 }
 
@@ -824,7 +966,9 @@ void FeedActionsWidget::build() {
 			undoOne(i);
 		}, row->lifetime());
 		_rows.push_back(row);
-		if (undoable(i)) {
+		if (undoable(i)
+			&& !_context.delegate.isUndone(
+				_actions.actions[i].call.id)) {
 			++undoableCount;
 		}
 	}
@@ -849,7 +993,9 @@ void FeedActionsWidget::build() {
 int FeedActionsWidget::undoableCount() const {
 	auto result = 0;
 	for (auto i = 0; i != int(_actions.actions.size()); ++i) {
-		if (undoable(i)) {
+		if (undoable(i)
+			&& !_context.delegate.isUndone(
+				_actions.actions[i].call.id)) {
 			++result;
 		}
 	}
@@ -858,8 +1004,10 @@ int FeedActionsWidget::undoableCount() const {
 
 void FeedActionsWidget::refreshRows() {
 	for (auto i = 0; i != int(_rows.size()); ++i) {
-		_rows[i]->showUndone(!undoable(i)
-			&& _context.delegate.isUndone(_actions.actions[i].call.id));
+		const auto id = _actions.actions[i].call.id;
+		_rows[i]->refreshUndo(
+			undoable(i),
+			_context.delegate.isUndone(id));
 	}
 	if (_undoAll) {
 		_undoAll->setVisible(undoableCount() >= 2);

@@ -41,6 +41,8 @@ private:
 		bool allowForTurn = false;
 	};
 	class CardSpinner;
+	class CardButtonsRow;
+	class RunningRow;
 
 	void capturePayload();
 	void build();
@@ -64,7 +66,7 @@ private:
 	::Ui::Checkbox *_allow = nullptr;
 	::Ui::RoundButton *_execute = nullptr;
 	::Ui::RoundButton *_alternate = nullptr;
-	::Ui::InfiniteRadialAnimation _spinner;
+	CardButtonsRow *_buttonsRow = nullptr;
 
 };
 

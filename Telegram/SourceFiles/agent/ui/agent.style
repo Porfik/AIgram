@@ -195,6 +195,12 @@ agentFeedCardButton: RoundButton(defaultLightButton) {
 	textBgOver: windowBgOver;
 	width: -24px;
 }
+agentFeedCardButtonMain: RoundButton(defaultActiveButton) {
+	height: 30px;
+	radius: 15px;
+	textTop: 6px;
+	width: -24px;
+}
 agentFeedCardButtonDanger: RoundButton(agentFeedCardButton) {
 	textFg: boxTextFgError;
 	textFgOver: boxTextFgError;
