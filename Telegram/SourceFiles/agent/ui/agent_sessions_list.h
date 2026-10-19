@@ -10,8 +10,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_scope.h"
 #include "base/unique_qptr.h"
 #include "ui/rp_widget.h"
+#include "ui/userpic_view.h"
 
 #include <optional>
+
+class Painter;
+class PeerData;
 
 namespace Ui {
 class PopupMenu;
@@ -53,11 +57,18 @@ private:
 	void removeSession(const QString &id);
 	[[nodiscard]] QString titleOf(const QString &id) const;
 
+	struct Userpic {
+		not_null<PeerData*> peer;
+		PeerUserpicView view;
+	};
 	struct Row {
 		QString id;
 		QString title;
 		QString date;
+		std::vector<Userpic> userpics;
 	};
+	void paintUserpicStack(Painter &p, Row &row, int top);
+	[[nodiscard]] int rowTextLeft() const;
 	[[nodiscard]] std::optional<int> findRowIndex(int y) const;
 
 	const not_null<Window::SessionController*> _controller;
@@ -67,6 +78,7 @@ private:
 	std::optional<int> _selected;
 	rpl::event_stream<QString> _openSessionRequests;
 	base::unique_qptr<PopupMenu> _menu;
+	rpl::lifetime _userpicLifetime;
 
 };
 

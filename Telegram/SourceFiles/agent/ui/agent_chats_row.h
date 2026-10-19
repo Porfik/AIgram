@@ -24,4 +24,11 @@ void SetupChatsListRow(
 	not_null<::Ui::VerticalLayout*> list,
 	rpl::producer<bool> shown);
 
+// Whether the general agent screen is open in this window right now.
+void SetGeneralAgentShown(
+	not_null<Window::SessionController*> controller,
+	bool shown);
+[[nodiscard]] rpl::producer<bool> GeneralAgentShownValue(
+	not_null<Window::SessionController*> controller);
+
 } // namespace Agent::Ui

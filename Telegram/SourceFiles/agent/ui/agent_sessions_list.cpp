@@ -9,7 +9,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/core/agent_record.h"
+#include "data/data_changes.h"
+#include "data/data_peer.h"
+#include "data/data_session.h"
 #include "lang/lang_keys.h"
+#include "main/main_session.h"
 #include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
@@ -19,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
+#include "styles/style_agent_general.h"
 #include "styles/style_agent_panel.h"
 #include "styles/style_layers.h"
 #include "styles/style_menu_icons.h"
@@ -51,10 +56,12 @@ rpl::producer<QString> SessionsList::openSessionRequests() const {
 void SessionsList::rebuild() {
 	_rows.clear();
 	_selected.reset();
+	_userpicLifetime.destroy();
 	const auto list = _manager->list(_scope);
 	_rows.reserve(list.size());
+	constexpr auto kMaxUserpics = 3;
 	for (const auto &info : list) {
-		_rows.push_back({
+		auto &row = _rows.emplace_back(Row{
 			.id = info.id,
 			.title = !info.title.isEmpty()
 				? info.title
@@ -62,9 +69,66 @@ void SessionsList::rebuild() {
 			.date = FormatDateTime(
 				QDateTime::fromSecsSinceEpoch(info.updated)),
 		});
+		if (_scope.kind != ScopeKind::Account) {
+			continue;
+		}
+		for (const auto key : info.touched) {
+			if (row.userpics.size() == kMaxUserpics) {
+				break;
+			}
+			const auto peer = _manager->session().data().peerLoaded(
+				PeerId(key));
+			if (!peer) {
+				continue;
+			}
+			peer->loadUserpic();
+			row.userpics.push_back({ peer, {} });
+		}
+		for (const auto &userpic : row.userpics) {
+			_manager->session().changes().peerUpdates(
+				userpic.peer,
+				Data::PeerUpdate::Flag::Photo
+			) | rpl::on_next([=] {
+				update();
+			}, _userpicLifetime);
+		}
 	}
 	resizeToWidth(width());
 	update();
+}
+
+int SessionsList::rowTextLeft() const {
+	const auto padding = st::agentSessionListRowPadding;
+	if (_scope.kind != ScopeKind::Account) {
+		return padding.left();
+	}
+	return padding.left()
+		+ st::agentSessionListUserpicSize
+		+ st::agentSessionListUserpicGap;
+}
+
+void SessionsList::paintUserpicStack(Painter &p, Row &row, int top) {
+	const auto size = st::agentSessionListUserpicSize;
+	const auto padding = st::agentSessionListRowPadding;
+	const auto x = padding.left();
+	const auto y = top + (st::agentSessionListRowHeight - size) / 2;
+	if (row.userpics.empty()) {
+		p.setPen(Qt::NoPen);
+		p.setBrush(st::windowBgActive);
+		p.drawEllipse(x, y, size, size);
+		st::agentChatsRowIcon.paint(
+			p,
+			QPoint(
+				x + (size - st::agentChatsRowIcon.width()) / 2,
+				y + (size - st::agentChatsRowIcon.height()) / 2),
+			x + size);
+		return;
+	}
+	auto left = x;
+	for (auto &userpic : row.userpics) {
+		userpic.peer->paintUserpic(p, userpic.view, left, y, size, true);
+		left += size - st::agentSessionListUserpicShift;
+	}
 }
 
 int SessionsList::resizeGetHeight(int newWidth) {
@@ -74,7 +138,7 @@ int SessionsList::resizeGetHeight(int newWidth) {
 }
 
 void SessionsList::paintEvent(QPaintEvent *e) {
-	auto p = QPainter(this);
+	Painter p(this);
 	p.fillRect(rect(), st::windowBg);
 	if (_rows.empty()) {
 		p.setPen(st::windowSubTextFg);
@@ -90,18 +154,19 @@ void SessionsList::paintEvent(QPaintEvent *e) {
 	}
 	const auto rowHeight = st::agentSessionListRowHeight;
 	const auto padding = st::agentSessionListRowPadding;
-	const auto textLeft = padding.left();
-	const auto textWidth = width()
-		- padding.left()
-		- padding.right();
+	const auto textLeft = rowTextLeft();
+	const auto textWidth = width() - textLeft - padding.right();
 	const auto titleFont = st::agentSessionListTitleStyle.font;
 	const auto dateFont = st::agentSessionListDateStyle.font;
 	const auto dateTop = padding.top() + titleFont->height;
 	auto top = 0;
 	auto index = 0;
-	for (const auto &row : _rows) {
+	for (auto &row : _rows) {
 		if (index == _selected) {
 			p.fillRect(0, top, width(), rowHeight, st::windowBgOver);
+		}
+		if (_scope.kind == ScopeKind::Account) {
+			paintUserpicStack(p, row, top);
 		}
 		p.setPen(st::windowFg);
 		p.setFont(titleFont);

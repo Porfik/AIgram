@@ -7,5 +7,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 using "ui/basic.style";
 using "agent/ui/agent.style";
+using "agent/ui/agent_panel.style";
 
 agentGeneralContentMaxWidth: 720px;
+
+agentSessionListUserpicSize: 36px;
+agentSessionListUserpicGap: 12px;
+agentSessionListUserpicShift: 12px;
+
+agentChatsRowIcon: icon {{ "menu/ai_prompt", windowFgActive }};
