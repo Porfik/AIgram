@@ -35,10 +35,20 @@ using namespace ::Ui;
 
 class ToggleRow;
 
+struct FeedDelegate {
+	Fn<void(const QString &toolUseId, CardDecision decision)> decideCard;
+	Fn<bool(const QString &toolUseId)> canUndo;
+	Fn<bool(const QString &toolUseId)> isUndone;
+	Fn<void(const std::vector<QString> &toolUseIds)> undo;
+	Fn<void(const QString &text)> startHandoff;
+
+};
+
 struct FeedContext {
 	not_null<Window::SessionController*> controller;
 	std::shared_ptr<Iv::Markdown::MathRenderer> renderer;
 	Fn<void(int pixels)> scrollBy;
+	FeedDelegate delegate;
 
 };
 
