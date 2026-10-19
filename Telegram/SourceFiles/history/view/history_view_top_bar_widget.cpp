@@ -169,7 +169,8 @@ TopBarWidget::TopBarWidget(
 			Agent::Ui::TogglePanel(_controller, peer);
 		}
 	});
-	_controller->session().agent().enabledValue(
+	Agent::Ui::PanelAvailabilityChanges(
+		&_controller->session()
 	) | rpl::on_next([=] {
 		updateControlsVisibility();
 	}, lifetime());

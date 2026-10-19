@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_panel.h"
 
+#include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
 #include "agent/ui/agent_panel_widget.h"
 #include "core/application.h"
@@ -31,17 +32,24 @@ std::shared_ptr<Info::ContentMemento> MakePanelMemento(
 }
 
 bool PanelAvailable(not_null<PeerData*> peer) {
-	return peer->session().agent().enabled();
+	const auto &agent = peer->session().agent();
+	return agent.enabled()
+		&& !agent.exclusions().excluded(peer->id.value);
 }
 
 rpl::producer<> PanelAvailabilityChanges(
 		not_null<Main::Session*> session) {
-	return session->agent().enabledValue() | rpl::to_empty;
+	return rpl::merge(
+		session->agent().enabledValue() | rpl::to_empty,
+		session->agent().exclusions().changes());
 }
 
 void TogglePanel(
 		not_null<Window::SessionController*> controller,
 		not_null<PeerData*> peer) {
+	if (!PanelAvailable(peer)) {
+		return;
+	}
 	auto memento = std::make_shared<Info::Memento>(
 		peer,
 		Info::Section(Info::Section::Type::Agent));
