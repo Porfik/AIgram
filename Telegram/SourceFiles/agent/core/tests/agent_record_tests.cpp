@@ -119,8 +119,13 @@ namespace {
 		return u"summary differs"_q;
 	} else if (a.info.usage.inputTokens != b.info.usage.inputTokens
 		|| a.info.usage.outputTokens != b.info.usage.outputTokens
-		|| a.info.usage.cachedInputTokens != b.info.usage.cachedInputTokens) {
+		|| a.info.usage.cachedInputTokens
+			!= b.info.usage.cachedInputTokens) {
 		return u"usage differs"_q;
+	} else if (a.info.usage.cost != b.info.usage.cost) {
+		return u"usage cost differs"_q;
+	} else if (a.info.usage.hasCost != b.info.usage.hasCost) {
+		return u"usage hasCost differs"_q;
 	} else if (a.tainted != b.tainted) {
 		return u"tainted differs"_q;
 	} else if (a.messages.size() != b.messages.size()) {
@@ -151,7 +156,12 @@ namespace {
 		|| a.titleFinal != b.titleFinal
 		|| a.created != b.created
 		|| a.updated != b.updated
-		|| a.touched != b.touched) {
+		|| a.touched != b.touched
+		|| a.usage.inputTokens != b.usage.inputTokens
+		|| a.usage.outputTokens != b.usage.outputTokens
+		|| a.usage.cachedInputTokens != b.usage.cachedInputTokens
+		|| a.usage.cost != b.usage.cost
+		|| a.usage.hasCost != b.usage.hasCost) {
 		return u"info differs"_q;
 	}
 	return QString();
@@ -315,7 +325,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(3);
+				stream << qint32(4);
 				WriteHandInfo(stream);
 			});
 			if (DeserializeSession(bytes)) {
@@ -464,6 +474,86 @@ std::vector<Check> RecordChecks() {
 			}
 			return QString();
 		} },
+		{ u"record_round_trip_with_cost"_q, [] {
+			auto record = SampleRecord();
+			record.info.usage = Usage{ 100, 200, 30, 1.25, true };
+			const auto bytes = SerializeSession(record);
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"deserialization failed"_q;
+			}
+			const auto diff = RecordsEqual(record, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			}
+			if (SerializeSession(*restored) != bytes) {
+				return u"re-serialization is not byte-identical"_q;
+			}
+			return QString();
+		} },
+		{ u"record_loads_version2"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(2);
+				WriteHandInfo(stream);
+				stream << qint32(1);
+				stream << qint32(0) << qint32(1);
+				WriteHandTextBlock(stream);
+				stream << qint32(0) << QString();
+				stream << qint32(10) << qint32(20) << qint32(5);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+			});
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 2 failed to load"_q;
+			}
+			if (restored->info.usage.inputTokens != 10
+				|| restored->info.usage.outputTokens != 20
+				|| restored->info.usage.cachedInputTokens != 5) {
+				return u"version 2 usage lost"_q;
+			} else if (restored->info.usage.hasCost
+				|| restored->info.usage.cost != 0.) {
+				return u"version 2 usage must have no cost"_q;
+			}
+			return QString();
+		} },
+		{ u"index_round_trip_with_usage"_q, [] {
+			auto info = SessionInfo();
+			info.id = u"4444444444444444"_q;
+			info.scope = Scope::Account();
+			info.title = u"With usage"_q;
+			info.usage = Usage{ 10, 20, 5, 0.5, true };
+			const auto bytes = SerializeIndex({ info });
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"deserialization failed"_q;
+			}
+			const auto diff = InfosEqual(info, (*restored)[0]);
+			if (!diff.isEmpty()) {
+				return diff;
+			}
+			if (SerializeIndex(*restored) != bytes) {
+				return u"re-serialization is not byte-identical"_q;
+			}
+			return QString();
+		} },
+		{ u"index_loads_version1"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(1) << qint32(1);
+				WriteHandInfo(stream);
+			});
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"version 1 failed to load"_q;
+			}
+			if ((*restored)[0].usage.hasCost
+				|| (*restored)[0].usage.inputTokens != 0) {
+				return u"version 1 usage must stay zero"_q;
+			}
+			return QString();
+		} },
 		{ u"index_round_trip"_q, [] {
 			auto first = SessionInfo();
 			first.id = u"1111111111111111"_q;
@@ -512,7 +602,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"index_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(2) << qint32(0);
+				stream << qint32(3) << qint32(0);
 			});
 			if (DeserializeIndex(bytes)) {
 				return u"expected nullopt for a future version"_q;

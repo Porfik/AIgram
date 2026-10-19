@@ -84,6 +84,50 @@ std::vector<Check> PromptsChecks() {
 			}
 			return QString();
 		} },
+		{ u"prompts_memory_paragraph_chat"_q, [] {
+			const auto prompt = SystemPrompt(PromptContext{
+				.scope = Scope::Chat(7),
+			});
+			if (!prompt.contains(u"memory for this chat"_q)) {
+				return u"chat prompt misses its memory: %1"_q.arg(prompt);
+			} else if (!prompt.contains(u"memory_add"_q)
+				|| !prompt.contains(u"memory_update"_q)
+				|| !prompt.contains(u"memory_remove"_q)) {
+				return u"chat prompt misses the memory tools"_q;
+			} else if (prompt.contains(u"read_chat_memory"_q)) {
+				return u"chat prompt must not mention read_chat_memory"_q;
+			}
+			return QString();
+		} },
+		{ u"prompts_memory_paragraph_account"_q, [] {
+			const auto prompt = SystemPrompt(PromptContext{
+				.scope = Scope::Account(),
+			});
+			if (!prompt.contains(u"your own memory"_q)) {
+				return u"account prompt misses its memory: %1"_q.arg(prompt);
+			} else if (!prompt.contains(u"read_chat_memory"_q)) {
+				return u"account prompt misses read_chat_memory"_q;
+			}
+			return QString();
+		} },
+		{ u"prompts_memory_block_after_paragraph"_q, [] {
+			const auto prompt = SystemPrompt(PromptContext{
+				.scope = Scope::Chat(7),
+				.memory = u"- [m1] Likes tea."_q,
+			});
+			const auto position = prompt.indexOf(u"Memory:\n"_q);
+			if (position < 0) {
+				return u"memory block missing"_q;
+			}
+			const auto paragraph = prompt.indexOf(u"memory for this chat"_q);
+			if (paragraph < 0 || position < paragraph) {
+				return u"the memory block must follow the memory paragraph"_q;
+			} else if (!prompt.contains(
+					u"Memory:\n- [m1] Likes tea."_q)) {
+				return u"the memory text is mangled: %1"_q.arg(prompt);
+			}
+			return QString();
+		} },
 		{ u"prompts_deterministic"_q, [] {
 			const auto context = PromptContext{
 				.scope = Scope::Chat(7),

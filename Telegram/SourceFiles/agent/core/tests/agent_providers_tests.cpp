@@ -60,6 +60,11 @@ namespace {
 	state.activeId = u"локальный"_q;
 	state.instructions = u"Отвечай по-русски."_q;
 	state.showEntryPoints = false;
+	state.showSpending = true;
+	state.list[0].priceInput = 0.5;
+	state.list[0].priceOutput = 1.5;
+	state.list[0].priceCached = 0.05;
+	state.list[1].priceInput = 0.1;
 	return state;
 }
 
@@ -83,12 +88,17 @@ namespace {
 			|| x.apiKey != y.apiKey
 			|| x.model != y.model
 			|| x.contextWindow != y.contextWindow
-			|| x.vision != y.vision) {
+			|| x.vision != y.vision
+			|| x.priceInput != y.priceInput
+			|| x.priceOutput != y.priceOutput
+			|| x.priceCached != y.priceCached) {
 			return u"provider "_q + QString::number(i) + u" differs"_q;
 		}
 	}
 	if (a.showEntryPoints != b.showEntryPoints) {
 		return u"showEntryPoints differs"_q;
+	} else if (a.showSpending != b.showSpending) {
+		return u"showSpending differs"_q;
 	}
 	return QString();
 }
@@ -124,7 +134,7 @@ std::vector<Check> ProvidersChecks() {
 					stream << qint32(0) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
-					stream << qint32(3) << qint32(0) << QString() << QString();
+					stream << qint32(4) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream << QString() << qint32(0) << QString() << QString();
@@ -239,6 +249,39 @@ std::vector<Check> ProvidersChecks() {
 				|| restored->list[0].id != u"old"_q
 				|| restored->activeId != u"old"_q) {
 				return u"unexpected restored state"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_second_version_loads"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(2)
+					<< qint32(1)
+					<< u"old"_q
+					<< qint32(0)
+					<< u"Название"_q
+					<< u"https://example.com/v1"_q
+					<< u"key"_q
+					<< u"model"_q
+					<< qint32(8192)
+					<< qint32(1)
+					<< u"old"_q
+					<< QString()
+					<< qint32(1);
+			});
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"version 2 failed to deserialize"_q;
+			}
+			const auto &provider = restored->list[0];
+			if (provider.priceInput != 0.
+				|| provider.priceOutput != 0.
+				|| provider.priceCached != 0.) {
+				return u"version 2 must load zero prices"_q;
+			} else if (!restored->showEntryPoints) {
+				return u"version 2 lost showEntryPoints"_q;
+			} else if (restored->showSpending) {
+				return u"version 2 must load showSpending == false"_q;
 			}
 			return QString();
 		} },

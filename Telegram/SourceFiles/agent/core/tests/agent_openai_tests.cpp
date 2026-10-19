@@ -128,6 +128,17 @@ namespace {
 			.arg(cached);
 }
 
+[[nodiscard]] QString CheckCost(const Response &response, double cost) {
+	if (response.usage.hasCost == (cost != 0.)
+		&& qFuzzyCompare(response.usage.cost, cost)) {
+		return QString();
+	}
+	return u"cost: got %1 (hasCost %2), expected %3"_q
+		.arg(response.usage.cost)
+		.arg(response.usage.hasCost ? u"yes"_q : u"no"_q)
+		.arg(cost);
+}
+
 [[nodiscard]] QString CheckBlocks(
 		const Response &response,
 		const std::vector<Block> &expected) {
@@ -248,7 +259,11 @@ namespace {
 					if (!failure.isEmpty()) {
 						return failure;
 					}
-					return CheckUsage(response, 21, 49, 0);
+					failure = CheckUsage(response, 21, 49, 0);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					return CheckCost(response, 0.00001634535);
 				});
 		} },
 		{ u"openai_text_deltas_merge"_q, [kReasoning] {
@@ -473,6 +488,40 @@ namespace {
 						return failure;
 					}
 					return CheckUsage(response, 10, 20, 4);
+				});
+		} },
+		{ u"openai_text_cost"_q, [] {
+			return CheckFixtureResponse(u"openai-text.sse"_q,
+				[](const Response &response) {
+					auto failure = CheckNoError(response);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					return CheckCost(response, 0.00001634535);
+				});
+		} },
+		{ u"openai_length_finish_no_cost"_q, [] {
+			return CheckFixtureResponse(u"openai-length-finish.sse"_q,
+				[](const Response &response) {
+					auto failure = CheckNoError(response);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					return CheckCost(response, 0.);
+				});
+		} },
+		{ u"openai_byok_cost"_q, [] {
+			return CheckFixtureResponse(u"openai-byok.sse"_q,
+				[](const Response &response) {
+					auto failure = CheckNoError(response);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					failure = CheckUsage(response, 100, 50, 0);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					return CheckCost(response, 0.00007);
 				});
 		} },
 	};

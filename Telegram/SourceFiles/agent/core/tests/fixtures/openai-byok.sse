@@ -1,0 +1,5 @@
+data: {"id":"gen-1792338896-By0kT3st00001","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Test","choices":[{"index":0,"delta":{"content":"Hello","role":"assistant"},"finish_reason":null,"native_finish_reason":null}]}
+
+data: {"id":"gen-1792338896-By0kT3st00001","object":"chat.completion.chunk","created":1792338896,"model":"z-ai/glm-5.3-flash","provider":"Test","choices":[{"index":0,"delta":{},"finish_reason":"stop","native_finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150,"cost":0.00002,"is_byok":true,"cost_details":{"upstream_inference_cost":0.00005}}}
+
+data: [DONE]
