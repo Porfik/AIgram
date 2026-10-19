@@ -83,8 +83,10 @@ protected:
 private:
 	class ActionRow;
 
+	[[nodiscard]] bool undoable(int index) const;
+	[[nodiscard]] int undoableCount() const;
 	void build();
-	void refreshUndoAll();
+	void refreshRows();
 	void undoOne(int index);
 	void undoAll();
 
@@ -92,7 +94,7 @@ private:
 	FeedActions _actions;
 	object_ptr<VerticalLayout> _inner = { nullptr };
 	std::vector<ActionRow*> _rows;
-	::Ui::FlatLabel *_undoAll = nullptr;
+	::Ui::LinkButton *_undoAll = nullptr;
 
 };
 

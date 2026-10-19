@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_feed_cards.h"
 
+#include "agent/core/agent_prompts.h"
 #include "agent/ui/agent_session_view.h"
 #include "lang/lang_keys.h"
 #include "ui/painter.h"
@@ -595,6 +596,306 @@ void FeedCardWidget::decide(CardAction action) {
 			weak->_context.delegate.decideCard(id, decision);
 		}
 	});
+}
+
+struct ParsedAction {
+	QStringList done;
+	QStringList failed;
+	QString folder;
+
+	[[nodiscard]] QString chats() const {
+		return done.join(u", "_q);
+	}
+};
+
+[[nodiscard]] ParsedAction ParseActionResult(
+		const std::optional<ToolResultBlock> &result) {
+	auto parsed = ParsedAction();
+	if (!result || result->error) {
+		return parsed;
+	}
+	const auto document = QJsonDocument::fromJson(
+		UnwrapUntrusted(result->content).toUtf8());
+	if (!document.isObject()) {
+		return parsed;
+	}
+	const auto object = document.object();
+	parsed.folder = object.value("folder").toObject()
+		.value("title").toString();
+	for (const auto value : object.value("done").toArray()) {
+		const auto title = value.toObject().value("title").toString();
+		if (!title.isEmpty()) {
+			parsed.done.push_back(title);
+		}
+	}
+	for (const auto value : object.value("failed").toArray()) {
+		const auto entry = value.toObject();
+		const auto title = entry.value("title").toString();
+		const auto error = entry.value("error").toString();
+		if (!error.isEmpty()) {
+			parsed.failed.push_back(tr::lng_agent_action_failed(
+				tr::now,
+				lt_error,
+				title.isEmpty() ? error : title + u": "_q + error));
+		} else if (!title.isEmpty()) {
+			parsed.failed.push_back(title);
+		}
+	}
+	return parsed;
+}
+
+[[nodiscard]] QString ActionMainText(
+		const QString &name,
+		const QJsonObject &input,
+		const QString &chats,
+		const QString &folder) {
+	if (name == u"mark_read"_q) {
+		return tr::lng_agent_action_mark_read(tr::now, lt_chats, chats);
+	} else if (name == u"set_mute"_q) {
+		return input.value("muted").toBool(true)
+			? tr::lng_agent_action_mute(tr::now, lt_chats, chats)
+			: tr::lng_agent_action_unmute(tr::now, lt_chats, chats);
+	} else if (name == u"set_archived"_q) {
+		return input.value("archived").toBool(true)
+			? tr::lng_agent_action_archive(tr::now, lt_chats, chats)
+			: tr::lng_agent_action_unarchive(tr::now, lt_chats, chats);
+	} else if (name == u"set_pinned"_q) {
+		return input.value("pinned").toBool(true)
+			? tr::lng_agent_action_pin_chat(tr::now, lt_chats, chats)
+			: tr::lng_agent_action_unpin_chat(tr::now, lt_chats, chats);
+	} else if (name == u"set_draft"_q) {
+		return tr::lng_agent_action_draft(tr::now, lt_chats, chats);
+	} else if (name == u"create_folder"_q) {
+		return tr::lng_agent_action_folder_create(
+			tr::now,
+			lt_folder,
+			folder);
+	} else if (name == u"rename_folder"_q) {
+		return tr::lng_agent_action_folder_rename(
+			tr::now,
+			lt_folder,
+			folder);
+	} else if (name == u"set_folder_chats"_q) {
+		return input.value("included").toBool(true)
+			? tr::lng_agent_action_folder_add(
+				tr::now,
+				lt_chats,
+				chats,
+				lt_folder,
+				folder)
+			: tr::lng_agent_action_folder_remove(
+				tr::now,
+				lt_chats,
+				chats,
+				lt_folder,
+				folder);
+	} else if (name == u"reorder_folders"_q) {
+		return tr::lng_agent_action_folder_order(tr::now);
+	}
+	return name;
+}
+
+class FeedActionsWidget::ActionRow final : public RpWidget {
+public:
+	ActionRow(QWidget *parent, const FeedTool &tool);
+
+	void showUndone(bool undone);
+	[[nodiscard]] rpl::producer<> undoClicks() const;
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+
+private:
+	object_ptr<Ui::FlatLabel> _mark = { nullptr };
+	object_ptr<Ui::FlatLabel> _text;
+	object_ptr<Ui::FlatLabel> _failedText;
+	object_ptr<Ui::LinkButton> _undo;
+	object_ptr<Ui::FlatLabel> _undone;
+	rpl::event_stream<> _undoClicks;
+
+};
+
+FeedActionsWidget::ActionRow::ActionRow(
+	QWidget *parent,
+	const FeedTool &tool)
+: RpWidget(parent)
+, _text(this, QString(), st::agentFeedTextLabel)
+, _failedText(this, QString(), st::agentFeedActionsMarkBad)
+, _undo(this, tr::lng_agent_undo(tr::now))
+, _undone(
+	this,
+	tr::lng_agent_undone(tr::now),
+	st::agentFeedCardDetailLabel) {
+	const auto parsed = ParseActionResult(tool.result);
+	_mark.create(
+		this,
+		QString(QChar(parsed.failed.isEmpty() ? 0x2713 : 0x2717)),
+		parsed.failed.isEmpty()
+			? st::agentFeedActionsMarkGood
+			: st::agentFeedActionsMarkBad);
+	_text->setText(ActionMainText(
+		tool.call.name,
+		tool.call.input,
+		parsed.chats(),
+		parsed.folder));
+	if (!parsed.failed.isEmpty()) {
+		_failedText->setText(parsed.failed.join(u"\n"_q));
+	} else {
+		_failedText->hide();
+	}
+	_undo->setClickedCallback([=] {
+		_undoClicks.fire({});
+	});
+	_undo->show();
+	_undone->hide();
+}
+
+void FeedActionsWidget::ActionRow::showUndone(bool undone) {
+	_undo->setVisible(!undone);
+	_undone->setVisible(undone);
+}
+
+rpl::producer<> FeedActionsWidget::ActionRow::undoClicks() const {
+	return _undoClicks.events();
+}
+
+int FeedActionsWidget::ActionRow::resizeGetHeight(int newWidth) {
+	const auto gap = st::agentFeedActionsRowGap;
+	_mark->resizeToNaturalWidth(newWidth);
+	const auto left = _mark->width() + gap;
+	const auto undoWidth = _undo->width();
+	_text->resizeToWidth(std::max(newWidth - left - undoWidth - gap, 1));
+	_text->moveToLeft(left, 0, newWidth);
+	_mark->moveToLeft(0, 0, newWidth);
+	_undo->moveToRight(0, 0, newWidth);
+	_undone->moveToRight(0, 0, newWidth);
+	auto height = std::max(
+		_text->height(),
+		std::max(_mark->height(), _undo->height()));
+	if (!_failedText->isHidden()) {
+		_failedText->resizeToWidth(std::max(newWidth - left, 1));
+		_failedText->moveToLeft(left, height + gap, newWidth);
+		height += gap + _failedText->height();
+	}
+	return height;
+}
+
+FeedActionsWidget::FeedActionsWidget(
+	QWidget *parent,
+	FeedContext context,
+	const FeedActions &data)
+: FeedItemWidget(parent)
+, _context(std::move(context))
+, _actions(data) {
+	build();
+}
+
+void FeedActionsWidget::updatePayload(const FeedItem &item) {
+	const auto actions = std::get_if<FeedActions>(&item);
+	Expects(actions != nullptr);
+
+	_actions = *actions;
+	build();
+}
+
+bool FeedActionsWidget::undoable(int index) const {
+	return !_actions.actions[index].result->error
+		&& _context.delegate.canUndo(
+			_actions.actions[index].call.id)
+		&& !_context.delegate.isUndone(
+			_actions.actions[index].call.id);
+}
+
+void FeedActionsWidget::build() {
+	_inner.destroy();
+	_rows.clear();
+	_undoAll = nullptr;
+	_inner.create(this);
+	auto undoableCount = 0;
+	for (auto i = 0; i != int(_actions.actions.size()); ++i) {
+		const auto row = _inner->add(
+			object_ptr<ActionRow>(
+				_inner,
+				_actions.actions[i]),
+			style::margins(0, i ? st::agentFeedActionsRowGap : 0, 0, 0));
+		row->undoClicks(
+		) | rpl::on_next([=] {
+			undoOne(i);
+		}, row->lifetime());
+		_rows.push_back(row);
+		if (undoable(i)) {
+			++undoableCount;
+		}
+	}
+	if (undoableCount >= 2) {
+		_undoAll = _inner->add(
+			object_ptr<Ui::LinkButton>(
+				_inner,
+				tr::lng_agent_undo_all(tr::now)),
+			st::agentFeedActionsUndoAllMargin);
+		_undoAll->setClickedCallback([=] {
+			undoAll();
+		});
+	}
+	_inner->heightValue(
+	) | rpl::on_next([=](int height) {
+		resize(width(), height);
+	}, _inner->lifetime());
+	refreshRows();
+	resize(width(), resizeGetHeight(width()));
+}
+
+int FeedActionsWidget::undoableCount() const {
+	auto result = 0;
+	for (auto i = 0; i != int(_actions.actions.size()); ++i) {
+		if (undoable(i)) {
+			++result;
+		}
+	}
+	return result;
+}
+
+void FeedActionsWidget::refreshRows() {
+	for (auto i = 0; i != int(_rows.size()); ++i) {
+		_rows[i]->showUndone(!undoable(i)
+			&& _context.delegate.isUndone(_actions.actions[i].call.id));
+	}
+	if (_undoAll) {
+		_undoAll->setVisible(undoableCount() >= 2);
+	}
+	resize(width(), resizeGetHeight(width()));
+}
+
+void FeedActionsWidget::undoOne(int index) {
+	const auto id = _actions.actions[index].call.id;
+	crl::on_main([weak = base::make_weak(this), id] {
+		if (weak) {
+			weak->_context.delegate.undo({ id });
+		}
+	});
+}
+
+void FeedActionsWidget::undoAll() {
+	auto ids = std::vector<QString>();
+	for (auto i = 0; i != int(_actions.actions.size()); ++i) {
+		if (undoable(i)) {
+			ids.push_back(_actions.actions[i].call.id);
+		}
+	}
+	crl::on_main([weak = base::make_weak(this), ids] {
+		if (weak) {
+			weak->_context.delegate.undo(ids);
+		}
+	});
+}
+
+int FeedActionsWidget::resizeGetHeight(int newWidth) {
+	if (_inner) {
+		_inner->resizeToWidth(newWidth);
+		_inner->moveToLeft(0, 0, newWidth);
+		return _inner->height();
+	}
+	return 0;
 }
 
 } // namespace Agent::Ui
