@@ -251,7 +251,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   key like the wallet engine values).
 - `Session::send()` queues the request while the session is working; the
   queue shows in `SessionState::queued` and runs in order after each
-  finished turn. `stop()` interrupts the turn or the compaction and clears
+  finished turn, on the next main loop iteration. After a failed turn the
+  queue waits for `retry()` or `stop()`. `stop()` interrupts the turn or the compaction and clears
   the queue. `retry()` resumes a failed turn whose history ends with a user
   message.
 - A dispatch builds the user message (the text, then the hint as a hidden
@@ -275,7 +276,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `PolicyGate::check()`, even for a tool that was never offered.
 - Results are compact JSON capped with `CapToolResult()`. A result with
   anything other people wrote (messages, names, titles, bios, descriptions)
-  goes through `WrapUntrusted()` and marks the gate tainted.
+  goes through `WrapUntrusted()` after capping and marks the gate tainted.
+  The registry never grants allowances itself: only a confirmed card does.
 - Messages are passed as id, local date and time, sender, text with
   entities as Markdown, reply id and a short media description. Reading
   never marks anything read. `touched()` reports the peers a call used.
