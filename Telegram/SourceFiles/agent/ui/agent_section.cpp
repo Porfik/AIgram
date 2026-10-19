@@ -381,9 +381,21 @@ void GeneralAgentSection::Inner::updateBackVisibility() {
 }
 
 void GeneralAgentSection::Inner::showHistory(bool shown) {
+	const auto focused = Ui::InFocusChain(this);
 	_listOpen = shown;
-	_sessionView->setVisible(!shown);
-	_historyView->setVisible(shown);
+	if (shown) {
+		_historyView->show();
+		if (focused) {
+			_historyView->setInnerFocus();
+		}
+		_sessionView->hide();
+	} else {
+		_sessionView->show();
+		if (focused) {
+			_sessionView->setInnerFocus();
+		}
+		_historyView->hide();
+	}
 	updateTitle();
 	updateControlsGeometry();
 }

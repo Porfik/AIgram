@@ -236,9 +236,23 @@ PanelWidget::Inner::Inner(
 }
 
 void PanelWidget::Inner::showHistory(bool shown) {
+	// WHY: hiding the focused view first lets Qt pass the focus to the
+	// next field of the window, the chats search, which then opens.
+	const auto focused = Ui::InFocusChain(this);
 	_listOpen = shown;
-	_sessionView->setVisible(!shown);
-	_history->setVisible(shown);
+	if (shown) {
+		_history->show();
+		if (focused) {
+			_history->setInnerFocus();
+		}
+		_sessionView->hide();
+	} else {
+		_sessionView->show();
+		if (focused) {
+			_sessionView->setInnerFocus();
+		}
+		_history->hide();
+	}
 	updateTitle();
 	updateControlsGeometry();
 }

@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/discrete_sliders.h"
 #include "ui/widgets/scroll_area.h"
 #include "ui/widgets/shadow.h"
+#include "ui/ui_utility.h"
 #include "window/window_session_controller.h"
 #include "styles/style_widgets.h"
 
@@ -74,13 +75,19 @@ rpl::producer<QString> HistoryView::openSessionRequests() const {
 }
 
 void HistoryView::showTab(HistoryTab tab) {
+	const auto focused = InFocusChain(this);
 	_tab = tab;
 	const auto memory = (tab == HistoryTab::Memory);
 	if (_tabs->activeSection() != (memory ? 1 : 0)) {
 		_tabs->setActiveSectionFast(memory ? 1 : 0);
 	}
-	_sessionsScroll->setVisible(!memory);
-	_memoryScroll->setVisible(memory);
+	const auto showing = memory ? _memoryScroll : _sessionsScroll;
+	const auto hiding = memory ? _sessionsScroll : _memoryScroll;
+	showing->show();
+	if (focused) {
+		setInnerFocus();
+	}
+	hiding->hide();
 }
 
 HistoryTab HistoryView::tab() const {
