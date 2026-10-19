@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 using "ui/basic.style";
 using "info/info.style";
+using "settings/settings.style";
 
 agentPanelEntryButton: IconButton(topBarSearch) {
 	icon: icon {{ "menu/ai_prompt", menuIconFg }};
@@ -37,6 +38,30 @@ agentPanelLayerTopBarHistory: IconButton(agentPanelLayerTopBarNew) {
 	iconOver: icon {{ "menu/reschedule", boxTitleCloseFgOver }};
 }
 agentPanelTopBarMenuDisabled: icon {{ "title_menu_dots", menuFgDisabled }};
+
+agentMemoryEmpty: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowSubTextFg;
+	align: align(top);
+}
+agentMemoryEmptyMargins: margins(22px, 16px, 22px, 4px);
+agentMemoryFactMargins: margins(22px, 10px, 92px, 10px);
+agentMemoryRowRight: 14px;
+agentMemoryFact: FlatLabel(defaultFlatLabel) {
+	minWidth: 20px;
+}
+agentMemoryRowEdit: IconButton {
+	width: 32px;
+	height: 32px;
+	icon: icon {{ "menu/edit", menuIconFg }};
+	iconOver: icon {{ "menu/edit", menuIconFgOver }};
+}
+agentMemoryRowDelete: IconButton(agentMemoryRowEdit) {
+	icon: icon {{ "menu/delete", menuIconFg }};
+	iconOver: icon {{ "menu/delete", menuIconFgOver }};
+}
+agentMemoryButtonSkip: 8px;
+agentMemoryAddIcon: icon {{ "menu/add", lightButtonFg }};
 
 agentSessionListEmptyHeight: 120px;
 agentSessionListRowHeight: 60px;

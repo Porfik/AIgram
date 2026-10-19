@@ -18,6 +18,10 @@ namespace Agent {
 class Manager;
 } // namespace Agent
 
+namespace Ui {
+class VerticalLayout;
+} // namespace Ui
+
 namespace Agent::Ui {
 
 using namespace ::Ui;
@@ -31,9 +35,19 @@ public:
 		PeerKey owner);
 
 private:
+	void rebuild();
+	void showAddBox();
+	void showEditBox(const QString &id, const QString &text);
+	void showDeleteBox(const QString &id);
+	void showClearBox();
+
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const PeerKey _owner = 0;
+	VerticalLayout *_layout = nullptr;
+
+protected:
+	int resizeGetHeight(int newWidth) override;
 
 };
 
