@@ -128,7 +128,7 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 			_scroll->scrollToY(_scroll->scrollTop() + pixels);
 		};
 	}
-	auto list = object_ptr<List>(nullptr);
+	auto list = object_ptr<List>(_scroll.data());
 	_list = list.data();
 	_scroll->setOwnedWidget(std::move(list));
 	Ui::SetStickyBottomScroll(_scroll.get(), _list);
