@@ -161,7 +161,9 @@ namespace {
 		|| a.usage.outputTokens != b.usage.outputTokens
 		|| a.usage.cachedInputTokens != b.usage.cachedInputTokens
 		|| a.usage.cost != b.usage.cost
-		|| a.usage.hasCost != b.usage.hasCost) {
+		|| a.usage.hasCost != b.usage.hasCost
+		|| a.preview != b.preview
+		|| a.previewOutgoing != b.previewOutgoing) {
 		return u"info differs"_q;
 	}
 	return QString();
@@ -600,9 +602,88 @@ std::vector<Check> RecordChecks() {
 			}
 			return QString();
 		} },
+		{ u"index_round_trip_with_preview"_q, [] {
+			auto info = SessionInfo();
+			info.id = u"5555555555555555"_q;
+			info.title = u"Preview"_q;
+			info.preview = u"Перескажи чат"_q;
+			info.previewOutgoing = true;
+			const auto bytes = SerializeIndex({ info });
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"deserialization failed"_q;
+			}
+			return InfosEqual(info, (*restored)[0]);
+		} },
+		{ u"index_loads_version2_without_preview"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(2) << qint32(1);
+				WriteHandInfo(stream);
+				stream << qint32(1) << qint32(2) << qint32(0)
+					<< double(0.) << qint32(0);
+			});
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"version 2 failed to load"_q;
+			} else if (!(*restored)[0].preview.isEmpty()
+				|| (*restored)[0].previewOutgoing) {
+				return u"version 2 preview must stay empty"_q;
+			}
+			return QString();
+		} },
+		{ u"preview_takes_last_visible_text"_q, [] {
+			auto record = SessionRecord();
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { TextBlock{ u"first"_q } },
+			});
+			record.messages.push_back(Message{
+				.role = Role::Assistant,
+				.blocks = {
+					TextBlock{ u"**Готово**:\nчат `пересказан`"_q },
+					ToolUseBlock{ .id = u"a"_q, .name = u"x"_q },
+				},
+			});
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = {
+					ToolResultBlock{ .toolUseId = u"a"_q },
+					TextBlock{ u"hint"_q, true },
+				},
+			});
+			const auto preview = MakeSessionPreview(record);
+			if (preview.text != u"Готово: чат пересказан"_q) {
+				return u"wrong text: "_q + preview.text;
+			} else if (preview.outgoing) {
+				return u"an answer is not outgoing"_q;
+			}
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { TextBlock{ u"# Ещё раз"_q } },
+			});
+			const auto mine = MakeSessionPreview(record);
+			if (mine.text != u"Ещё раз"_q || !mine.outgoing) {
+				return u"the user's message must be outgoing"_q;
+			}
+			return QString();
+		} },
+		{ u"preview_caps_and_handles_empty"_q, [] {
+			if (!MakeSessionPreview(SessionRecord()).text.isEmpty()) {
+				return u"an empty record has no preview"_q;
+			}
+			auto record = SessionRecord();
+			record.messages.push_back(Message{
+				.role = Role::Assistant,
+				.blocks = { TextBlock{ QString(300, QChar('a')) } },
+			});
+			if (MakeSessionPreview(record).text.size() != 120) {
+				return u"the preview must be capped at 120"_q;
+			}
+			return QString();
+		} },
 		{ u"index_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(3) << qint32(0);
+				stream << qint32(4) << qint32(0);
 			});
 			if (DeserializeIndex(bytes)) {
 				return u"expected nullopt for a future version"_q;

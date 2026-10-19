@@ -25,6 +25,8 @@ struct SessionInfo {
 	qint64 updated = 0;
 	std::vector<PeerKey> touched;
 	Usage usage;
+	QString preview;
+	bool previewOutgoing = false;
 };
 
 struct SessionRecord {
@@ -45,6 +47,12 @@ struct SessionRecord {
 	const QByteArray &bytes);
 
 bool CloseInterruptedTurn(SessionRecord &record);
+
+struct SessionPreview {
+	QString text;
+	bool outgoing = false;
+};
+[[nodiscard]] SessionPreview MakeSessionPreview(const SessionRecord &record);
 
 [[nodiscard]] QByteArray SerializeIndex(const std::vector<SessionInfo> &list);
 [[nodiscard]] std::optional<std::vector<SessionInfo>> DeserializeIndex(

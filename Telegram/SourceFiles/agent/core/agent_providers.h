@@ -39,12 +39,19 @@ struct ProviderSettings {
 	double priceCached = 0.;
 };
 
+enum class RowPreview : uchar {
+	LastMessage,
+	SessionTitle,
+	Hint,
+};
+
 struct ProvidersState {
 	std::vector<ProviderSettings> list;
 	QString activeId;
 	QString instructions;
 	bool showEntryPoints = true;
 	bool showSpending = false;
+	RowPreview rowPreview = RowPreview::LastMessage;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);

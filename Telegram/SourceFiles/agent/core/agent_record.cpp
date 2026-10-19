@@ -18,7 +18,8 @@ namespace Agent {
 namespace {
 
 constexpr auto kSessionVersion = qint32(3);
-constexpr auto kIndexVersion = qint32(2);
+constexpr auto kIndexVersion = qint32(3);
+constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
 constexpr auto kMaxTouched = 10'000;
@@ -524,6 +525,7 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 	for (const auto &info : list) {
 		WriteInfo(stream, info);
 		WriteUsage(stream, info.usage);
+		stream << info.preview << qint32(info.previewOutgoing ? 1 : 0);
 	}
 	return result;
 }
@@ -560,12 +562,60 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 			}
 			info->usage = *usage;
 		}
+		if (version >= 3) {
+			auto outgoing = qint32(0);
+			stream >> info->preview >> outgoing;
+			if (stream.status() != QDataStream::Ok
+				|| outgoing < 0
+				|| outgoing > 1) {
+				return std::nullopt;
+			}
+			info->previewOutgoing = (outgoing != 0);
+		}
 		list.push_back(std::move(*info));
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
 	}
 	return list;
+}
+
+SessionPreview MakeSessionPreview(const SessionRecord &record) {
+	const auto visibleText = [](const Message &message) {
+		auto result = QString();
+		for (const auto &block : message.blocks) {
+			const auto text = std::get_if<TextBlock>(&block);
+			if (text && !text->hidden) {
+				result += text->text + ' ';
+			}
+		}
+		return result;
+	};
+	for (auto i = record.messages.rbegin(); i != record.messages.rend(); ++i) {
+		auto text = visibleText(*i);
+		for (const auto &marker : { u"**"_q, u"__"_q, u"~~"_q, u"`"_q }) {
+			text.remove(marker);
+		}
+		text = text.simplified();
+		while (text.startsWith('#') || text.startsWith('>')) {
+			text = text.mid(1).trimmed();
+		}
+		if (text.isEmpty()) {
+			continue;
+		}
+		if (text.size() > kPreviewMaxChars) {
+			auto cut = kPreviewMaxChars;
+			if (text[cut - 1].isHighSurrogate()) {
+				--cut;
+			}
+			text = text.left(cut);
+		}
+		return {
+			.text = std::move(text),
+			.outgoing = (i->role == Role::User),
+		};
+	}
+	return {};
 }
 
 bool CloseInterruptedTurn(SessionRecord &record) {

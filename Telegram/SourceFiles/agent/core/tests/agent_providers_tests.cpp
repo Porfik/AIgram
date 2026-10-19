@@ -61,6 +61,7 @@ namespace {
 	state.instructions = u"Отвечай по-русски."_q;
 	state.showEntryPoints = false;
 	state.showSpending = true;
+	state.rowPreview = RowPreview::SessionTitle;
 	state.list[0].priceInput = 0.5;
 	state.list[0].priceOutput = 1.5;
 	state.list[0].priceCached = 0.05;
@@ -99,6 +100,8 @@ namespace {
 		return u"showEntryPoints differs"_q;
 	} else if (a.showSpending != b.showSpending) {
 		return u"showSpending differs"_q;
+	} else if (a.rowPreview != b.rowPreview) {
+		return u"rowPreview differs"_q;
 	}
 	return QString();
 }
@@ -134,7 +137,7 @@ std::vector<Check> ProvidersChecks() {
 					stream << qint32(0) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
-					stream << qint32(4) << qint32(0) << QString() << QString();
+					stream << qint32(5) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream << QString() << qint32(0) << QString() << QString();
