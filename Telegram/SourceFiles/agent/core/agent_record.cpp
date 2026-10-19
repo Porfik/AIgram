@@ -17,8 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(2);
-constexpr auto kIndexVersion = qint32(1);
+constexpr auto kSessionVersion = qint32(3);
+constexpr auto kIndexVersion = qint32(2);
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
 constexpr auto kMaxTouched = 10'000;
@@ -225,10 +225,12 @@ void WriteUsage(QDataStream &stream, const Usage &usage) {
 	stream
 		<< qint32(usage.inputTokens)
 		<< qint32(usage.outputTokens)
-		<< qint32(usage.cachedInputTokens);
+		<< qint32(usage.cachedInputTokens)
+		<< usage.cost
+		<< qint32(usage.hasCost ? 1 : 0);
 }
 
-std::optional<Usage> ReadUsage(QDataStream &stream) {
+std::optional<Usage> ReadUsage(QDataStream &stream, bool withCost) {
 	auto input = qint32(0);
 	auto output = qint32(0);
 	auto cached = qint32(0);
@@ -239,7 +241,18 @@ std::optional<Usage> ReadUsage(QDataStream &stream) {
 		|| cached < 0) {
 		return std::nullopt;
 	}
-	return Usage{ input, output, cached };
+	auto usage = Usage{ input, output, cached };
+	if (withCost) {
+		auto hasCost = qint32(0);
+		stream >> usage.cost >> hasCost;
+		if (stream.status() != QDataStream::Ok
+			|| hasCost < 0
+			|| hasCost > 1) {
+			return std::nullopt;
+		}
+		usage.hasCost = (hasCost != 0);
+	}
+	return usage;
 }
 
 void WriteCard(QDataStream &stream, const Card &card) {
@@ -460,7 +473,7 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 		return std::nullopt;
 	}
 	record.summaryUntil = summaryUntil;
-	auto usage = ReadUsage(stream);
+	auto usage = ReadUsage(stream, version >= 3);
 	if (!usage) {
 		return std::nullopt;
 	}
@@ -510,6 +523,7 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 	stream << kIndexVersion << qint32(list.size());
 	for (const auto &info : list) {
 		WriteInfo(stream, info);
+		WriteUsage(stream, info.usage);
 	}
 	return result;
 }
@@ -520,7 +534,9 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 	stream.setVersion(QDataStream::Qt_5_1);
 	auto version = qint32(0);
 	stream >> version;
-	if (stream.status() != QDataStream::Ok || version != kIndexVersion) {
+	if (stream.status() != QDataStream::Ok
+		|| version < 1
+		|| version > kIndexVersion) {
 		return std::nullopt;
 	}
 	auto count = qint32(0);
@@ -536,6 +552,13 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 		auto info = ReadInfo(stream);
 		if (!info) {
 			return std::nullopt;
+		}
+		if (version >= 2) {
+			auto usage = ReadUsage(stream, true);
+			if (!usage) {
+				return std::nullopt;
+			}
+			info->usage = *usage;
 		}
 		list.push_back(std::move(*info));
 	}

@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(2);
+constexpr auto kFormatVersion = qint32(3);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 
@@ -37,10 +37,14 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 			<< provider.apiKey
 			<< provider.model
 			<< qint32(provider.contextWindow)
-			<< qint32(provider.vision ? 1 : 0);
+			<< qint32(provider.vision ? 1 : 0)
+			<< provider.priceInput
+			<< provider.priceOutput
+			<< provider.priceCached;
 	}
 	stream << state.activeId << state.instructions;
 	stream << qint32(state.showEntryPoints ? 1 : 0);
+	stream << qint32(state.showSpending ? 1 : 0);
 	return result;
 }
 
@@ -85,24 +89,43 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		provider.kind = ProviderKind(kind);
 		provider.contextWindow = contextWindow;
 		provider.vision = (vision != 0);
+		if (version >= 3) {
+			stream
+				>> provider.priceInput
+				>> provider.priceOutput
+				>> provider.priceCached;
+			if (stream.status() != QDataStream::Ok) {
+				return std::nullopt;
+			}
+		}
 		state.list.push_back(std::move(provider));
 	}
 	stream >> state.activeId >> state.instructions;
 	if (stream.status() != QDataStream::Ok) {
 		return std::nullopt;
 	}
-	if (version == kFormatVersion) {
+	if (version >= 2) {
 		auto showEntryPoints = qint32(0);
 		stream >> showEntryPoints;
-		if (stream.status() != QDataStream::Ok || !stream.atEnd()) {
+		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
 		}
 		state.showEntryPoints = (showEntryPoints != 0);
 	} else {
+		state.showEntryPoints = true;
+	}
+	if (version >= 3) {
+		auto showSpending = qint32(0);
+		stream >> showSpending;
+		if (stream.status() != QDataStream::Ok || !stream.atEnd()) {
+			return std::nullopt;
+		}
+		state.showSpending = (showSpending != 0);
+	} else {
 		if (!stream.atEnd()) {
 			return std::nullopt;
 		}
-		state.showEntryPoints = true;
+		state.showSpending = false;
 	}
 	return state;
 }

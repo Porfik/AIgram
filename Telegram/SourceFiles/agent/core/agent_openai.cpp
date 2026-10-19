@@ -331,6 +331,18 @@ void Parser::processData(const QByteArray &data) {
 					.value(u"cached_tokens"_q).toInt();
 			}
 		}
+		if (const auto cost = object.value(u"cost"_q); cost.isDouble()) {
+			_usage.cost = cost.toDouble();
+			_usage.hasCost = true;
+		}
+		if (object.value(u"is_byok"_q).toBool()) {
+			const auto upstream = object.value(u"cost_details"_q).toObject()
+				.value(u"upstream_inference_cost"_q);
+			if (upstream.isDouble()) {
+				_usage.cost += upstream.toDouble();
+				_usage.hasCost = true;
+			}
+		}
 	}
 }
 
