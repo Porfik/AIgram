@@ -22,6 +22,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_types.h"
 #include "history/history.h"
 #include "history/history_item.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "ui/text/text_entity.h"
 #include "window/window_session_controller.h"
@@ -34,6 +35,10 @@ namespace {
 constexpr auto kPreviewLimit = 100;
 constexpr auto kMaxMessages = 100;
 constexpr auto kMaxEmojiLength = 16;
+
+[[nodiscard]] QString ChatTitle(not_null<PeerData*> peer) {
+	return peer->isSelf() ? tr::lng_saved_messages(tr::now) : peer->name();
+}
 
 [[nodiscard]] QString Preview(not_null<HistoryItem*> item) {
 	auto text = item->notificationText().text;
@@ -131,7 +136,7 @@ void WithMessages(
 	return CardTarget{
 		.peer = peer->id.value,
 		.messageId = item->id.bare,
-		.title = peer->name(),
+		.title = ChatTitle(peer),
 		.preview = Preview(item),
 	};
 }
@@ -214,7 +219,7 @@ void RunSendMessage(not_null<PendingCall*> call) {
 	for (const auto &peer : call->peers) {
 		card.targets.push_back(CardTarget{
 			.peer = peer->id.value,
-			.title = peer->name(),
+			.title = ChatTitle(peer),
 		});
 	}
 	const auto send = [=](Card card) {
@@ -282,7 +287,7 @@ void RunSetDraft(not_null<PendingCall*> call) {
 		ApplyDraft(history, text, false);
 		auto chat = QJsonObject();
 		chat.insert("chat", QJsonValue(qint64(peer->id.value)));
-		chat.insert("title", peer->name());
+		chat.insert("title", ChatTitle(peer));
 		auto result = QJsonObject();
 		result.insert("done", QJsonArray{ chat });
 		result.insert("failed", QJsonArray());
@@ -293,7 +298,7 @@ void RunSetDraft(not_null<PendingCall*> call) {
 		.kind = CardKind::Draft,
 		.targets = { CardTarget{
 			.peer = peer->id.value,
-			.title = peer->name(),
+			.title = ChatTitle(peer),
 		} },
 		.text = text,
 		.proposedText = text,
@@ -342,13 +347,13 @@ void RunForwardMessages(not_null<PendingCall*> call) {
 		auto card = Card{
 			.kind = CardKind::Forward,
 			.text = previews.join('\n'),
-			.detail = from->name(),
+			.detail = ChatTitle(from),
 		};
 		card.proposedText = card.text;
 		for (const auto &peer : call->peers) {
 			card.targets.push_back(CardTarget{
 				.peer = peer->id.value,
-				.title = peer->name(),
+				.title = ChatTitle(peer),
 			});
 		}
 		call->confirm(std::move(card), [=](Card decided) {

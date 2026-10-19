@@ -335,6 +335,7 @@ void FeedCardWidget::build() {
 	_buttonsRow = nullptr;
 	_field = nullptr;
 	_inner.create(this);
+	_inner->show();
 	const auto gap = st::agentFeedCardGap;
 	const auto addGap = [&](int top) {
 		return style::margins(0, top, 0, 0);
@@ -954,6 +955,7 @@ void FeedActionsWidget::build() {
 	_rows.clear();
 	_undoAll = nullptr;
 	_inner.create(this);
+	_inner->show();
 	auto undoableCount = 0;
 	for (auto i = 0; i != int(_actions.actions.size()); ++i) {
 		const auto row = _inner->add(

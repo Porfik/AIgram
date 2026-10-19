@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "ui/boxes/confirm_box.h"
+#include "ui/empty_userpic.h"
 #include "ui/layers/generic_box.h"
 #include "ui/text/format_values.h"
 #include "ui/painter.h"
@@ -126,7 +127,11 @@ void SessionsList::paintUserpicStack(Painter &p, Row &row, int top) {
 	}
 	auto left = x;
 	for (auto &userpic : row.userpics) {
-		userpic.peer->paintUserpic(p, userpic.view, left, y, size, true);
+		if (userpic.peer->isSelf()) {
+			Ui::EmptyUserpic::PaintSavedMessages(p, left, y, width(), size);
+		} else {
+			userpic.peer->paintUserpic(p, userpic.view, left, y, size, true);
+		}
 		left += size - st::agentSessionListUserpicShift;
 	}
 }

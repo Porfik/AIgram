@@ -78,10 +78,10 @@ void RowWidget::updateStatus() {
 	const auto count = _pending;
 	_status.setText(
 		st::dialogsTextStyle,
-		_working
-			? tr::lng_agent_row_working(tr::now)
-			: count
+		count
 			? tr::lng_agent_row_pending(tr::now, lt_count, count)
+			: _working
+			? tr::lng_agent_row_working(tr::now)
 			: tr::lng_agent_row_about(tr::now));
 }
 

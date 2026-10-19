@@ -75,7 +75,7 @@ SessionView::SessionView(
 	_welcome,
 	(_scope.kind == ScopeKind::Chat
 		? tr::lng_agent_chat_welcome(tr::now)
-		: tr::lng_agent_title(tr::now)),
+		: tr::lng_agent_general_welcome(tr::now)),
 	st::agentWelcomeLabel)
 , _handoffNote(
 	_welcome,
