@@ -742,6 +742,7 @@ struct ParsedAction {
 	QStringList failed;
 	QStringList failedTitles;
 	QString folder;
+	QString fact;
 
 	[[nodiscard]] QString chats() const {
 		return (done.isEmpty() ? failedTitles : done).join(u", "_q);
@@ -762,6 +763,8 @@ struct ParsedAction {
 	const auto object = document.object();
 	parsed.folder = object.value("folder").toObject()
 		.value("title").toString();
+	parsed.fact = object.value("fact").toObject()
+		.value("text").toString();
 	for (const auto value : object.value("done").toArray()) {
 		const auto title = value.toObject().value("title").toString();
 		if (!title.isEmpty()) {
@@ -791,7 +794,8 @@ struct ParsedAction {
 		const QString &name,
 		const QJsonObject &input,
 		const QString &chats,
-		const QString &folder) {
+		const QString &folder,
+		const QString &fact) {
 	if (name == u"mark_read"_q) {
 		return tr::lng_agent_action_mark_read(tr::now, lt_chats, chats);
 	} else if (name == u"set_mute"_q) {
@@ -834,6 +838,18 @@ struct ParsedAction {
 				folder);
 	} else if (name == u"reorder_folders"_q) {
 		return tr::lng_agent_action_folder_order(tr::now);
+	} else if (name == u"memory_add"_q) {
+		return tr::lng_agent_action_memory_add(
+			tr::now,
+			lt_text,
+			fact.isEmpty() ? input.value("text").toString() : fact);
+	} else if (name == u"memory_update"_q) {
+		return tr::lng_agent_action_memory_update(
+			tr::now,
+			lt_text,
+			fact.isEmpty() ? input.value("text").toString() : fact);
+	} else if (name == u"memory_remove"_q) {
+		return tr::lng_agent_action_memory_remove(tr::now, lt_text, fact);
 	}
 	return name;
 }
@@ -880,7 +896,8 @@ FeedActionsWidget::ActionRow::ActionRow(
 		tool.call.name,
 		tool.call.input,
 		parsed.chats(),
-		parsed.folder));
+		parsed.folder,
+		parsed.fact));
 	if (!parsed.failed.isEmpty()) {
 		_failedText->setText(parsed.failed.join(u"\n"_q));
 	} else {

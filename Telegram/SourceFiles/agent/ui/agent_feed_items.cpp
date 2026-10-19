@@ -64,6 +64,8 @@ constexpr auto kMaxResultChars = 3000;
 		return tr::lng_agent_tool_load_tools(tr::now);
 	} else if (name == u"list_folders"_q) {
 		return tr::lng_agent_tool_list_folders(tr::now);
+	} else if (name == u"read_chat_memory"_q) {
+		return tr::lng_agent_tool_read_chat_memory(tr::now);
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
 }
