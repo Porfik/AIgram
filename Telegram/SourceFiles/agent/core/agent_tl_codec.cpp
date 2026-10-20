@@ -7,6 +7,412 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/core/agent_tl_codec.h"
 
+#include <QtCore/QJsonArray>
+
+#include <cmath>
+
 namespace Agent {
+namespace {
+
+constexpr auto kVectorId = 0x1cb5c415u;
+constexpr auto kBoolTrueId = 0x997275b5u;
+constexpr auto kBoolFalseId = 0xbc799737u;
+constexpr auto kIntMin = -2147483648.0;
+constexpr auto kIntMax = 2147483647.0;
+constexpr auto kLongBound = 9.223372036854775e18;
+
+void WriteUInt32(QByteArray &out, uint32 value) {
+	for (auto i = 0; i != 4; ++i) {
+		out.append(char((value >> (8 * i)) & 0xffU));
+	}
+}
+
+void WriteInt32(QByteArray &out, int32 value) {
+	WriteUInt32(out, uint32(value));
+}
+
+void WriteInt64(QByteArray &out, int64 value) {
+	const auto raw = uint64(value);
+	for (auto i = 0; i != 8; ++i) {
+		out.append(char((raw >> (8 * i)) & 0xffU));
+	}
+}
+
+void WriteBytes(QByteArray &out, const QByteArray &data) {
+	const auto size = data.size();
+	const auto prefix = (size < 254) ? 1 : 4;
+	if (size < 254) {
+		out.append(char(size));
+	} else {
+		out.append(char(0xfe));
+		out.append(char(size & 0xff));
+		out.append(char((size >> 8) & 0xff));
+		out.append(char((size >> 16) & 0xff));
+	}
+	out.append(data);
+	const auto pad = (4 - ((prefix + size) % 4)) % 4;
+	out.append(QByteArray(pad, char(0)));
+}
+
+struct Encoder {
+	const TlSchema &schema;
+	const TlRefs &refs;
+	QString &error;
+
+	[[nodiscard]] bool fail(const QString &path, const QString &message) {
+		error = path + u": "_q + message;
+		return false;
+	}
+};
+
+[[nodiscard]] bool IsRefType(const QString &type) {
+	return (type == u"InputPeer")
+		|| (type == u"InputUser")
+		|| (type == u"InputChannel");
+}
+
+bool EncodeValue(
+	Encoder &e,
+	QByteArray &out,
+	const QString &type,
+	const QJsonValue &value,
+	const QString &path);
+
+bool EncodeCombinator(
+	Encoder &e,
+	QByteArray &out,
+	const TlCombinator &combinator,
+	const QJsonObject &source,
+	const QString &path,
+	bool boxed);
+
+bool EncodeBuiltin(
+		Encoder &e,
+		QByteArray &out,
+		const QString &type,
+		const QJsonValue &value,
+		const QString &path) {
+	if (type == u"int") {
+		if (!value.isDouble()) {
+			return e.fail(path, u"expected a number"_q);
+		}
+		const auto d = value.toDouble();
+		if (d != std::floor(d)) {
+			return e.fail(path, u"expected an integer"_q);
+		} else if (d < kIntMin || d > kIntMax) {
+			return e.fail(path, u"a number outside the int range"_q);
+		}
+		WriteInt32(out, int32(d));
+		return true;
+	} else if (type == u"long") {
+		auto result = int64(0);
+		if (value.isDouble()) {
+			const auto d = value.toDouble();
+			if (d != std::floor(d)) {
+				return e.fail(path, u"expected an integer"_q);
+			} else if (d < -kLongBound || d > kLongBound) {
+				return e.fail(path, u"a number outside the long range"_q);
+			}
+			result = int64(d);
+		} else if (value.isString()) {
+			auto ok = false;
+			result = value.toString().toLongLong(&ok);
+			if (!ok) {
+				return e.fail(path, u"expected a decimal number"_q);
+			}
+		} else {
+			return e.fail(path, u"expected a number"_q);
+		}
+		WriteInt64(out, result);
+		return true;
+	} else if (type == u"double") {
+		if (!value.isDouble()) {
+			return e.fail(path, u"expected a number"_q);
+		}
+		const auto d = value.toDouble();
+		const auto raw = QByteArray(
+			reinterpret_cast<const char*>(&d),
+			sizeof(double));
+		out.append(raw);
+		return true;
+	} else if (type == u"string") {
+		if (!value.isString()) {
+			return e.fail(path, u"expected a string"_q);
+		}
+		WriteBytes(out, value.toString().toUtf8());
+		return true;
+	} else if (type == u"bytes") {
+		if (!value.isString()) {
+			return e.fail(path, u"expected a base64 string"_q);
+		}
+		const auto decoded = QByteArray::fromBase64Encoding(
+			value.toString().toLatin1(),
+			QByteArray::Base64Encoding
+				| QByteArray::AbortOnBase64DecodingErrors);
+		if (!decoded) {
+			return e.fail(path, u"invalid base64"_q);
+		}
+		WriteBytes(out, decoded.decoded);
+		return true;
+	} else if (type == u"Bool") {
+		if (!value.isBool()) {
+			return e.fail(path, u"expected true or false"_q);
+		}
+		WriteUInt32(out, value.toBool() ? kBoolTrueId : kBoolFalseId);
+		return true;
+	} else if (type == u"true" || type == u"#") {
+		return true;
+	} else if (type == u"int128" || type == u"int256") {
+		if (!value.isString()) {
+			return e.fail(path, u"expected a hex string"_q);
+		}
+		const auto text = value.toString();
+		const auto chars = (type == u"int128") ? 32 : 64;
+		if (text.size() != chars) {
+			return e.fail(path, u"expected %1 hex characters"_q.arg(chars));
+		}
+		for (const auto &ch : text) {
+			const auto c = ch.toLower().unicode();
+			if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) {
+				return e.fail(path, u"invalid hex"_q);
+			}
+		}
+		out += QByteArray::fromHex(text.toLatin1());
+		return true;
+	}
+	return e.fail(path, u"unknown type %1"_q.arg(type));
+}
+
+bool EncodeVector(
+		Encoder &e,
+		QByteArray &out,
+		const QString &type,
+		const QJsonValue &value,
+		const QString &path) {
+	const auto item = TlVectorItem(type);
+	if (!item) {
+		return e.fail(path, u"unknown type %1"_q.arg(type));
+	} else if (!value.isArray()) {
+		return e.fail(path, u"expected an array"_q);
+	}
+	const auto array = value.toArray();
+	if (type.startsWith(u"Vector<")) {
+		WriteUInt32(out, kVectorId);
+	}
+	WriteInt32(out, array.size());
+	auto index = 0;
+	for (const auto &element : array) {
+		if (!EncodeValue(
+			e,
+			out,
+			*item,
+			element,
+			path + u"["_q + QString::number(index) + u"]"_q)) {
+			return false;
+		}
+		++index;
+	}
+	return true;
+}
+
+bool EncodeObject(
+		Encoder &e,
+		QByteArray &out,
+		const QString &type,
+		const QJsonValue &value,
+		const QString &path) {
+	if (!value.isObject()) {
+		return e.fail(path, u"expected an object"_q);
+	}
+	const auto object = value.toObject();
+	const auto name = object.value(u"_"_q).toString();
+	if (name.isEmpty()) {
+		const auto list = e.schema.constructorsOf(type);
+		if (list.empty()) {
+			return e.fail(path, u"unknown type %1"_q.arg(type));
+		} else if (list.size() > 1) {
+			return e.fail(
+				path,
+				u"pass \"_\" naming a constructor of %1"_q.arg(type));
+		}
+		return EncodeCombinator(
+			e, out, *list.front(), object, path, !TlIsBareType(type));
+	}
+	const auto combinator = e.schema.constructor(name);
+	if (!combinator) {
+		return e.fail(path, u"unknown constructor %1"_q.arg(name));
+	} else if (combinator->result != type) {
+		return e.fail(
+			path,
+			u"%1 is not of type %2"_q.arg(name).arg(type));
+	}
+	return EncodeCombinator(
+		e,
+		out,
+		*combinator,
+		object,
+		path,
+		!TlIsBareType(type));
+}
+
+bool EncodeRef(
+		Encoder &e,
+		QByteArray &out,
+		const QString &type,
+		const QJsonValue &value,
+		const QString &path) {
+	if (value.isString() || value.isDouble()) {
+		if (!e.refs.input) {
+			return e.fail(path, u"cannot resolve %1"_q.arg(type));
+		}
+		auto refError = QString();
+		auto bytes = e.refs.input(type, value, refError);
+		if (!bytes) {
+			return e.fail(
+				path,
+				refError.isEmpty() ? u"cannot resolve %1"_q.arg(type)
+					: refError);
+		}
+		out += std::move(*bytes);
+		return true;
+	} else if (value.isObject()) {
+		static const auto kAllowed = base::flat_map<QString, QString>{
+			{ u"InputPeer"_q, u"inputPeerEmpty,inputPeerSelf"_q },
+			{ u"InputUser"_q, u"inputUserEmpty,inputUserSelf"_q },
+			{ u"InputChannel"_q, u"inputChannelEmpty"_q },
+		};
+		const auto name = value.toObject().value(u"_"_q).toString();
+		const auto i = kAllowed.find(type);
+		const auto allowed = (i != kAllowed.end()) ? i->second : QString();
+		if (!allowed.split(u',').contains(name)) {
+			return e.fail(
+				path,
+				u"Pass chats as ids or @usernames, not objects."_q);
+		}
+		return EncodeObject(e, out, type, value, path);
+	}
+	return e.fail(path, u"expected a chat id or @username"_q);
+}
+
+bool EncodeValue(
+		Encoder &e,
+		QByteArray &out,
+		const QString &type,
+		const QJsonValue &value,
+		const QString &path) {
+	if (IsRefType(type)) {
+		return EncodeRef(e, out, type, value, path);
+	} else if (TlIsBuiltinType(type)) {
+		return EncodeBuiltin(e, out, type, value, path);
+	} else if (TlVectorItem(type)) {
+		return EncodeVector(e, out, type, value, path);
+	}
+	return EncodeObject(e, out, type, value, path);
+}
+
+bool EncodeCombinator(
+		Encoder &e,
+		QByteArray &out,
+		const TlCombinator &combinator,
+		const QJsonObject &source,
+		const QString &path,
+		bool boxed) {
+	const auto &params = combinator.params;
+	for (const auto &key : source.keys()) {
+		if (key == u"_") {
+			continue;
+		}
+		auto known = false;
+		for (const auto &param : params) {
+			if (param.type != u"#" && param.name == key) {
+				known = true;
+				break;
+			}
+		}
+		if (!known) {
+			return e.fail(path + u"."_q + key, u"unknown parameter"_q);
+		}
+	}
+	auto flagValues = std::vector<uint32>(params.size(), 0);
+	for (auto i = 0, count = int(params.size()); i != count; ++i) {
+		if (params[i].type != u"#") {
+			continue;
+		}
+		for (auto j = 0; j != count; ++j) {
+			const auto &param = params[j];
+			if (param.flagParam != i) {
+				continue;
+			}
+			const auto value = source.value(param.name);
+			if (value.isUndefined() || value.isNull()) {
+				continue;
+			} else if (param.type == u"true") {
+				if (!value.isBool()) {
+					return e.fail(
+						path + u"."_q + param.name,
+						u"expected true or false"_q);
+				} else if (!value.toBool()) {
+					continue;
+				}
+			}
+			flagValues[i] |= (1U << param.flagBit);
+		}
+	}
+	if (boxed) {
+		WriteUInt32(out, combinator.id);
+	}
+	for (auto i = 0, count = int(params.size()); i != count; ++i) {
+		const auto &param = params[i];
+		if (param.type == u"#") {
+			WriteUInt32(out, flagValues[i]);
+			continue;
+		} else if (param.type == u"true") {
+			continue;
+		}
+		const auto value = source.value(param.name);
+		if (param.flagParam >= 0) {
+			if (!(flagValues[param.flagParam] & (1U << param.flagBit))) {
+				continue;
+			}
+		} else if (value.isUndefined() || value.isNull()) {
+			return e.fail(
+				path + u"."_q + param.name,
+				u"missing required parameter"_q);
+		}
+		if (!EncodeValue(
+			e,
+			out,
+			param.type,
+			value,
+			path + u"."_q + param.name)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+} // namespace
+
+std::optional<QByteArray> EncodeTlCall(
+		const TlSchema &schema,
+		const QString &method,
+		const QJsonObject &params,
+		const TlRefs &refs,
+		QString &error) {
+	const auto function = schema.function(method);
+	if (!function) {
+		error = u"Unknown method: %1."_q.arg(method);
+		return std::nullopt;
+	} else if (function->generic) {
+		error = u"%1 is generic and cannot be called directly."_q.arg(method);
+		return std::nullopt;
+	}
+	auto encoder = Encoder{ schema, refs, error };
+	auto out = QByteArray();
+	if (!EncodeCombinator(encoder, out, *function, params, u"params"_q, true)) {
+		return std::nullopt;
+	}
+	return out;
+}
 
 } // namespace Agent

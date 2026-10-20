@@ -156,7 +156,7 @@ std::optional<TlSchema> ParseTlSchema(const QByteArray &text, QString *error) {
 				}
 				const auto flagName = prefix.left(dot);
 				const auto bitText = prefix.mid(dot + 1);
-				if (!IsDigits(bitText)) {
+				if (!IsDigits(bitText) || bitText.toInt() > 31) {
 					return fail(i, u"bad parameter %1"_q.arg(token));
 				}
 				auto found = -1;
