@@ -1473,7 +1473,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `_frame_nowhere` for an empty set). `FormatTaskTool()` maps the action
   tools to `lng_agent_task_tool_*` (folder tools to `_folders`), others
   to their names. `FormatTaskLimits()` uses the cost form when
-  `costKnown`, else the tokens form. `FormatTaskModel()` is the task's
+  `costKnown`, else the tokens form; `TaskCostKnown()` is true when the
+  task's provider is OpenRouter or has an input price. `FormatTaskModel()` is the task's
   provider title, or `_model_default` with the background model.
   `FormatTaskState()`: running, waiting, then by `state` (the hourly
   pause with its time). `FormatTaskRunTrigger()`: missed messages or a

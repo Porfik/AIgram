@@ -396,7 +396,11 @@ std::vector<ToolEntry> Entries() {
 			" messages matching a filter, on a schedule or once at a set"
 			" time. A confirmation card shows the trigger, the instruction"
 			" (which the user can edit), the allowed actions and chats, the"
-			" limits and the notification mode before the task starts."_q,
+			" limits and the notification mode before the task starts."
+			" Every run can call notify to show the user a system"
+			" notification, so for reminders, alerts and summaries meant"
+			" only for the user, tell the task to use notify instead of"
+			" sending messages."_q,
 		.inputSchema = TaskInputSchema(true, false),
 		.generalSchema = TaskInputSchema(false, false),
 		.policy = ToolPolicy{
