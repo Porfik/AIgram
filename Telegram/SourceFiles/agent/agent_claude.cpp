@@ -138,7 +138,7 @@ QtProcess::~QtProcess() {
 }
 
 void QtProcess::write(const QByteArray &line) {
-	if (_process.state() == QProcess::Running) {
+	if (!_finished) {
 		_process.write(line + '\n');
 	}
 }

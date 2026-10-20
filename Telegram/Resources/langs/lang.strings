@@ -1413,7 +1413,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_add_model_title" = "Add Model";
 "lng_agent_add_openrouter" = "OpenRouter";
 "lng_agent_add_custom" = "Other provider";
-"lng_agent_add_model_about" = "OpenRouter gives access to hundreds of models with one key. Other provider is any OpenAI-compatible address: OpenAI, DeepSeek, Ollama, LM Studio and others.";
+"lng_agent_add_model_about" = "OpenRouter gives access to hundreds of models with one key. Anthropic works with your Claude subscription or a Claude API key. Other provider is any OpenAI-compatible address: OpenAI, DeepSeek, Ollama, LM Studio and others.";
 "lng_agent_service_openrouter" = "OpenRouter";
 "lng_agent_add_anthropic" = "Anthropic";
 "lng_agent_service_anthropic" = "Anthropic";
@@ -1435,7 +1435,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_claude_logged_out" = "Claude Code is not signed in to your Claude account. Sign in with the button below: your browser opens the Claude sign-in page, and Claude Code keeps the login itself.";
 "lng_agent_claude_login" = "Sign in to Claude";
 "lng_agent_claude_login_waiting" = "Finish signing in in your browser. If it didn't open, run \"claude auth login\" in a terminal, then press Check again.";
-"lng_agent_claude_signed_in" = "Signed in as {email} · {status}";
 "lng_agent_claude_failed" = "Claude Code doesn't respond: {error}";
 "lng_agent_claude_program" = "Claude Code program";
 "lng_agent_claude_program_auto" = "Found automatically";

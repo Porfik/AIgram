@@ -79,10 +79,14 @@ constexpr auto kClaudeContextWindow = 200'000;
 	}
 	const auto percent = int(std::lround(window.utilization * 100.));
 	const auto resets = base::unixtime::parse(TimeId(window.resetsAt));
-	const auto today = QDate::currentDate();
-	const auto when = (resets.date() == today)
-		? QLocale().toString(resets.time(), QLocale::ShortFormat)
-		: QLocale().toString(resets, QLocale::ShortFormat);
+	const auto time = QLocale().toString(
+		resets.time(),
+		QLocale::ShortFormat);
+	const auto when = (resets.date() == QDate::currentDate())
+		? time
+		: (QLocale().toString(resets.date(), u"d MMM"_q)
+			+ u", "_q
+			+ time);
 	return tr::lng_agent_claude_limit_value(
 		tr::now,
 		lt_percent,
@@ -91,19 +95,18 @@ constexpr auto kClaudeContextWindow = 200'000;
 		when);
 }
 
-[[nodiscard]] QString PlanText(const Claude::AuthStatus &status) {
+[[nodiscard]] QString PlanName(const Claude::AuthStatus &status) {
 	auto plan = status.subscription;
 	if (!plan.isEmpty()) {
 		plan[0] = plan[0].toUpper();
 	} else {
 		plan = status.method;
 	}
-	return tr::lng_agent_claude_signed_in(
-		tr::now,
-		lt_email,
-		status.email,
-		lt_status,
-		plan);
+	return plan;
+}
+
+[[nodiscard]] QString AccountText(const Claude::AuthStatus &status) {
+	return status.email + u" · "_q + PlanName(status);
 }
 
 [[nodiscard]] QString OutputError(int code, const QByteArray &output) {
@@ -899,7 +902,7 @@ void EditClaudeBox(
 			return !state->auth
 				? QString()
 				: state->auth->loggedIn
-				? PlanText(*state->auth)
+				? AccountText(*state->auth)
 				: tr::lng_agent_claude_account_none(tr::now);
 		}),
 		st::settingsButtonNoIcon
