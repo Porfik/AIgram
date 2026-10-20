@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_media.h"
 #include "layout/layout_document_generic_preview.h"
+#include "ui/grouped_layout.h"
 #include "ui/image/image_prepare.h"
 #include "ui/painter.h"
 #include "ui/text/format_values.h"
@@ -181,26 +182,37 @@ int FeedAttachmentsWidget::resizeGetHeight(int newWidth) {
 		_cellRects.push_back({ padding.left(), y, inner, height });
 		y += height + skip;
 	} else if (!_cells.empty()) {
-		const auto cellSize = (inner - skip) / 2;
-		auto index = 0;
-		while (index < int(_cells.size())) {
-			for (auto column = 0; column != 2 && index < int(_cells.size());
-					++column, ++index) {
-				_cellRects.push_back({
-					padding.left() + column * (cellSize + skip),
-					y,
-					cellSize,
-					cellSize,
-				});
-			}
-			y += cellSize + skip;
+		auto sizes = std::vector<QSize>();
+		for (const auto &cell : _cells) {
+			sizes.push_back((cell.source.isNull() || cell.video)
+				? QSize(16, 9)
+				: cell.source.size());
 		}
+		const auto layout = Ui::LayoutMediaGroup(
+			sizes,
+			inner,
+			std::min(inner, st::historyGroupWidthMin),
+			st::historyGroupSkip);
+		auto bottom = 0;
+		for (const auto &part : layout) {
+			_cellRects.push_back(
+				part.geometry.translated(padding.left(), y));
+			bottom = std::max(bottom, part.geometry.y()
+				+ part.geometry.height());
+		}
+		y += bottom + skip;
 	}
 	prepareCells();
 	const auto &layout = st::attachPreviewLayout;
-	for (const auto &doc : _docs) {
+	for (auto i = 0; i != int(_docs.size()); ++i) {
+		if (i) {
+			y += st::agentAttachRowSkip;
+		}
 		_docRects.push_back({ padding.left(), y, inner, layout.thumbSize });
-		y += layout.thumbSize + st::agentAttachRowSkip;
+		y += layout.thumbSize;
+	}
+	if (!_docs.empty()) {
+		y += skip;
 	}
 	if (_hasText) {
 		if (!_cells.empty() || !_docs.empty()) {

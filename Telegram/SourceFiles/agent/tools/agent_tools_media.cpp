@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "history/history.h"
 #include "history/history_item.h"
+#include "lang/lang_keys.h"
 #include "main/main_app_config.h"
 #include "main/main_session.h"
 
@@ -474,6 +475,18 @@ void RunListenAudio(not_null<PendingCall*> call) {
 	});
 }
 
+[[nodiscard]] QString VoicePreview(const MessageMedia &media) {
+	const auto name = (media.type == MessageMediaType::RoundVideo)
+		? tr::lng_in_dlg_video_message(tr::now)
+		: tr::lng_in_dlg_audio(tr::now);
+	if (media.duration <= 0) {
+		return name;
+	}
+	return name + ' ' + u"%1:%2"_q
+		.arg(media.duration / 60)
+		.arg(media.duration % 60, 2, 10, QChar('0'));
+}
+
 void WaitTranscript(
 		not_null<PendingCall*> call,
 		not_null<HistoryItem*> item,
@@ -576,7 +589,7 @@ void RunTranscribeVoice(not_null<PendingCall*> call) {
 				.peer = peer->id.value,
 				.messageId = item->id.bare,
 				.title = peer->name(),
-				.preview = ToolFormat::MediaDescription(item),
+				.preview = VoicePreview(*source.media),
 			} },
 			.amount = transcribes.trialsCount(),
 			.quota = session->appConfig().get<int>(

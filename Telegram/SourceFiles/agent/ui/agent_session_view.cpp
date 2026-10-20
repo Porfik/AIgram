@@ -508,6 +508,10 @@ void SessionView::confirmSendingFiles(
 			_composer->setDraft(draft);
 		}),
 	});
+	box->takeTextWithTagsRequests(
+	) | rpl::on_next(crl::guard(this, [=](TextWithTags &&text) {
+		_composer->setDraft(text.text);
+	}), box->lifetime());
 	_composer->setDraft(QString());
 	Window::ActivateWindow(_controller);
 	_controller->show(std::move(box));

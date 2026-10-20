@@ -106,9 +106,18 @@ constexpr auto kMaxResultChars = 3000;
 }
 
 [[nodiscard]] QString WithDuration(QString title, int64 seconds) {
-	return (seconds > 0)
-		? (title + u" "_q + FormatDurationText(seconds))
-		: title;
+	if (seconds <= 0) {
+		return title;
+	}
+	const auto hours = seconds / 3600;
+	const auto minutes = (seconds % 3600) / 60;
+	const auto rest = seconds % 60;
+	const auto text = hours
+		? u"%1:%2:%3"_q.arg(hours)
+			.arg(minutes, 2, 10, QChar('0'))
+			.arg(rest, 2, 10, QChar('0'))
+		: u"%1:%2"_q.arg(minutes).arg(rest, 2, 10, QChar('0'));
+	return title + ' ' + text;
 }
 
 [[nodiscard]] bool ResultFromMediaModel(const QJsonObject &object) {
@@ -849,10 +858,15 @@ void FeedStepsWidget::Step::fillDetails() {
 	}, [&](const FeedTool &data) {
 		const auto object = ToolResultObject(data.result);
 		if (IsMediaTool(data.call.name)) {
-			const auto media = ResultMediaBlock(object);
-			if (media.peer || media.messageId || !media.attachment.isEmpty()) {
+			auto preview = (data.call.name == u"view_media"_q)
+				? MakeFeedMediaPreview(
+					content,
+					*_context,
+					ResultMediaBlock(object))
+				: nullptr;
+			if (preview) {
 				content->add(
-					MakeFeedMediaPreview(content, *_context, media),
+					std::move(preview),
 					style::margins(0, 0, 0, st::agentStepsDetailsGap));
 			}
 			const auto transcript = ResultTranscriptText(

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_media.h"
 
 #include "data/data_document.h"
+#include "data/data_media_types.h"
 #include "data/data_photo.h"
 #include "data/data_session.h"
 #include "history/history_item.h"
@@ -58,10 +59,23 @@ FeedMediaPreview::FeedMediaPreview(
 	setFixedSize(st::agentMediaThumbSize, st::agentMediaThumbSize);
 	if (!_media.attachment.isEmpty()) {
 		auto block = _context.delegate.attachment(_media.attachment);
-		if (block) {
+		if (block && block->kind == MediaKind::Image) {
 			_fileName = block->name;
-			if (block->kind == MediaKind::Image) {
-				_image = QImage::fromData(block->bytes);
+			const auto ratio = style::DevicePixelRatio();
+			const auto side = st::agentMediaThumbSize * ratio;
+			auto image = QImage::fromData(block->bytes);
+			if (!image.isNull()) {
+				image = image.scaled(
+					side,
+					side,
+					Qt::KeepAspectRatioByExpanding,
+					Qt::SmoothTransformation);
+				_image = image.copy(
+					(image.width() - side) / 2,
+					(image.height() - side) / 2,
+					side,
+					side);
+				_image.setDevicePixelRatio(ratio);
 			}
 		}
 	} else if (_media.peer && _media.messageId) {
@@ -108,7 +122,7 @@ void FeedMediaPreview::paintEvent(QPaintEvent *e) {
 	p.setPen(Qt::NoPen);
 	p.fillRect(rect(), st::agentMediaThumbBg);
 	if (!_image.isNull()) {
-		p.drawImage(rect(), _image);
+		p.drawImage(0, 0, _image);
 	} else if (_thumbnail) {
 		p.drawImage(0, 0, _thumbnail->image(width()));
 	} else {
@@ -137,6 +151,28 @@ object_ptr<RpWidget> MakeFeedMediaPreview(
 		QWidget *parent,
 		const FeedContext &context,
 		const MediaBlock &media) {
+	if (!media.attachment.isEmpty()) {
+		const auto block = context.delegate.attachment
+			? context.delegate.attachment(media.attachment)
+			: std::nullopt;
+		if (!block
+			|| block->kind != MediaKind::Image
+			|| QImage::fromData(block->bytes).isNull()) {
+			return nullptr;
+		}
+	} else if (media.peer && media.messageId) {
+		const auto item = context.controller->session().data().message(
+			FullMsgId(PeerId(media.peer), MsgId(media.messageId)));
+		const auto itemMedia = item ? item->media() : nullptr;
+		const auto document = itemMedia ? itemMedia->document() : nullptr;
+		if (!itemMedia
+			|| (!itemMedia->photo()
+				&& !(document && document->hasThumbnail()))) {
+			return nullptr;
+		}
+	} else {
+		return nullptr;
+	}
 	return object_ptr<FeedMediaPreview>(parent, context, media);
 }
 

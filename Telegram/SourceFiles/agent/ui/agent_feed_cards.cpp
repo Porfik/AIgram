@@ -37,6 +37,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "styles/style_agent.h"
 #include "styles/style_agent_media.h"
+#include "styles/style_boxes.h"
 #include "styles/style_chat_helpers.h"
 #include "styles/style_chat.h"
 
@@ -111,8 +112,13 @@ protected:
 	int resizeGetHeight(int newWidth) override;
 
 private:
+	void addBlock(
+		const Ui::Text::MarkedContext &captionContext,
+		int from,
+		int till);
+
 	Ui::PreparedList _list;
-	base::unique_qptr<RpWidget> _preview;
+	std::vector<base::unique_qptr<RpWidget>> _blocks;
 
 };
 
@@ -124,41 +130,79 @@ SendFilesPreviewBox::SendFilesPreviewBox(
 , _list(std::move(list)) {
 	Expects(!_list.files.empty());
 
+	using Type = Ui::PreparedFile::Type;
 	const auto captionContext = Core::TextContext(
 		{ .session = &context.controller->session() });
-	if (_list.files.size() > 1) {
-		_preview.reset(Ui::CreateChild<Ui::AlbumPreview>(
+	const auto single = [](Type type) {
+		return (type == Type::File)
+			|| (type == Type::Music)
+			|| (type == Type::None);
+	};
+	auto albumStart = -1;
+	for (auto i = 0, till = int(_list.files.size()); i != till; ++i) {
+		const auto type = _list.files[i].type;
+		if (albumStart >= 0) {
+			if (single(type) || (i - albumStart == Ui::MaxAlbumItems())) {
+				addBlock(captionContext, std::exchange(albumStart, -1), i);
+			} else {
+				continue;
+			}
+		}
+		if (!single(type)) {
+			albumStart = i;
+			continue;
+		}
+		addBlock(captionContext, i, i + 1);
+	}
+	if (albumStart >= 0) {
+		addBlock(captionContext, albumStart, int(_list.files.size()));
+	}
+}
+
+void SendFilesPreviewBox::addBlock(
+		const Ui::Text::MarkedContext &captionContext,
+		int from,
+		int till) {
+	const auto items = gsl::make_span(_list.files).subspan(from, till - from);
+	auto widget = (RpWidget*)nullptr;
+	if (items.size() > 1) {
+		widget = Ui::CreateChild<Ui::AlbumPreview>(
 			this,
 			st::defaultComposeControls,
-			gsl::make_span(_list.files),
+			items,
 			captionContext,
-			Ui::SendFilesWay()));
-	} else {
-		const auto &file = _list.files.front();
-		const auto media = Ui::SingleMediaPreview::Create(
+			Ui::SendFilesWay());
+	} else if (const auto media = Ui::SingleMediaPreview::Create(
 			this,
 			st::defaultComposeControls,
 			[] { return false; },
-			file,
+			items.front(),
+			Ui::AttachControls::Type::None)) {
+		widget = media;
+	} else {
+		widget = Ui::CreateChild<Ui::SingleFilePreview>(
+			this,
+			st::defaultComposeControls,
+			items.front(),
+			captionContext,
 			Ui::AttachControls::Type::None);
-		if (media) {
-			_preview.reset(media);
-		} else {
-			_preview.reset(Ui::CreateChild<Ui::SingleFilePreview>(
-				this,
-				st::defaultComposeControls,
-				file,
-				captionContext,
-				Ui::AttachControls::Type::None));
-		}
 	}
-	_preview->show();
+	widget->setAttribute(Qt::WA_TransparentForMouseEvents);
+	widget->show();
+	_blocks.emplace_back(widget);
 }
 
 int SendFilesPreviewBox::resizeGetHeight(int newWidth) {
-	_preview->resizeToWidth(newWidth);
-	_preview->moveToLeft(0, 0, newWidth);
-	return _preview->height();
+	auto top = 0;
+	for (const auto &block : _blocks) {
+		if (top) {
+			top += st::sendMediaRowSkip;
+		}
+		block->resizeToWidth(newWidth);
+		block->moveToLeft(0, top, newWidth);
+		top += block->height();
+	}
+	return top;
 }
 
 [[nodiscard]] Ui::PreparedList SendFilesPreparedList(

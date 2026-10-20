@@ -495,30 +495,32 @@ void EditProviderBox(
 			tr::lng_agent_provider_abilities(),
 			st::boxLabel),
 		st::boxRowPadding);
-	const auto abilitiesVision = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_images(),
-			provider.vision),
-		st::boxRowPadding);
-	const auto abilitiesAudio = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_audio(),
-			provider.audio),
-		st::boxRowPadding);
-	const auto abilitiesVideo = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_video(),
-			provider.video),
-		st::boxRowPadding);
-	const auto abilitiesFiles = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_files(),
-			provider.files),
-		st::boxRowPadding);
+	const auto addAbility = [&](rpl::producer<QString> text, bool checked) {
+		return container->add(
+			object_ptr<Ui::Checkbox>(
+				container,
+				std::move(text),
+				checked,
+				st::defaultBoxCheckbox),
+			style::margins(
+				st::boxRowPadding.left(),
+				st::boxLittleSkip,
+				st::boxRowPadding.right(),
+				st::boxLittleSkip));
+	};
+	const auto abilitiesVision = addAbility(
+		tr::lng_agent_provider_images(),
+		provider.vision);
+	const auto abilitiesAudio = addAbility(
+		tr::lng_agent_provider_audio(),
+		provider.audio);
+	const auto abilitiesVideo = addAbility(
+		tr::lng_agent_provider_video(),
+		provider.video);
+	const auto abilitiesFiles = addAbility(
+		tr::lng_agent_provider_files(),
+		provider.files);
+	Ui::AddSkip(container);
 	Ui::AddDividerText(
 		container,
 		tr::lng_agent_provider_abilities_about());
