@@ -127,6 +127,17 @@ agentOverlayOpenSettings: RoundButton(agentFeedRetry) {
 
 agentComposerFieldLeft: 14px;
 agentComposerQueuedPadding: margins(14px, 8px, 10px, 2px);
+agentModelChipMargin: margins(8px, 6px, 8px, 0px);
+agentModelChipHeight: 26px;
+agentModelChipPadding: margins(8px, 0px, 6px, 0px);
+agentModelChipArrowSkip: 4px;
+agentModelChipFont: font(12px semibold);
+agentModelChipFg: windowSubTextFg;
+agentModelChipFgOver: windowSubTextFgOver;
+agentModelChipBgOver: windowBgOver;
+agentModelChipRadius: 13px;
+agentModelChipArrow: icon {{ "intro_country_dropdown", windowSubTextFg }};
+agentModelChipRipple: defaultRippleAnimation;
 agentQueuedLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowSubTextFg;

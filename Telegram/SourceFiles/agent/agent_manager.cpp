@@ -83,7 +83,7 @@ Main::Session &Manager::session() const {
 void Manager::refresh() {
 	_providers = LoadProviders();
 	updateEnabled();
-	learnContextWindow();
+	learnModels();
 }
 
 void Manager::updateEnabled() {
@@ -110,16 +110,12 @@ const ProvidersState &Manager::providers() const {
 	return _providers;
 }
 
-int Manager::contextWindow() const {
-	const auto provider = DefaultProvider(_providers);
-	if (!provider) {
-		return kDefaultContextWindow;
-	}
-	if (provider->contextWindow > 0) {
-		return provider->contextWindow;
+int Manager::contextWindow(const ProviderSettings &provider) const {
+	if (provider.contextWindow > 0) {
+		return provider.contextWindow;
 	}
 	const auto i = _learnedContext.find(
-		ModelsKey(provider->baseUrl, provider->model));
+		ModelsKey(provider.baseUrl, provider.model));
 	return (i != _learnedContext.cend() && i->second > 0)
 		? i->second
 		: kDefaultContextWindow;
@@ -143,6 +139,12 @@ MediaAbilities Manager::abilities(const ProviderSettings &provider) const {
 	return result;
 }
 
+const ProviderSettings *Manager::sessionProvider(
+		const QString &profileId) const {
+	const auto result = SessionProvider(_providers, profileId);
+	return (result && CreateAdapter(*result)) ? result : nullptr;
+}
+
 const ProviderSettings *Manager::mediaProvider() const {
 	const auto result = MediaProvider(_providers);
 	return (result && CreateAdapter(*result)) ? result : nullptr;
@@ -155,17 +157,15 @@ const ProviderSettings *Manager::taskProvider(const Task &task) const {
 
 void Manager::startModels(const ProviderSettings &provider) {
 	if (provider.kind != ProviderKind::OpenAiCompatible
-		|| provider.baseUrl.isEmpty()
-		|| provider.model.isEmpty()) {
+		|| provider.baseUrl.isEmpty()) {
 		return;
 	}
-	const auto key = ModelsKey(provider.baseUrl, provider.model);
-	if (_learnedAbilities.contains(key) || _learning.contains(key)) {
+	const auto url = provider.baseUrl;
+	if (_learnedUrls.contains(url) || _learning.contains(url)) {
 		return;
 	}
-	_learning.insert(key);
+	_learning.insert(url);
 	const auto body = std::make_shared<QByteArray>();
-	const auto model = provider.model;
 	_transport->start(
 		OpenAi::ModelsRequest(provider),
 		TransportHandlers{
@@ -174,53 +174,49 @@ void Manager::startModels(const ProviderSettings &provider) {
 				*body += chunk;
 			}),
 			crl::guard(this, [=](QString error) {
-				finishModels(key, model, std::move(*body), std::move(error));
+				finishModels(url, std::move(*body), std::move(error));
 			}),
 		});
 }
 
-void Manager::learnContextWindow() {
-	const auto active = DefaultProvider(_providers);
-	if (active) {
-		startModels(*active);
-	}
-	const auto media = MediaProvider(_providers);
-	if (media && (!active || media->id != active->id)) {
-		startModels(*media);
+void Manager::learnModels() {
+	for (const auto &provider : _providers.list) {
+		startModels(provider);
 	}
 }
 
 void Manager::finishModels(
-		const QString &key,
-		const QString &model,
+		const QString &baseUrl,
 		const QByteArray &body,
 		const QString &error) {
-	_learning.remove(key);
+	_learning.remove(baseUrl);
 	if (!error.isEmpty()) {
 		LOG(("Agent Info: models request failed."));
 		return;
 	}
-	for (const auto &entry : OpenAi::ParseModels(body)) {
-		if (entry.id != model) {
-			continue;
-		}
+	const auto models = OpenAi::ParseModels(body);
+	if (models.empty()) {
+		LOG(("Agent Info: models request gave no models."));
+		return;
+	}
+	_learnedUrls.insert(baseUrl);
+	for (const auto &entry : models) {
+		const auto key = ModelsKey(baseUrl, entry.id);
 		if (entry.contextWindow > 0) {
-			_learnedContext.emplace(key, entry.contextWindow);
+			_learnedContext[key] = entry.contextWindow;
 		}
 		if (entry.vision.has_value()
 			|| entry.audio.has_value()
 			|| entry.video.has_value()
 			|| entry.files.has_value()) {
-			_learnedAbilities.emplace(key, MediaAbilities{
+			_learnedAbilities[key] = MediaAbilities{
 				.images = entry.vision.value_or(false),
 				.audio = entry.audio.value_or(false),
 				.video = entry.video.value_or(false),
 				.files = entry.files.value_or(false),
-			});
+			};
 		}
-		return;
 	}
-	LOG(("Agent Info: abilities of the model are unknown."));
 }
 
 std::vector<SessionInfo> Manager::list(const Scope &scope) const {

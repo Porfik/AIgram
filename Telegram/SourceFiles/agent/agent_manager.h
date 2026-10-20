@@ -73,9 +73,11 @@ public:
 	[[nodiscard]] bool enabled() const;
 	[[nodiscard]] rpl::producer<bool> enabledValue() const;
 	[[nodiscard]] const ProvidersState &providers() const;
-	[[nodiscard]] int contextWindow() const;
+	[[nodiscard]] int contextWindow(const ProviderSettings &provider) const;
 	[[nodiscard]] MediaAbilities abilities(
 		const ProviderSettings &provider) const;
+	[[nodiscard]] const ProviderSettings *sessionProvider(
+		const QString &profileId) const;
 	[[nodiscard]] const ProviderSettings *mediaProvider() const;
 	[[nodiscard]] const ProviderSettings *taskProvider(
 		const Task &task) const;
@@ -115,10 +117,9 @@ private:
 	void refresh();
 	void updateEnabled();
 	void startModels(const ProviderSettings &provider);
-	void learnContextWindow();
+	void learnModels();
 	void finishModels(
-		const QString &key,
-		const QString &model,
+		const QString &baseUrl,
 		const QByteArray &body,
 		const QString &error);
 	[[nodiscard]] Session *findOpen(const QString &id) const;
@@ -144,6 +145,7 @@ private:
 	std::vector<std::unique_ptr<Session>> _sessions;
 	base::flat_map<QString, int> _learnedContext;
 	base::flat_map<QString, MediaAbilities> _learnedAbilities;
+	base::flat_set<QString> _learnedUrls;
 	base::flat_set<QString> _learning;
 	rpl::event_stream<Scope> _listChanges;
 	mutable base::flat_map<

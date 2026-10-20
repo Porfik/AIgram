@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_spending_format.h"
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
+#include "agent/ui/agent_model_boxes.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
@@ -45,6 +46,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/painter.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/buttons.h"
+#include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
 
 #include <QtCore/QJsonArray>
@@ -55,6 +57,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_boxes.h"
 #include "styles/style_chat.h"
 #include "styles/style_chat_helpers.h"
+#include "styles/style_media_player.h"
+#include "styles/style_menu_icons.h"
+#include "styles/style_widgets.h"
 
 namespace Agent::Ui {
 namespace {
@@ -264,6 +269,11 @@ SessionView::SessionView(
 		chooseAttach();
 	}, lifetime());
 
+	_composer->modelRequests(
+	) | rpl::on_next([=] {
+		showModelMenu();
+	}, lifetime());
+
 	_composer->setMimeDataHook([=](
 			not_null<const QMimeData*> data,
 			Ui::InputField::MimeAction action) {
@@ -319,6 +329,7 @@ SessionView::SessionView(
 	) | rpl::on_next([=] {
 		refreshProviderState();
 		refreshSpending();
+		refreshModel();
 	}, lifetime());
 
 	_openSettings->setClickedCallback([=] {
@@ -343,6 +354,7 @@ SessionView::SessionView(
 	}, lifetime());
 
 	refreshProviderState();
+	refreshModel();
 }
 
 SessionView::~SessionView() {
@@ -355,6 +367,7 @@ void SessionView::showSession(Session *session) {
 	}
 	_sessionLifetime.destroy();
 	_session = session;
+	_pendingProfileId = QString();
 	if (session) {
 		_handoff.reset();
 		std::move(session->recordChanges()
@@ -394,6 +407,7 @@ void SessionView::showSession(Session *session) {
 		refreshSpending();
 		relayout();
 	}
+	refreshModel();
 	_sessionChanges.fire_copy(_session);
 }
 
@@ -530,6 +544,58 @@ void SessionView::refreshProviderState() {
 	relayout();
 }
 
+void SessionView::refreshModel() {
+	const auto &providers = _manager->providers();
+	const auto run = _session && _session->isRun();
+	const auto provider = run
+		? nullptr
+		: _session
+		? FindProvider(providers, _session->profileId())
+		: SessionProvider(providers, _pendingProfileId);
+	_composer->setModel(provider ? ModelTitle(*provider) : QString());
+}
+
+void SessionView::showModelMenu() {
+	const auto &providers = _manager->providers();
+	const auto current = _session
+		? _session->profileId()
+		: [&] {
+			const auto provider = SessionProvider(
+				providers,
+				_pendingProfileId);
+			return provider ? provider->id : QString();
+		}();
+	_modelMenu = base::make_unique_q<::Ui::PopupMenu>(
+		this,
+		st::popupMenuWithIcons);
+	for (const auto &provider : providers.list) {
+		const auto id = provider.id;
+		_modelMenu->addAction(
+			ModelTitle(provider),
+			crl::guard(this, [=] { chooseModel(id); }),
+			(id == current) ? &st::mediaPlayerMenuCheck : nullptr);
+	}
+	_modelMenu->addSeparator();
+	_modelMenu->addAction(
+		tr::lng_agent_model_add_menu(tr::now),
+		crl::guard(this, [=] {
+			ShowAddModel(_controller, crl::guard(this, [=](QString id) {
+				chooseModel(id);
+			}));
+		}),
+		&st::menuIconAdd);
+	_modelMenu->popup(QCursor::pos());
+}
+
+void SessionView::chooseModel(const QString &profileId) {
+	if (_session) {
+		_session->setProfile(profileId);
+	} else {
+		_pendingProfileId = profileId;
+	}
+	refreshModel();
+}
+
 void SessionView::rebuildFeed() {
 	const auto session = _session;
 	if (!session) {
@@ -558,6 +624,7 @@ void SessionView::applyState() {
 		return;
 	}
 	const auto &state = session->state();
+	refreshModel();
 	_composer->setWorking(
 		state.status == SessionStatus::Working
 		|| state.status == SessionStatus::Compacting);
@@ -574,6 +641,10 @@ Session *SessionView::ensureSession() {
 		return _session;
 	}
 	const auto session = _manager->create(_scope);
+	if (const auto profileId = base::take(_pendingProfileId)
+		; !profileId.isEmpty()) {
+		session->setProfile(profileId);
+	}
 	showSession(session);
 	return session;
 }

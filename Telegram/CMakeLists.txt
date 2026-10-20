@@ -166,6 +166,8 @@ PRIVATE
     agent/ui/agent_memory_list.h
     agent/ui/agent_menus.cpp
     agent/ui/agent_menus.h
+    agent/ui/agent_model_boxes.cpp
+    agent/ui/agent_model_boxes.h
     agent/ui/agent_palette.cpp
     agent/ui/agent_palette.h
     agent/ui/agent_panel.cpp

@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "lang/lang_keys.h"
 #include "ui/controls/send_button.h"
+#include "ui/effects/ripple_animation.h"
 #include "ui/painter.h"
 #include "ui/wrap/vertical_layout.h"
 #include "ui/widgets/buttons.h"
@@ -19,9 +20,85 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent::Ui {
 
+class ModelChip final : public RippleButton {
+public:
+	explicit ModelChip(QWidget *parent);
+
+	void setText(const QString &text);
+	void resizeToMaxWidth(int maxWidth);
+
+protected:
+	void paintEvent(QPaintEvent *e) override;
+	QImage prepareRippleMask() const override;
+
+private:
+	QString _text;
+	QString _shown;
+
+};
+
+ModelChip::ModelChip(QWidget *parent)
+: RippleButton(parent, st::agentModelChipRipple) {
+}
+
+void ModelChip::setText(const QString &text) {
+	_text = text;
+	resizeToMaxWidth(QWIDGETSIZE_MAX);
+}
+
+void ModelChip::resizeToMaxWidth(int maxWidth) {
+	const auto &padding = st::agentModelChipPadding;
+	const auto &font = st::agentModelChipFont;
+	const auto extra = padding.left()
+		+ st::agentModelChipArrowSkip
+		+ st::agentModelChipArrow.width()
+		+ padding.right();
+	const auto available = std::max(maxWidth - extra, 1);
+	_shown = (font->width(_text) > available)
+		? font->elided(_text, available)
+		: _text;
+	resize(extra + font->width(_shown), st::agentModelChipHeight);
+	update();
+}
+
+void ModelChip::paintEvent(QPaintEvent *e) {
+	auto p = Painter(this);
+	const auto over = isOver() || isDown();
+	if (over) {
+		auto hq = PainterHighQualityEnabler(p);
+		p.setPen(Qt::NoPen);
+		p.setBrush(st::agentModelChipBgOver);
+		p.drawRoundedRect(
+			rect(),
+			st::agentModelChipRadius,
+			st::agentModelChipRadius);
+	}
+	paintRipple(p, 0, 0);
+	const auto &padding = st::agentModelChipPadding;
+	const auto &font = st::agentModelChipFont;
+	p.setFont(font);
+	p.setPen(over ? st::agentModelChipFgOver : st::agentModelChipFg);
+	p.drawTextLeft(
+		padding.left(),
+		(height() - font->height) / 2,
+		width(),
+		_shown);
+	const auto &arrow = st::agentModelChipArrow;
+	arrow.paint(
+		p,
+		padding.left() + font->width(_shown) + st::agentModelChipArrowSkip,
+		(height() - arrow.height()) / 2,
+		width());
+}
+
+QImage ModelChip::prepareRippleMask() const {
+	return RippleAnimation::RoundRectMask(size(), st::agentModelChipRadius);
+}
+
 Composer::Composer(QWidget *parent)
 : RpWidget(parent)
 , _queued(this)
+, _model(this)
 , _attach(this, st::historyAttach)
 , _field(
 	this,
@@ -50,6 +127,7 @@ Composer::Composer(QWidget *parent)
 	) | rpl::skip(1) | rpl::on_next([=] {
 		refresh();
 	}, lifetime());
+	_model->hide();
 	_send->setClickedCallback([=] {
 		if (_working) {
 			_stops.fire({});
@@ -122,6 +200,22 @@ rpl::producer<> Composer::heightChanges() const {
 	return _heightChanges.events();
 }
 
+void Composer::setModel(const QString &title) {
+	const auto shown = !title.isEmpty();
+	_model->setText(title);
+	if (_modelShown != shown) {
+		_modelShown = shown;
+		_model->setVisible(shown);
+		refresh();
+	} else if (shown) {
+		resizeGetHeight(width());
+	}
+}
+
+rpl::producer<> Composer::modelRequests() const {
+	return _model->clicks() | rpl::to_empty;
+}
+
 rpl::producer<> Composer::attachRequests() const {
 	return _attachRequests.events();
 }
@@ -155,6 +249,13 @@ int Composer::resizeGetHeight(int newWidth) {
 		top += padding.top() + _queued->height() + padding.bottom();
 	} else {
 		_queued->hide();
+	}
+	if (_modelShown) {
+		const auto &margin = st::agentModelChipMargin;
+		_model->resizeToMaxWidth(newWidth - margin.left() - margin.right());
+		top += margin.top();
+		_model->moveToLeft(margin.left(), top, newWidth);
+		top += _model->height() + margin.bottom();
 	}
 	const auto sendSize = st::historySendSize;
 	const auto fieldLeft = st::historyAttach.width;

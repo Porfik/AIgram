@@ -81,6 +81,9 @@ public:
 	[[nodiscard]] const SessionState &state() const;
 	[[nodiscard]] rpl::producer<> stateChanges() const;
 
+	[[nodiscard]] QString profileId() const;
+	void setProfile(const QString &profileId);
+
 	void send(SendRequest request);
 	void stop();
 	void retry();

@@ -18,6 +18,8 @@ class SendButton;
 
 namespace Agent::Ui {
 
+class ModelChip;
+
 class Composer final : public RpWidget {
 public:
 	explicit Composer(QWidget *parent);
@@ -33,6 +35,8 @@ public:
 	[[nodiscard]] QString draft() const;
 	void setDraft(const QString &text);
 	void setShadowAtBottom(bool bottom);
+	void setModel(const QString &title);
+	[[nodiscard]] rpl::producer<> modelRequests() const;
 
 protected:
 	int resizeGetHeight(int newWidth) override;
@@ -43,11 +47,13 @@ private:
 	void refresh();
 
 	object_ptr<VerticalLayout> _queued;
+	object_ptr<ModelChip> _model;
 	object_ptr<Ui::IconButton> _attach;
 	object_ptr<Ui::InputField> _field;
 	object_ptr<Ui::SendButton> _send;
 	bool _working = false;
 	bool _shadowAtBottom = false;
+	bool _modelShown = false;
 	rpl::event_stream<QString> _sends;
 	rpl::event_stream<> _stops;
 	rpl::event_stream<> _attachRequests;

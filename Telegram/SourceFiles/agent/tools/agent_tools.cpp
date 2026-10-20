@@ -59,12 +59,9 @@ struct CallAbilities {
 
 [[nodiscard]] CallAbilities ComputeAbilities(
 		not_null<Main::Session*> session,
-		const std::optional<ProviderSettings> &background) {
+		const std::optional<ProviderSettings> &provider) {
 	const auto &manager = session->agent();
 	auto result = CallAbilities();
-	const auto provider = background
-		? &*background
-		: DefaultProvider(manager.providers());
 	if (provider) {
 		result.main = manager.abilities(*provider);
 		result.main.files = result.main.files || IsOpenRouter(*provider);
@@ -366,10 +363,12 @@ ToolRegistry::~ToolRegistry() {
 	}
 }
 
-void ToolRegistry::setBackground(
-		ProviderSettings provider,
-		Fn<void(QString text)> notify) {
-	_backgroundProvider = std::move(provider);
+void ToolRegistry::setProvider(
+		Fn<std::optional<ProviderSettings>()> provider) {
+	_provider = std::move(provider);
+}
+
+void ToolRegistry::setBackground(Fn<void(QString text)> notify) {
 	_notify = std::move(notify);
 }
 
@@ -377,7 +376,9 @@ std::vector<ToolSpec> ToolRegistry::tools() const {
 	const auto account = (_gate->scope().kind == ScopeKind::Account);
 	const auto background = _gate->background();
 	const auto &table = ToolsTable();
-	const auto abilities = ComputeAbilities(_session, _backgroundProvider);
+	const auto abilities = ComputeAbilities(
+		_session,
+		_provider ? _provider() : std::nullopt);
 	auto result = std::vector<ToolSpec>();
 	const auto add = [&](const ToolEntry &entry) {
 		if (!_gate->available(entry.policy)
@@ -525,7 +526,9 @@ void ToolRegistry::executeResolved(
 	};
 	pending->sessionId = _sessionId;
 	pending->notify = _notify;
-	const auto abilities = ComputeAbilities(_session, _backgroundProvider);
+	const auto abilities = ComputeAbilities(
+		_session,
+		_provider ? _provider() : std::nullopt);
 	pending->mainAbilities = abilities.main;
 	pending->helperAbilities = abilities.helper;
 	pending->doneMedia = [this, id = call.id](

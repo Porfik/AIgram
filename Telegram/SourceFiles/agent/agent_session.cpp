@@ -103,8 +103,13 @@ Session::Session(
 	_gate.get(),
 	_record.loadedGroups,
 	_record.info.id)) {
+	_tools->setProvider([=] {
+		return (_loop && _loop->busy() && _loopProvider)
+			? _loopProvider
+			: currentProvider();
+	});
 	if (_run) {
-		_tools->setBackground(_run->provider, _run->notify);
+		_tools->setBackground(_run->notify);
 	}
 	_repairedOnLoad = CloseInterruptedTurn(_record);
 	_undoneReported = int(_record.undone.size());
@@ -179,10 +184,34 @@ std::optional<ProviderSettings> Session::currentProvider() const {
 		return _run->provider;
 	} else if (isRun()) {
 		return std::nullopt;
-	} else if (const auto provider = DefaultProvider(_manager->providers())) {
+	} else if (const auto provider = SessionProvider(
+			_manager->providers(),
+			_record.info.profileId)) {
 		return *provider;
 	}
 	return std::nullopt;
+}
+
+QString Session::profileId() const {
+	if (const auto provider = currentProvider()) {
+		return provider->id;
+	}
+	return QString();
+}
+
+void Session::setProfile(const QString &profileId) {
+	if (isRun() || _record.info.profileId == profileId) {
+		return;
+	}
+	_record.info.profileId = profileId;
+	if (!_record.messages.empty()) {
+		const auto weak = base::make_weak(this);
+		_manager->save(this);
+		if (!weak) {
+			return;
+		}
+	}
+	_stateChanges.fire({});
 }
 
 QString Session::cacheKey() const {
@@ -392,6 +421,11 @@ void Session::dispatch(SendRequest request) {
 	if (_record.messages.empty() && !isRun()) {
 		_record.info.title = ProvisionalTitle(request.text);
 	}
+	if (_record.info.profileId.isEmpty() && !isRun()) {
+		if (const auto provider = DefaultProvider(_manager->providers())) {
+			_record.info.profileId = provider->id;
+		}
+	}
 	auto named = request.mentions;
 	for (const auto &peer : FindNamedPeers(
 			request.text,
@@ -494,7 +528,7 @@ int Session::planCompaction(
 		.maxOutputTokens = 0,
 	};
 	const auto fixed = EstimateTokens(request);
-	auto window = _manager->contextWindow();
+	auto window = _manager->contextWindow(provider);
 	if (force) {
 		request.messages = ContextMessages(_record);
 		window = std::min(window, EstimateTokens(request));

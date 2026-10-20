@@ -7,12 +7,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_agent.h"
 
-#include "agent/agent_check.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_files.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_spending_format.h"
 #include "boxes/peer_list_box.h"
 #include "boxes/peer_list_controllers.h"
@@ -35,7 +35,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
-#include "ui/widgets/fields/password_input.h"
 #include "ui/widgets/labels.h"
 #include "ui/wrap/vertical_layout.h"
 #include "window/window_session_controller.h"
@@ -67,10 +66,6 @@ struct AgentState {
 
 };
 
-[[nodiscard]] QString PriceText(double price) {
-	return (price > 0.) ? QString::number(price) : QString();
-}
-
 [[nodiscard]] std::optional<double> ParsePrice(QString text) {
 	text = text.trimmed();
 	if (text.isEmpty()) {
@@ -100,16 +95,11 @@ struct AgentState {
 
 void SaveState(not_null<AgentState*> state) {
 	::Agent::SaveProviders(state->providers);
-	state->changed.fire({});
 }
 
 [[nodiscard]] QString ProviderRowTitle(
 		const ::Agent::ProviderSettings &provider) {
-	return !provider.title.isEmpty()
-		? provider.title
-		: !provider.model.isEmpty()
-			? provider.model
-			: tr::lng_agent_provider_default(tr::now);
+	return ::Agent::Ui::ModelTitle(provider);
 }
 
 class Agent final : public Section<Agent> {
@@ -122,11 +112,6 @@ private:
 	void setupContent();
 
 };
-
-void EditProviderBox(
-	not_null<Ui::GenericBox*> box,
-	std::shared_ptr<AgentState> state,
-	::Agent::ProviderSettings provider);
 
 class HideChatsController final : public ChooseRecipientBoxController {
 public:
@@ -359,21 +344,8 @@ void RebuildProviderRows(
 	while (container->count()) {
 		delete container->widgetAt(0);
 	}
-	const auto &list = state->providers.list;
-	auto activeIndex = -1;
-	auto index = 0;
-	for (const auto &provider : list) {
-		if (provider.id == state->providers.defaultId) {
-			activeIndex = index;
-		}
-		++index;
-	}
-	const auto group = (activeIndex >= 0)
-		? std::make_shared<Ui::RadiobuttonGroup>(activeIndex)
-		: std::make_shared<Ui::RadiobuttonGroup>();
 	const auto &st = st::peerListBoxItem;
-	for (auto i = 0; i != int(list.size()); ++i) {
-		const auto &provider = list[i];
+	for (const auto &provider : state->providers.list) {
 		const auto row = container->add(
 			object_ptr<Ui::AbstractButton>(container));
 		row->resize(row->width(), st.height);
@@ -381,13 +353,22 @@ void RebuildProviderRows(
 		const auto name = row->lifetime().make_state<Ui::Text::String>(
 			st.nameStyle,
 			ProviderRowTitle(provider));
-		const auto model = row->lifetime().make_state<Ui::Text::String>(
+		const auto about = row->lifetime().make_state<Ui::Text::String>(
 			st::defaultTextStyle,
-			provider.model);
-		const auto iconSize = st::menuIconBot.width();
-		row->paintOn([=](QPainter &p) {
-			const auto iconTop = (row->height() - iconSize) / 2;
-			st::menuIconBot.paint(p, st::settingsButton.iconLeft, iconTop, row->width());
+			::Agent::Ui::ModelDescription(provider));
+		const auto &icon = (provider.service
+				== ::Agent::ProviderService::OpenRouter)
+			? st::agentModelChoiceOpenRouterIcon
+			: st::agentModelChoiceCustomIcon;
+		row->paintOn([=, &icon](QPainter &p) {
+			if (row->isOver()) {
+				p.fillRect(row->rect(), st::windowBgOver);
+			}
+			icon.paint(
+				p,
+				st::settingsButton.iconLeft,
+				(row->height() - icon.height()) / 2,
+				row->width());
 			const auto textLeft = st::settingsButton.padding.left();
 			const auto textWidth = row->width()
 				- textLeft
@@ -400,256 +381,59 @@ void RebuildProviderRows(
 				.elisionLines = 1,
 			});
 			p.setPen(st.statusFg);
-			model->draw(p, {
+			about->draw(p, {
 				.position = { textLeft, st.statusPosition.y() },
 				.outerWidth = row->width(),
 				.availableWidth = textWidth,
 				.elisionLines = 1,
 			});
 		});
-		const auto radio = Ui::CreateChild<Ui::Radiobutton>(
-			row,
-			group,
-			i,
-			QString());
-		radio->setAttribute(Qt::WA_TransparentForMouseEvents);
-		radio->show();
-		row->widthValue(
-		) | rpl::on_next([=](int width) {
-			radio->moveToRight(
-				st::settingsButton.padding.right(),
-				(st.height - radio->checkRect().height()) / 2,
-				width);
-		}, radio->lifetime());
-
-		row->setClickedCallback([=] {
-			controller->show(Box(EditProviderBox, state, provider));
+		row->setClickedCallback([=, id = provider.id] {
+			::Agent::Ui::ShowEditModel(controller, id);
 		});
 	}
 	container->resizeToWidth(container->width());
 	container->showChildren();
 }
 
-void EditProviderBox(
+[[nodiscard]] QString DefaultModelText(
+		const std::shared_ptr<AgentState> &state) {
+	const auto provider = ::Agent::DefaultProvider(state->providers);
+	return provider
+		? ProviderRowTitle(*provider)
+		: tr::lng_agent_media_model_none(tr::now);
+}
+
+void DefaultModelBox(
 		not_null<Ui::GenericBox*> box,
-		std::shared_ptr<AgentState> state,
-		::Agent::ProviderSettings provider) {
-	const auto creating = provider.id.isEmpty();
-	box->setTitle(creating
-		? tr::lng_agent_new_provider()
-		: tr::lng_agent_edit_provider());
-	box->setWidth(st::boxWideWidth);
-
-	const auto container = box->verticalLayout();
-	Ui::AddSkip(container);
-
-	const auto title = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_title(),
-			provider.title),
-		st::boxRowPadding);
-	Ui::AddSkip(container);
-	container->add(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_url(),
-			st::boxLabel),
-		st::boxRowPadding);
-	const auto url = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_url_placeholder(),
-			provider.baseUrl),
-		st::boxRowPadding);
-	Ui::AddSkip(container);
-	auto keyWrap = object_ptr<Ui::RpWidget>(container);
-	const auto key = Ui::CreateChild<Ui::PasswordInput>(
-		keyWrap.data(),
-		st::defaultInputField,
-		tr::lng_agent_provider_key(),
-		provider.apiKey);
-	key->move(0, 0);
-	key->heightValue(
-	) | rpl::on_next([=, wrap = keyWrap.data()](int height) {
-		wrap->resize(wrap->width(), height);
-	}, key->lifetime());
-	keyWrap->widthValue(
-	) | rpl::on_next([=](int width) {
-		key->resize(width, key->height());
-	}, key->lifetime());
-	container->add(std::move(keyWrap), st::boxRowPadding);
-	Ui::AddSkip(container);
-	const auto model = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_model(),
-			provider.model),
-		st::boxRowPadding);
-	Ui::AddSkip(container);
-	container->add(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_abilities(),
-			st::boxLabel),
-		st::boxRowPadding);
-	const auto addAbility = [&](rpl::producer<QString> text, bool checked) {
-		return container->add(
-			object_ptr<Ui::Checkbox>(
-				container,
-				std::move(text),
-				checked,
+		std::shared_ptr<AgentState> state) {
+	box->setTitle(tr::lng_agent_default_model_title());
+	const auto choices = state->providers.list;
+	const auto current = ::Agent::DefaultProvider(state->providers);
+	auto index = -1;
+	for (auto i = 0; i != int(choices.size()); ++i) {
+		if (current && choices[i].id == current->id) {
+			index = i;
+			break;
+		}
+	}
+	const auto group = std::make_shared<Ui::RadioenumGroup<int>>(index);
+	for (auto i = 0; i != int(choices.size()); ++i) {
+		box->addRow(
+			object_ptr<Ui::Radioenum<int>>(
+				box,
+				group,
+				i,
+				ProviderRowTitle(choices[i]),
 				st::defaultBoxCheckbox),
-			style::margins(
-				st::boxRowPadding.left(),
-				st::boxLittleSkip,
-				st::boxRowPadding.right(),
-				st::boxLittleSkip));
-	};
-	const auto abilitiesVision = addAbility(
-		tr::lng_agent_provider_images(),
-		provider.vision);
-	const auto abilitiesAudio = addAbility(
-		tr::lng_agent_provider_audio(),
-		provider.audio);
-	const auto abilitiesVideo = addAbility(
-		tr::lng_agent_provider_video(),
-		provider.video);
-	const auto abilitiesFiles = addAbility(
-		tr::lng_agent_provider_files(),
-		provider.files);
-	Ui::AddSkip(container);
-	Ui::AddDividerText(
-		container,
-		tr::lng_agent_provider_abilities_about());
-	Ui::AddSkip(container);
-	container->add(
-		object_ptr<Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_prices(),
-			st::boxLabel),
-		st::boxRowPadding);
-	const auto priceInput = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_price_input(),
-			PriceText(provider.priceInput)),
-		st::boxRowPadding);
-	const auto priceOutput = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_price_output(),
-			PriceText(provider.priceOutput)),
-		st::boxRowPadding);
-	const auto priceCached = container->add(
-		object_ptr<Ui::InputField>(
-			container,
-			st::defaultInputField,
-			tr::lng_agent_provider_price_cached(),
-			PriceText(provider.priceCached)),
-		st::boxRowPadding);
-	Ui::AddDividerText(
-		container,
-		tr::lng_agent_provider_prices_about());
-	Ui::AddSkip(container);
-
-	const auto wasActive = (provider.id == state->providers.defaultId);
-	const auto checkbox = container->add(
-		object_ptr<Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_make_active(),
-			creating ? state->providers.list.empty() : wasActive),
-		st::boxRowPadding);
-	Ui::AddSkip(container);
-
-	const auto save = [=]() mutable {
-		const auto newUrl = url->getLastText().trimmed();
-		if (!newUrl.startsWith(u"http://"_q)
-			&& !newUrl.startsWith(u"https://"_q)) {
-			url->showError();
-			box->uiShow()->showToast(tr::lng_agent_error_url(tr::now));
-			return;
-		}
-		const auto newModel = model->getLastText().trimmed();
-		if (newModel.isEmpty()) {
-			model->showError();
-			box->uiShow()->showToast(tr::lng_agent_error_model(tr::now));
-			return;
-		}
-		const auto parseField = [=](
-				not_null<Ui::InputField*> field) {
-			auto value = ParsePrice(field->getLastText());
-			if (!value) {
-				field->showError();
-				box->uiShow()->showToast(
-					tr::lng_agent_error_price(tr::now));
-			}
-			return value;
-		};
-		const auto newPriceInput = parseField(priceInput);
-		const auto newPriceOutput = parseField(priceOutput);
-		const auto newPriceCached = parseField(priceCached);
-		if (!newPriceInput || !newPriceOutput || !newPriceCached) {
-			return;
-		}
-		provider.title = title->getLastText().trimmed();
-		provider.baseUrl = newUrl;
-		provider.apiKey = key->getLastText().trimmed();
-		provider.model = newModel;
-		provider.vision = abilitiesVision->checked();
-		provider.audio = abilitiesAudio->checked();
-		provider.video = abilitiesVideo->checked();
-		provider.files = abilitiesFiles->checked();
-		provider.priceInput = *newPriceInput;
-		provider.priceOutput = *newPriceOutput;
-		provider.priceCached = *newPriceCached;
-		auto &list = state->providers.list;
-		if (creating) {
-			provider.id = ::Agent::GenerateProviderId();
-			list.push_back(provider);
-			if (checkbox->checked() || list.size() == 1) {
-				state->providers.defaultId = provider.id;
-			}
-		} else {
-			for (auto &item : list) {
-				if (item.id == provider.id) {
-					item = provider;
-					break;
-				}
-			}
-			if (checkbox->checked()) {
-				state->providers.defaultId = provider.id;
-			} else if (wasActive) {
-				state->providers.defaultId = QString();
-			}
-		}
+			st::settingsSendTypePadding);
+	}
+	group->setChangedCallback([=](int index) {
+		state->providers.defaultId = choices[index].id;
 		SaveState(state.get());
 		box->closeBox();
-	};
-
-	if (!creating) {
-		box->addLeftButton(tr::lng_box_delete(), [=] {
-			auto &list = state->providers.list;
-			for (auto i = list.begin(); i != list.end(); ++i) {
-				if (i->id == provider.id) {
-					list.erase(i);
-					break;
-				}
-			}
-			if (state->providers.defaultId == provider.id) {
-				state->providers.defaultId = QString();
-			}
-			SaveState(state.get());
-			box->closeBox();
-		});
-	}
-	box->addButton(tr::lng_settings_save(), save);
-	box->addButton(tr::lng_cancel(), [=] {
+	});
+	box->addButton(tr::lng_close(), [=] {
 		box->closeBox();
 	});
 }
@@ -661,7 +445,7 @@ void BuildProviders(
 	builder.addSubsectionTitle({
 		.id = u"agent/providers"_q,
 		.title = tr::lng_agent_providers_title(),
-		.keywords = { u"providers"_q, u"api"_q, u"models"_q },
+		.keywords = { u"models"_q, u"providers"_q, u"api"_q },
 	});
 
 	builder.add([=](const WidgetContext &ctx) {
@@ -677,20 +461,35 @@ void BuildProviders(
 		return SearchEntry{
 			.id = u"agent/providers/list"_q,
 			.title = tr::lng_agent_providers_title(tr::now),
-			.keywords = { u"provider"_q, u"model"_q, u"api key"_q },
+			.keywords = { u"model"_q, u"provider"_q, u"api key"_q },
 		};
 	});
 
 	builder.addButton({
 		.id = u"agent/add-provider"_q,
 		.title = tr::lng_agent_add_provider(),
-		.icon = { &st::menuIconBot },
+		.icon = { &st::menuIconAdd },
 		.onClick = [=] {
-			controller->show(
-				Box(EditProviderBox, state, ::Agent::ProviderSettings()));
+			::Agent::Ui::ShowAddModel(controller);
 		},
-		.keywords = { u"add"_q, u"new"_q, u"create"_q },
+		.keywords = { u"add"_q, u"new"_q, u"model"_q, u"openrouter"_q },
 	});
+	builder.addButton({
+		.id = u"agent/default-model"_q,
+		.title = tr::lng_agent_default_model(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return DefaultModelText(state);
+		}),
+		.onClick = [=] {
+			if (!state->providers.list.empty()) {
+				controller->show(Box(DefaultModelBox, state));
+			}
+		},
+		.keywords = { u"default"_q, u"model"_q },
+	});
+	builder.addDividerText(tr::lng_agent_default_model_about());
 }
 
 void BuildInstructions(
@@ -733,30 +532,6 @@ void BuildInstructions(
 			.keywords = { u"instructions"_q, u"prompt"_q },
 		};
 	});
-}
-
-void BuildCheckButton(
-		SectionBuilder &builder,
-		const std::shared_ptr<AgentState> &state,
-		not_null<Window::SessionController*> controller) {
-	const auto button = builder.addButton({
-		.id = u"agent/check"_q,
-		.title = tr::lng_agent_check_button(),
-		.icon = { &st::menuIconNetwork },
-		.onClick = [=] {
-			if (const auto active
-					= ::Agent::DefaultProvider(state->providers)) {
-				::Agent::ShowCheckBox(controller, *active);
-			}
-		},
-		.keywords = { u"check"_q, u"test"_q, u"connection"_q },
-	});
-	const auto update = [=] {
-		button->setDisabled(!::Agent::DefaultProvider(state->providers));
-	};
-	update();
-	state->changed.events(
-	) | rpl::on_next(update, builder.container()->lifetime());
 }
 
 [[nodiscard]] QString RowPreviewText(::Agent::RowPreview mode) {
@@ -821,9 +596,7 @@ void MediaModelBox(
 		auto &none = result.emplace_back();
 		none.title = tr::lng_agent_media_model_none(tr::now);
 		for (const auto &provider : state->providers.list) {
-			if (provider.id != state->providers.defaultId) {
-				result.push_back(provider);
-			}
+			result.push_back(provider);
 		}
 		return result;
 	}();
@@ -1236,6 +1009,11 @@ void Agent::setupContent() {
 	const auto content = Ui::CreateChild<Ui::VerticalLayout>(this);
 	const auto state = std::make_shared<AgentState>();
 	state->providers = ::Agent::LoadProviders();
+	::Agent::ProvidersChanged(
+	) | rpl::on_next([=] {
+		state->providers = ::Agent::LoadProviders();
+		state->changed.fire({});
+	}, lifetime());
 
 	const SectionBuildMethod buildMethod = [state](
 			not_null<Ui::VerticalLayout*> container,
@@ -1250,7 +1028,6 @@ void Agent::setupContent() {
 
 		BuildProviders(builder, state, controller);
 		BuildInstructions(builder, state);
-		BuildCheckButton(builder, state, controller);
 		BuildEntryPoints(builder, state, controller);
 		BuildMedia(builder, state, controller);
 		BuildBackground(builder, state, controller);
@@ -1283,14 +1060,6 @@ const auto kMeta = BuildHelper({
 			.id = u"agent/instructions"_q,
 			.title = tr::lng_agent_instructions_title(tr::now),
 			.keywords = { u"instructions"_q, u"prompt"_q },
-		};
-	});
-
-	builder.add(nullptr, [] {
-		return SearchEntry{
-			.id = u"agent/check"_q,
-			.title = tr::lng_agent_check_button(tr::now),
-			.keywords = { u"check"_q, u"test"_q, u"connection"_q },
 		};
 	});
 

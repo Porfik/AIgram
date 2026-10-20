@@ -67,9 +67,8 @@ public:
 	[[nodiscard]] rpl::producer<> loadedGroupsChanges() const;
 	[[nodiscard]] rpl::producer<HelperUsage> helperUsage() const;
 
-	void setBackground(
-		ProviderSettings provider,
-		Fn<void(QString text)> notify);
+	void setProvider(Fn<std::optional<ProviderSettings>()> provider);
+	void setBackground(Fn<void(QString text)> notify);
 	void decide(const QString &toolUseId, CardDecision decision);
 	void expire(const QString &toolUseId);
 	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
@@ -117,7 +116,7 @@ private:
 	const not_null<Main::Session*> _session;
 	const not_null<PolicyGate*> _gate;
 	const QString _sessionId;
-	std::optional<ProviderSettings> _backgroundProvider;
+	Fn<std::optional<ProviderSettings>()> _provider;
 	Fn<void(QString text)> _notify;
 	rpl::event_stream<PeerKey> _touched;
 	rpl::event_stream<HelperUsage> _helperUsage;

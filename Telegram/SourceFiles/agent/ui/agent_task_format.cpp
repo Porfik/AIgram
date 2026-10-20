@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_task_runner.h"
 #include "agent/core/agent_providers.h"
+#include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_spending_format.h"
 #include "data/data_chat_filters.h"
 #include "data/data_peer.h"
@@ -309,18 +310,15 @@ QString FormatTaskNotify(const Task &task) {
 }
 
 QString FormatTaskModel(not_null<Manager*> manager, const Task &task) {
-	if (!task.providerId.isEmpty()) {
-		for (const auto &provider : manager->providers().list) {
-			if (provider.id == task.providerId) {
-				return provider.title;
-			}
-		}
+	const auto &providers = manager->providers();
+	if (const auto provider = FindProvider(providers, task.providerId)) {
+		return ModelTitle(*provider);
 	}
-	const auto background = BackgroundProvider(manager->providers(), QString());
+	const auto background = BackgroundProvider(providers, QString());
 	return tr::lng_agent_task_model_default(
 		tr::now,
 		lt_model,
-		background ? background->title : QString());
+		background ? ModelTitle(*background) : QString());
 }
 
 QString FormatTaskState(not_null<Manager*> manager, const Task &task) {

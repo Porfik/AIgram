@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
 #include "agent/ui/agent_queue.h"
+#include "base/unique_qptr.h"
 #include "data/data_types.h"
 #include "ui/rp_widget.h"
 
@@ -29,6 +30,7 @@ struct AttachmentInput;
 } // namespace Agent
 
 namespace Ui {
+class PopupMenu;
 struct PreparedBundle;
 struct PreparedFile;
 struct PreparedList;
@@ -79,6 +81,9 @@ private:
 
 	void setupWidgets();
 	void refreshProviderState();
+	void refreshModel();
+	void showModelMenu();
+	void chooseModel(const QString &profileId);
 	void applyMode(Mode mode);
 	void relayout();
 	void relayoutOverlay();
@@ -112,6 +117,8 @@ private:
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	Session *_session = nullptr;
+	QString _pendingProfileId;
+	base::unique_qptr<::Ui::PopupMenu> _modelMenu;
 	Mode _mode = Mode::Normal;
 	int _contentMaxWidth = 0;
 	bool _composerOnTop = false;

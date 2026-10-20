@@ -1007,17 +1007,20 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `Manager` is the account-level owner, `Main::Session::agent()`. It keeps
   the provider state, refreshed on `ProvidersChanged()`, one
   `HttpTransport`, the session index and every opened `Session`; a session
-  keeps running when its UI closes. `available()` means the active provider
-  can make an adapter; `enabled()` additionally needs `showEntryPoints`.
-- `contextWindow()` is the active provider's `contextWindow`, else the value
-  learned once from its `/models`, else `kDefaultContextWindow`.
+  keeps running when its UI closes. `available()` means the default
+  provider can make an adapter; `enabled()` additionally needs
+  `showEntryPoints`.
+- `contextWindow(provider)` is the provider's `contextWindow`, else the
+  value its `/models` reported for its model, else
+  `kDefaultContextWindow`.
 - `abilities(provider)` is each of the provider's `vision`, `audio`,
   `video` and `files` flags, or what its `/models` reported for its model.
-  `/models` is asked once per base URL and model, for the active and the
-  media provider, on every providers change (also when `contextWindow` is
-  set by hand). `mediaProvider()` is `MediaProvider()` of the state when
-  it can make an adapter, else null. `attachments()` is the account's
-  `Attachments`.
+  On every providers change `/models` is asked once per base URL of every
+  profile until one answer with models arrived, and every model of that
+  answer is remembered. `sessionProvider(profileId)` is
+  `SessionProvider()` of the state and `mediaProvider()` is
+  `MediaProvider()`, each when it can make an adapter, else null.
+  `attachments()` is the account's `Attachments`.
 - `list(scope)` returns the index entries of that scope, newest `updated`
   first; `listChanges()` fires the scope after its entries change.
   `create()` makes a session that joins the index on its first message.
@@ -1036,7 +1039,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - A dispatch builds the user message (the text, then the hint as a hidden
   block), starts a policy turn with the mentions plus `FindNamedPeers()`,
   compacts first when `PlanCompaction()` asks, and recreates the `Loop` from
-  `ContextMessages()` with a fresh system prompt and the active provider.
+  `ContextMessages()` with a fresh system prompt and the session's
+  provider.
   Messages the loop appends are copied into the record, which is saved at
   every turn end.
 - A turn that fails with a context overflow is compacted and resumed once.
@@ -1067,7 +1071,17 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   stored bytes as `image/jpeg`, so retries and resumes see them too. At
   every turn end, before the save, the record goes through
   `DropMediaBytes()`.
-- When the active provider `IsOpenRouter()` and its `abilities()` lack
+- The session's provider is `RunSetup::provider` for a run, nothing for a
+  run loaded later, else `SessionProvider()` of the record's
+  `info.profileId`. The first dispatch of a normal session with an empty
+  `profileId` stores the default provider's id there, so changing the
+  default later doesn't move existing sessions. `profileId()` is the id
+  of the session's provider (empty without one). `setProfile(id)` stores
+  the id (a no-op for runs), saves an indexed session (not changing
+  `updated`) and fires `stateChanges()`; it takes effect at the next
+  dispatch, a running turn keeps its provider. Compaction, titles and
+  `contextWindow()` follow the session's provider.
+- When the session's provider `IsOpenRouter()` and its `abilities()` lack
   `files`, the loop gets `pdfEngine` `pdf-text`.
 - `buildSystem()` passes `FormatMemory()` of the scope's owner
   (`Scope::peer`, zero for the account) to the prompt, so memory changes
@@ -1260,7 +1274,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   even for a tool that was never offered; a group tool that is not loaded
   fails with a hint to call `load_tools`.
 - Media abilities: every call gets `sessionId`, `mainAbilities`
-  (`Manager::abilities()` of the active provider, with `files` also true
+  (`Manager::abilities()` of the session's provider from `setProvider()`:
+  the running turn's provider while the loop is busy, else the session's
+  current one; `files` is also true
   when it `IsOpenRouter()`) and `helperAbilities` (of
   `Manager::mediaProvider()`, none without one). `tools()` hides entries
   whose `needs` can't be met: `Images` needs `ChooseMediaRoute(Image)`
@@ -1353,7 +1369,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - In a background run (`PolicyGate::background()`, set up with
   `setBackground()`) `tools()` lists every entry the gate makes available,
   group entries included, without `load_tools`; media abilities are those
-  of the run's provider; and `PendingCall::notify` shows a task
+  of the run's provider (the session passes it through `setProvider()`
+  like any session's); and `PendingCall::notify` shows a task
   notification. `expire()` finishes a pending card `Expired` with its
   result text. `ToolPolicyByName()` is the policy of a table entry.
 - Reversible tools never ask by themselves, so when the gate says
@@ -1959,9 +1976,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - The provider box has "Model abilities": checkboxes for `vision`,
   `audio`, `video` and `files` and the about line. The agent page adds a
   "Media" block: "Media model" with the chosen provider's title or
-  "None", opening a single-choice box (none plus the providers other than
-  the active one) that sets `mediaId`, its about line, and "Agent folder"
-  opening the folder, with `lng_agent_folder_about`.
+  "None", opening a single-choice box (none plus every profile) that
+  sets `mediaId`, its about line, and "Agent folder" opening the folder,
+  with `lng_agent_folder_about`.
 - `HistoryView` has three tabs: "Sessions", "Tasks" and "Memory". The
   "Tasks" tab is a `TasksView` of the scope in a scroll area;
   `HistoryView::openRunRequests()` forwards its run clicks, and the panel
@@ -2110,9 +2127,49 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   variant clears the selection after passing. The selection bar shows
   "To agent" next to "Forward" when forwarding is allowed and the chat
   can be passed.
+- Model profiles (plan 11.7). The page starts with "Models": a row per
+  profile (`ModelTitle()`, `ModelDescription()` under it, the
+  `ai_prompt` icon for OpenRouter and `ip_address` for the rest; a click
+  is `ShowEditModel()`), "Add model" (`ShowAddModel()`) and "Default
+  model" with a single-choice box over the profiles that sets
+  `defaultId`. The page reloads its state on every `ProvidersChanged()`;
+  every box saves through `UpdateProviders()` (load, change, save).
+- `agent_model_boxes.*`: `ModelTitle()` is the title, else the model id,
+  else `lng_agent_provider_default`. `ModelDescription()` is "OpenRouter
+  · <model>" or "<base URL host> · <model>". `ShowAddModel()` offers
+  "OpenRouter" and "Other provider"; `added` gets the new profile id.
+  OpenRouter asks for the key only when `ServiceKey()` is empty (checked
+  with `KeyRequest()`: 200 goes on, 401 or 403 mark the field), then the
+  model list, then the name (`SuggestedName()` drops the `Vendor: `
+  prefix) with "Default model" checked when no default profile exists.
+  The list is `/models` of OpenRouter (cached for ten minutes), models
+  whose `tools` is false left out, filtered by `SearchModels()`, each row
+  the name and "<context> context · <prices> · <id>", a check at the
+  current model; Enter in the search picks the first match. Choosing a
+  model copies its id, context window, abilities and prices into the
+  profile. A new OpenRouter profile gets `SetServiceKey()` of its key.
+- `ShowEditModel()` opens the OpenRouter box (name, key, "Model ID" with
+  the same list, "OpenRouter providers", "Check connection", "Default
+  model", Delete) or the "Other provider" form (the manual fields plus
+  "Check connection" and "Default model"). Changing the model of an
+  OpenRouter profile clears its `ignoredRoutes`; saving one sets the key
+  of every OpenRouter profile. "OpenRouter providers" lists the
+  `ParseEndpoints()` routes that have `tools` as checkboxes (unchecked
+  ones are ignored), keeps ignored names that are no longer listed and
+  refuses to uncheck all. Deleting asks first, then clears `defaultId`,
+  `mediaId` and `backgroundId` that named the profile.
+- The composer has a model chip above the field (`Composer::setModel()`,
+  hidden when the title is empty; `modelRequests()` on a click).
+  `SessionView` shows the session's profile title there (none for runs),
+  for a view without a session the profile it will use: the one chosen
+  in the chip, else the default. A click opens a popup menu with every
+  profile (a check at the current one) and "Add model..."; choosing sets
+  the session's profile (`Session::setProfile()`), or remembers it until
+  the view creates its session; a model added from the menu is chosen
+  right away. Showing another session or a new one forgets that choice.
 - The settings page adds a "Background tasks" block after "Media":
-  "Background model" with the chosen provider's title or "Main model",
-  opening a single-choice box (the main model plus every provider) that
+  "Background model" with the chosen provider's title or "Default
+  model", opening a single-choice box (the default plus every profile) that
   sets `backgroundId`, its about line, and "Daily limit" with
   `lng_agent_background_limit_value`, opening a box with the dollars and
   tokens fields, with `lng_agent_background_limit_about`.

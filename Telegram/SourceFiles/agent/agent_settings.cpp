@@ -46,6 +46,12 @@ void SaveProviders(const ProvidersState &state) {
 	ProvidersChangedStream().fire({});
 }
 
+void UpdateProviders(Fn<void(ProvidersState &state)> change) {
+	auto state = LoadProviders();
+	change(state);
+	SaveProviders(state);
+}
+
 rpl::producer<> ProvidersChanged() {
 	return ProvidersChangedStream().events();
 }

@@ -17,6 +17,7 @@ namespace Agent {
 
 [[nodiscard]] ProvidersState LoadProviders();
 void SaveProviders(const ProvidersState &state);
+void UpdateProviders(Fn<void(ProvidersState &state)> change);
 [[nodiscard]] rpl::producer<> ProvidersChanged();
 
 [[nodiscard]] QString GenerateProviderId();

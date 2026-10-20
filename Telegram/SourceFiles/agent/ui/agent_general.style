@@ -71,3 +71,15 @@ agentPaletteClose: IconButton(agentPaletteButton) {
 	iconOver: icon {{ "box_button_close", boxTitleCloseFgOver }};
 }
 agentMenuIconPass: icon {{ "menu/ai_prompt", menuIconColor }};
+
+agentModelRowPadding: margins(22px, 9px, 22px, 9px);
+agentModelRowSkip: 2px;
+agentModelRowCheckSkip: 12px;
+agentModelListStatus: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+	align: align(top);
+	textFg: windowSubTextFg;
+}
+agentModelListStatusPadding: margins(22px, 24px, 22px, 12px);
+agentModelChoiceOpenRouterIcon: icon {{ "menu/ai_prompt", menuIconColor }};
+agentModelChoiceCustomIcon: icon {{ "menu/ip_address", menuIconColor }};
