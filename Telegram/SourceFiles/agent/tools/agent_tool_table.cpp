@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "main/main_session.h"
 
 #include <QtCore/QDateTime>
+#include <QtCore/QRegularExpression>
 
 #include <limits>
 
@@ -103,6 +104,17 @@ PeerData *ResolveChatRef(
 	if (ok) {
 		return session->data().peerLoaded(PeerId(uint64(number)));
 	}
+	const auto username = ChatRefUsername(value);
+	return username.isEmpty()
+		? nullptr
+		: session->data().peerByUsername(username);
+}
+
+QString ChatRefUsername(const QJsonValue &value) {
+	if (!value.isString()) {
+		return QString();
+	}
+	auto text = value.toString().trimmed();
 	auto lower = text.toLower();
 	if (lower.startsWith(u"https://"_q)) {
 		text = text.mid(8);
@@ -122,7 +134,9 @@ PeerData *ResolveChatRef(
 	if (slash > 0) {
 		text = text.left(slash);
 	}
-	return session->data().peerByUsername(text);
+	static const auto valid = QRegularExpression(
+		u"^[A-Za-z][A-Za-z0-9_]{3,31}$"_q);
+	return valid.match(text).hasMatch() ? text : QString();
 }
 
 std::vector<not_null<UserData*>> ResolveUserRefs(

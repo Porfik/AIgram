@@ -149,6 +149,33 @@ struct CallAbilities {
 		parts.join(u' '));
 }
 
+[[nodiscard]] std::vector<QString> UnresolvedUsernames(
+		not_null<Main::Session*> session,
+		const QJsonObject &input) {
+	constexpr auto kMaxResolve = 10;
+	auto result = std::vector<QString>();
+	const auto check = [&](const QJsonValue &value) {
+		if (int(result.size()) >= kMaxResolve
+			|| !value.isString()
+			|| ResolveChatRef(session, value)) {
+			return;
+		}
+		const auto username = ChatRefUsername(value);
+		if (!username.isEmpty() && !ranges::contains(result, username)) {
+			result.push_back(username);
+		}
+	};
+	for (const auto &key : { u"chat"_q, u"from_chat"_q }) {
+		check(input.value(key));
+	}
+	for (const auto &key : { u"chats"_q, u"users"_q }) {
+		for (const auto &value : input.value(key).toArray()) {
+			check(value);
+		}
+	}
+	return result;
+}
+
 [[nodiscard]] bool ForScopePeer(
 		not_null<Main::Session*> session,
 		const PolicyGate &gate,
@@ -371,6 +398,56 @@ std::vector<ToolSpec> ToolRegistry::tools() const {
 }
 
 void ToolRegistry::execute(
+		ToolUseBlock call,
+		Fn<void(ToolResultBlock)> done) {
+	const auto usernames = (_gate->scope().kind == ScopeKind::Account)
+		? UnresolvedUsernames(_session, call.input)
+		: std::vector<QString>();
+	if (usernames.empty()) {
+		executeResolved(std::move(call), std::move(done));
+		return;
+	}
+	const auto id = call.id;
+	const auto sender = _resolving.emplace(
+		id,
+		std::make_unique<MTP::Sender>(&_session->mtp())
+	).first->second.get();
+	const auto left = std::make_shared<int>(int(usernames.size()));
+	const auto state = std::make_shared<std::pair<
+		ToolUseBlock,
+		Fn<void(ToolResultBlock)>>>(std::move(call), std::move(done));
+	const auto finish = [=] {
+		if (--*left) {
+			return;
+		}
+		crl::on_main(this, [=] {
+			const auto i = _resolving.find(id);
+			if (i == _resolving.end()) {
+				return;
+			}
+			_resolving.erase(i);
+			executeResolved(
+				std::move(state->first),
+				std::move(state->second));
+		});
+	};
+	for (const auto &username : usernames) {
+		sender->request(MTPcontacts_ResolveUsername(
+			MTP_flags(0),
+			MTP_string(username),
+			MTPstring()
+		)).done([=](const MTPcontacts_ResolvedPeer &result) {
+			const auto &data = result.data();
+			_session->data().processUsers(data.vusers());
+			_session->data().processChats(data.vchats());
+			finish();
+		}).fail([=] {
+			finish();
+		}).send();
+	}
+}
+
+void ToolRegistry::executeResolved(
 		ToolUseBlock call,
 		Fn<void(ToolResultBlock)> done) {
 	const auto &table = ToolsTable();
@@ -834,6 +911,12 @@ void ToolRegistry::undo(
 }
 
 void ToolRegistry::cancel(const QString &toolUseId) {
+	if (const auto r = _resolving.find(toolUseId); r != _resolving.end()) {
+		auto sender = std::move(r->second);
+		_resolving.erase(r);
+		crl::on_main([holder = std::move(sender)] {});
+		return;
+	}
 	const auto i = _pending.find(toolUseId);
 	if (i == _pending.end()) {
 		return;

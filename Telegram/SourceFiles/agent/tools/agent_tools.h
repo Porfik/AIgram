@@ -26,6 +26,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class PeerData;
 
+namespace MTP {
+class Sender;
+} // namespace MTP
+
 namespace Main {
 class Session;
 } // namespace Main
@@ -76,6 +80,9 @@ public:
 private:
 	struct Call;
 
+	void executeResolved(
+		ToolUseBlock call,
+		Fn<void(ToolResultBlock)> done);
 	void confirmCall(
 		const QString &toolUseId,
 		Card card,
@@ -119,6 +126,10 @@ private:
 	rpl::event_stream<Card> _cardUpdates;
 	rpl::event_stream<> _loadedGroupsChanges;
 	std::map<QString, Call, std::less<>> _calls;
+	std::map<
+		QString,
+		std::unique_ptr<MTP::Sender>,
+		std::less<>> _resolving;
 	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _finished;
 	std::map<
 		QString,

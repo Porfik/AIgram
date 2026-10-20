@@ -1208,7 +1208,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `ResolveChatRef()` takes a chat id (a JSON number or a numeric string,
   `PeerId::value` as in every tool result), `@username`, or a
   `t.me/username` link, and finds only peers already loaded in
-  `Data::Session`; otherwise null.
+  `Data::Session`; otherwise null. `ChatRefUsername()` is the username
+  such a reference names (4 to 32 letters, digits and `_`, starting with
+  a letter), empty for ids and invite links.
+- In the account scope the registry first resolves the usernames of the
+  `chat`, `from_chat`, `chats` and `users` references that are not
+  loaded (at most 10) with `contacts.resolveUsername`, processing the
+  returned users and chats, and only then runs the call as usual;
+  failures are ignored (the call then reports the unknown chat). A call
+  cancelled meanwhile never runs.
 - Results are compact JSON capped with `CapToolResult()`. In the chat
   scope every successful result, and in the account scope every result of
   an entry with `untrusted`, goes through `WrapUntrusted()` after capping
