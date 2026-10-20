@@ -269,6 +269,8 @@ public:
 	: AbstractButton(parent)
 	, _label(this, label, st::agentTasksLabel)
 	, _value(this, value, st::agentTasksValue) {
+		_label->setAttribute(Qt::WA_TransparentForMouseEvents);
+		_value->setAttribute(Qt::WA_TransparentForMouseEvents);
 		if (click) {
 			_clickable = true;
 			setClickedCallback(std::move(click));

@@ -18,6 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
+#include "agent/agent_tasks.h"
 #include "agent/tools/agent_tools.h"
 #include "agent/ui/agent_section.h"
 #include "agent/core/agent_media.h"
@@ -87,8 +88,12 @@ SessionView::SessionView(
 				? _manager->attachments().read(_session->id(), id)
 				: std::nullopt;
 		},
+		.isRun = [=] {
+			return _session && _session->isRun();
+		},
 	},})
 , _composer(this)
+, _queueStrip(this, manager, scope)
 , _welcome(this)
 , _welcomeLabel(
 	_welcome,
@@ -97,7 +102,7 @@ SessionView::SessionView(
 		: tr::lng_agent_general_welcome(tr::now)),
 	st::agentWelcomeLabel)
 , _handoffNote(
-	_welcome,
+	this,
 	QString(),
 	st::agentWelcomeLabel)
 , _noProvider(this)
@@ -148,8 +153,8 @@ SessionView::SessionView(
 
 	const auto dragAreas = DragArea::SetupDragAreaToContainer(
 		this,
-		crl::guard(this, [](not_null<const QMimeData*>) {
-			return true;
+		crl::guard(this, [=](not_null<const QMimeData*>) {
+			return !(_session && _session->isRun());
 		}),
 		nullptr,
 		nullptr);
@@ -192,6 +197,23 @@ SessionView::SessionView(
 	_openSettings->setClickedCallback([=] {
 		_controller->showSettings(Settings::AgentId());
 	});
+
+	_queueStrip->heightValue(
+	) | rpl::skip(1) | rpl::on_next([=] {
+		relayout();
+	}, lifetime());
+	_queueStrip->clicks(
+	) | rpl::on_next([=] {
+		ShowQueueBox(
+			_controller,
+			_manager,
+			_scope,
+			crl::guard(this, [=](QString sessionId) {
+				if (const auto session = _manager->open(sessionId)) {
+					showSession(session);
+				}
+			}));
+	}, lifetime());
 
 	refreshProviderState();
 }
@@ -325,6 +347,15 @@ void SessionView::refreshHandoffNote() {
 	_handoffNote->show();
 }
 
+QString SessionView::runAboutText() const {
+	const auto task = _session->record().info.task;
+	const auto found = _manager->tasks().find(task);
+	return tr::lng_agent_run_about(
+		tr::now,
+		lt_task,
+		found ? found->title : _session->record().info.title);
+}
+
 void SessionView::refreshProviderState() {
 	_mode = _manager->available()
 		? Mode::Normal
@@ -428,6 +459,9 @@ bool SessionView::confirmSendingFiles(
 		not_null<const QMimeData*> data,
 		std::optional<bool> overrideSendImagesAsPhotos,
 		const QString &insertTextOnCancel) {
+	if (_session && _session->isRun()) {
+		return false;
+	}
 	const auto premium = _controller->session().user()->isPremium();
 	if (const auto urls = Core::ReadMimeUrls(data); !urls.empty()) {
 		auto list = Storage::PrepareMediaList(
@@ -476,7 +510,9 @@ bool SessionView::checkAttachmentLimits(
 void SessionView::confirmSendingFiles(
 		PreparedList &&list,
 		const QString &insertTextOnCancel) {
-	if (list.error != Ui::PreparedList::Error::None) {
+	if (_session && _session->isRun()) {
+		return;
+	} else if (list.error != Ui::PreparedList::Error::None) {
 		_controller->showToast(tr::lng_agent_attach_failed(tr::now));
 		return;
 	} else if (list.files.empty()) {
@@ -610,18 +646,45 @@ void SessionView::relayout() {
 		return;
 	}
 	_noProvider->hide();
-	_composer->show();
+	const auto run = _session && _session->isRun();
+	if (run) {
+		_composer->hide();
+	} else {
+		_composer->show();
+	}
+	_queueStrip->resizeToWidth(w);
+	_queueStrip->setGeometry(0, 0, w, _queueStrip->height());
+	const auto stripHeight = _queueStrip->height();
 	const auto content = (_contentMaxWidth > 0 && w > _contentMaxWidth)
 		? _contentMaxWidth
 		: w;
-	_composer->resizeToWidth(content);
-	const auto composerHeight = _composer->height();
-	_composer->setGeometry(
-		(w - content) / 2,
-		h - composerHeight,
-		content,
-		composerHeight);
-	_feed->setGeometry(0, 0, w, h - composerHeight);
+	if (run) {
+		const auto margin = st::agentFeedItemMargin;
+		_handoffNote->setText(runAboutText());
+		_handoffNote->resizeToNaturalWidth(std::max(
+			content - margin.left() - margin.right(),
+			1));
+		_handoffNote->moveToLeft(
+			(w - content) / 2 + margin.left(),
+			stripHeight + margin.top(),
+			w);
+		_handoffNote->show();
+		const auto top = stripHeight + margin.top() + _handoffNote->height();
+		_feed->setGeometry(0, top, w, std::max(h - top, 0));
+	} else {
+		_composer->resizeToWidth(content);
+		const auto composerHeight = _composer->height();
+		_composer->setGeometry(
+			(w - content) / 2,
+			h - composerHeight,
+			content,
+			composerHeight);
+		_feed->setGeometry(
+			0,
+			stripHeight,
+			w,
+			h - stripHeight - composerHeight);
+	}
 	_feed->setContentMaxWidth(_contentMaxWidth);
 	_feed->show();
 	relayoutOverlay();
@@ -646,6 +709,9 @@ void SessionView::relayoutOverlay() {
 	}
 	if (_session || !_feed->empty()) {
 		_welcome->hide();
+		if (!_session || !_session->isRun()) {
+			_handoffNote->hide();
+		}
 		return;
 	}
 	_welcome->setGeometry(_feed->geometry());

@@ -31,6 +31,7 @@ enum class CardKind : uchar {
 	SendFiles,
 	CreateTask,
 	UpdateTask,
+	Action,
 };
 
 enum class CardStatus : uchar {

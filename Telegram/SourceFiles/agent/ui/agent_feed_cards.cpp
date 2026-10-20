@@ -9,11 +9,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_prompts.h"
 #include "agent/agent_files.h"
+#include "agent/agent_manager.h"
 #include "agent/core/agent_media.h"
 #include "agent/ui/agent_session_view.h"
+#include "agent/ui/agent_task_format.h"
 #include "core/file_utilities.h"
 #include "core/ui_integration.h"
 #include "lang/lang_keys.h"
+#include "main/main_session.h"
 #include "storage/storage_media_prepare.h"
 #include "ui/chat/attach/attach_album_preview.h"
 #include "ui/chat/attach/attach_prepare.h"
@@ -72,6 +75,12 @@ namespace {
 		return tr::lng_agent_card_title_delete_folder(tr::now);
 	case CardKind::Handoff:
 		return tr::lng_agent_card_title_handoff(tr::now);
+	case CardKind::CreateTask:
+		return tr::lng_agent_card_title_create_task(tr::now);
+	case CardKind::UpdateTask:
+		return tr::lng_agent_card_title_update_task(tr::now);
+	case CardKind::Action:
+		return tr::lng_agent_card_title_action(tr::now);
 	}
 	return QString();
 }
@@ -99,6 +108,81 @@ namespace {
 
 [[nodiscard]] QString FileSizeText(int64 size) {
 	return Ui::FormatSizeText(size);
+}
+
+struct TaskCardRow {
+	QString label;
+	QString value;
+	QString was;
+};
+
+[[nodiscard]] std::vector<TaskCardRow> TaskCardRows(
+		not_null<Main::Session*> session,
+		not_null<Manager*> manager,
+		CardKind kind,
+		const std::optional<Task> &task,
+		const std::optional<Task> &previous) {
+	const auto fallback = Task();
+	const auto &current = task ? *task : fallback;
+	const auto triggerText = [&](const Task &forTask) {
+		return FormatTaskTrigger(session, forTask);
+	};
+	const auto frameText = [&](const Task &forTask) {
+		return FormatTaskFrame(session, forTask);
+	};
+	const auto modelText = [&](const Task &forTask) {
+		return FormatTaskModel(manager, forTask);
+	};
+	const auto limitsText = [&](const Task &forTask) {
+		return FormatTaskLimits(
+			forTask.limits,
+			TaskCostKnown(manager, forTask));
+	};
+	const auto notifyText = [&](const Task &forTask) {
+		return FormatTaskNotify(forTask);
+	};
+	const auto row = [](tr::phrase<> label, QString value) {
+		return TaskCardRow{ label(tr::now), std::move(value), QString() };
+	};
+	auto rows = std::vector<TaskCardRow>();
+	if (kind == CardKind::CreateTask) {
+		rows.push_back(row(tr::lng_agent_task_trigger, triggerText(current)));
+		rows.push_back(row(tr::lng_agent_task_frame, frameText(current)));
+		rows.push_back(row(tr::lng_agent_task_model, modelText(current)));
+		rows.push_back(row(tr::lng_agent_task_limits, limitsText(current)));
+		rows.push_back(row(tr::lng_agent_task_notify, notifyText(current)));
+	} else if (task && previous) {
+		const auto changed = [&](tr::phrase<> label, auto format, bool same) {
+			if (!same) {
+				rows.push_back({
+					label(tr::now),
+					format(current),
+					format(*previous),
+				});
+			}
+		};
+		changed(
+			tr::lng_agent_task_trigger,
+			triggerText,
+			current.trigger == previous->trigger);
+		changed(
+			tr::lng_agent_task_frame,
+			frameText,
+			current.frame == previous->frame);
+		changed(
+			tr::lng_agent_task_model,
+			modelText,
+			current.providerId == previous->providerId);
+		changed(
+			tr::lng_agent_task_limits,
+			limitsText,
+			current.limits == previous->limits);
+		changed(
+			tr::lng_agent_task_notify,
+			notifyText,
+			current.notify == previous->notify);
+	}
+	return rows;
 }
 
 class SendFilesPreviewBox final : public RpWidget {
@@ -560,7 +644,12 @@ void FeedCardWidget::build() {
 		CardTitleText(_card.kind),
 		st::agentFeedCardTitleLabel));
 	const auto pendingNow = pending();
-	if (_card.kind == CardKind::Forward && !_card.text.isEmpty()) {
+	if (_card.kind == CardKind::CreateTask
+		|| _card.kind == CardKind::UpdateTask) {
+		buildTaskRows(pendingNow);
+	}
+	if ((_card.kind == CardKind::Forward || _card.kind == CardKind::Action)
+		&& !_card.text.isEmpty()) {
 		_inner->add(
 			object_ptr<Ui::FlatLabel>(
 				_inner,
@@ -778,7 +867,9 @@ void FeedCardWidget::build() {
 		if (_card.kind == CardKind::SendFiles) {
 			buildSendFilesPreview();
 		}
-		if (editable()) {
+		if (editable()
+			&& _card.kind != CardKind::CreateTask
+			&& _card.kind != CardKind::UpdateTask) {
 			_field = _inner->add(
 				object_ptr<Ui::InputField>(
 					_inner,
@@ -829,7 +920,11 @@ void FeedCardWidget::build() {
 			object_ptr<CardButtonsRow>(_inner),
 			addGap(gap));
 		const auto executeText = [&] {
-			if (_card.kind == CardKind::Transcribe) {
+			if (_card.kind == CardKind::CreateTask) {
+				return tr::lng_agent_card_create(tr::now);
+			} else if (_card.kind == CardKind::UpdateTask) {
+				return tr::lng_agent_card_save(tr::now);
+			} else if (_card.kind == CardKind::Transcribe) {
 				return tr::lng_agent_card_transcribe(tr::now);
 			} else if (_card.kind == CardKind::Download) {
 				return tr::lng_agent_card_download_count(
@@ -912,6 +1007,10 @@ void FeedCardWidget::build() {
 					? (_card.detail.isEmpty()
 						? tr::lng_agent_card_downloaded(tr::now)
 						: tr::lng_agent_card_saved(tr::now))
+					: (_card.kind == CardKind::CreateTask)
+					? tr::lng_agent_card_task_created(tr::now)
+					: (_card.kind == CardKind::UpdateTask)
+					? tr::lng_agent_card_task_updated(tr::now)
 					: tr::lng_agent_card_done(tr::now);
 			case CardStatus::Drafted:
 				return tr::lng_agent_card_drafted(tr::now);
@@ -921,6 +1020,8 @@ void FeedCardWidget::build() {
 				return tr::lng_agent_card_failed(tr::now);
 			case CardStatus::NotDone:
 				return tr::lng_agent_card_not_done(tr::now);
+			case CardStatus::Expired:
+				return tr::lng_agent_card_expired(tr::now);
 			default:
 				return QString();
 			}
@@ -968,10 +1069,14 @@ void FeedCardWidget::build() {
 			});
 		}
 		if (_card.autoApproved) {
+			const auto byTask = _context.delegate.isRun
+				&& _context.delegate.isRun();
 			_inner->add(
 				object_ptr<Ui::FlatLabel>(
 					_inner,
-					tr::lng_agent_card_auto(tr::now),
+					(byTask
+						? tr::lng_agent_card_auto_task(tr::now)
+						: tr::lng_agent_card_auto(tr::now)),
 					st::agentFeedCardDetailLabel),
 				addGap(0));
 		}
@@ -995,6 +1100,87 @@ void FeedCardWidget::build() {
 		resize(width(), resizeGetHeight(width()));
 	}
 	update();
+}
+
+void FeedCardWidget::buildTaskRows(bool pendingNow) {
+	const auto session = &_context.controller->session();
+	auto task = Agent::DeserializeTask(_card.task);
+	auto previous = Agent::DeserializeTask(_card.previousTask);
+	const auto gap = st::agentFeedCardGap;
+	const auto addGap = [&](int top) {
+		return style::margins(0, top, 0, 0);
+	};
+	const auto addLabel = [&](
+			QString text,
+			int top,
+			const style::FlatLabel &st) {
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(_inner, std::move(text), st),
+			addGap(top));
+	};
+	const auto wasText = [](const QString &text) {
+		return tr::lng_agent_card_task_was(tr::now, lt_text, text);
+	};
+	addLabel(
+		tr::lng_agent_task_instruction(tr::now),
+		gap,
+		st::agentFeedCardDetailLabel);
+	if (pendingNow) {
+		_field = _inner->add(
+			object_ptr<Ui::InputField>(
+				_inner,
+				st::agentFeedCardField,
+				Ui::InputField::Mode::MultiLine,
+				tr::lng_agent_card_instruction_placeholder()),
+			addGap(0));
+		_field->setText(_payload.text);
+		_field->changes(
+		) | rpl::on_next([=] {
+			_payload.text = _field->getLastText();
+			refreshButtons();
+		}, _field->lifetime());
+	} else if (!_card.text.isEmpty()) {
+		addLabel(_card.text, 0, st::agentFeedTextLabel);
+	}
+	if (task && previous
+		&& !previous->instruction.isEmpty()
+		&& task->instruction != previous->instruction) {
+		addLabel(wasText(previous->instruction), 0, st::agentFeedCardDetailLabel);
+	}
+	for (const auto &row : TaskCardRows(
+			session,
+			&session->agent(),
+			_card.kind,
+			task,
+			previous)) {
+		addLabel(row.label, gap, st::agentFeedCardDetailLabel);
+		addLabel(row.value, 0, st::agentFeedTextLabel);
+		if (!row.was.isEmpty()) {
+			addLabel(wasText(row.was), 0, st::agentFeedCardDetailLabel);
+		}
+	}
+	const auto newCatchUp = task.has_value() && task->catchUp;
+	const auto wasCatchUp = previous.has_value() && previous->catchUp;
+	if (_card.kind == CardKind::CreateTask) {
+		if (newCatchUp) {
+			addLabel(
+				tr::lng_agent_task_catch_up(tr::now),
+				gap,
+				st::agentFeedCardDetailLabel);
+		}
+	} else if (task && previous && newCatchUp != wasCatchUp) {
+		if (newCatchUp) {
+			addLabel(
+				tr::lng_agent_task_catch_up(tr::now),
+				gap,
+				st::agentFeedCardDetailLabel);
+		} else {
+			addLabel(
+				wasText(tr::lng_agent_task_catch_up(tr::now)),
+				gap,
+				st::agentFeedCardDetailLabel);
+		}
+	}
 }
 
 void FeedCardWidget::refreshButtons() {
@@ -1062,6 +1248,8 @@ struct ParsedAction {
 	QString fact;
 	QStringList saved;
 	QString savedPath;
+	QString taskTitle;
+	QString taskState;
 
 	[[nodiscard]] QString chats() const {
 		return (done.isEmpty() ? failedTitles : done).join(u", "_q);
@@ -1084,6 +1272,9 @@ struct ParsedAction {
 		.value("title").toString();
 	parsed.fact = object.value("fact").toObject()
 		.value("text").toString();
+	parsed.taskTitle = object.value("task").toObject()
+		.value("title").toString();
+	parsed.taskState = object.value("state").toString();
 	for (const auto value : object.value("done").toArray()) {
 		const auto entry = value.toObject();
 		const auto title = entry.value("title").toString();
@@ -1185,6 +1376,20 @@ struct ParsedAction {
 			parsed.saved.isEmpty()
 				? parsed.chats()
 				: parsed.saved.join(u", "_q));
+	} else if (name == u"pause_task"_q) {
+		const auto title = parsed.taskTitle.isEmpty()
+			? input.value("task").toString()
+			: parsed.taskTitle;
+		return (parsed.taskState == u"active"_q)
+			? tr::lng_agent_action_task_resume(tr::now, lt_task, title)
+			: tr::lng_agent_action_task_pause(tr::now, lt_task, title);
+	} else if (name == u"delete_task"_q) {
+		return tr::lng_agent_action_task_delete(
+			tr::now,
+			lt_task,
+			parsed.taskTitle.isEmpty()
+				? input.value("task").toString()
+				: parsed.taskTitle);
 	}
 	return name;
 }

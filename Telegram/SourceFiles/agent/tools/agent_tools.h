@@ -33,6 +33,7 @@ class Session;
 namespace Agent {
 
 struct PendingCall;
+struct ToolEntry;
 
 struct HelperUsage {
 	Usage usage;
@@ -79,6 +80,10 @@ private:
 		const QString &toolUseId,
 		Card card,
 		Fn<void(Card decided)> execute);
+	void confirmAction(
+		const QString &toolUseId,
+		const ToolEntry &entry,
+		not_null<PendingCall*> call);
 	void finishCard(const QString &toolUseId, Card card);
 	void loadGroup(const QString &toolUseId, QString group);
 	void deliver(

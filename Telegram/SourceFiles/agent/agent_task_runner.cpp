@@ -603,11 +603,20 @@ void TaskRunner::handleEvent(
 		run->calls[requested->call.id] = requested->call;
 	} else if (const auto finished = std::get_if<ToolCallFinished>(
 			&event)) {
-		const auto i = run->calls.find(finished->result.toolUseId);
-		if (i != run->calls.end() && !finished->result.error) {
-			const auto call = i->second;
-			countAction(run, call);
+		const auto &id = finished->result.toolUseId;
+		const auto i = run->calls.find(id);
+		if (i == run->calls.end() || finished->result.error) {
+			return;
 		}
+		for (const auto &card : run->session->record().cards) {
+			if (card.toolUseId == id
+				&& card.status != CardStatus::Done
+				&& card.status != CardStatus::Drafted) {
+				return;
+			}
+		}
+		const auto call = i->second;
+		countAction(run, call);
 	}
 }
 

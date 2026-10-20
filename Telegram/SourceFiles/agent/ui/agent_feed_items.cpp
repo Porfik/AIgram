@@ -193,6 +193,10 @@ constexpr auto kMaxResultChars = 3000;
 		return tr::lng_agent_tool_list_agent_files(tr::now);
 	} else if (name == u"draft_files"_q) {
 		return tr::lng_agent_tool_draft_files(tr::now);
+	} else if (name == u"list_tasks"_q) {
+		return tr::lng_agent_tool_list_tasks(tr::now);
+	} else if (name == u"notify"_q) {
+		return tr::lng_agent_tool_notify(tr::now);
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
 }

@@ -13,11 +13,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_media.h"
 #include "agent/core/agent_request.h"
 #include "agent/tools/agent_tool_table.h"
+#include "agent/ui/agent_task_format.h"
 #include "base/algorithm.h"
 #include "crl/crl_on_main.h"
 #include "data/data_peer.h"
 #include "data/data_peer_id.h"
 #include "data/data_session.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mtproto/sender.h"
 
@@ -478,6 +480,17 @@ void ToolRegistry::execute(
 	raw->peer = peer;
 	raw->peers = std::move(peers);
 	const auto weak = base::make_weak(this);
+	if (decision.verdict == Verdict::Confirm
+		&& entry.policy.risk == Risk::Reversible) {
+		confirmAction(call.id, entry, raw);
+		if (!weak) {
+			return;
+		}
+		for (const auto key : keys) {
+			_touched.fire_copy(key);
+		}
+		return;
+	}
 	{
 		const auto acting = _session->agent().actingGuard();
 		entry.run(raw);
@@ -527,6 +540,27 @@ void ToolRegistry::confirmCall(
 		const auto acting = _session->agent().actingGuard();
 		run(card);
 	}
+}
+
+void ToolRegistry::confirmAction(
+		const QString &toolUseId,
+		const ToolEntry &entry,
+		not_null<PendingCall*> call) {
+	auto titles = QStringList();
+	for (const auto peer : call->peers) {
+		titles.push_back(peer->isSelf()
+			? tr::lng_saved_messages(tr::now)
+			: peer->name());
+	}
+	auto card = Card();
+	card.kind = CardKind::Action;
+	card.detail = entry.name;
+	card.text = Ui::FormatTaskTool(entry.name)
+		+ (titles.isEmpty() ? QString() : (u": "_q + titles.join(u", "_q)));
+	const auto run = entry.run;
+	confirmCall(toolUseId, std::move(card), [=](Card decided) {
+		run(call);
+	});
 }
 
 void ToolRegistry::finishCard(const QString &toolUseId, Card card) {

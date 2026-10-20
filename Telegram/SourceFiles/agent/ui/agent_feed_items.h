@@ -42,6 +42,7 @@ struct FeedDelegate {
 	Fn<void(const std::vector<QString> &toolUseIds)> undo;
 	Fn<void(const QString &text)> startHandoff;
 	Fn<std::optional<MediaBlock>(const QString &attachment)> attachment;
+	Fn<bool()> isRun;
 
 };
 

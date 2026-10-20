@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_scope.h"
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
+#include "agent/ui/agent_queue.h"
 #include "ui/rp_widget.h"
 
 #include <optional>
@@ -94,6 +95,7 @@ private:
 	[[nodiscard]] Session *ensureSession();
 	void handoffRequested(const QString &text);
 	void refreshHandoffNote();
+	[[nodiscard]] QString runAboutText() const;
 	void sessionGone();
 	void resizeEvent(QResizeEvent *e) override;
 
@@ -107,6 +109,7 @@ private:
 	Fn<QString()> _hint;
 	object_ptr<FeedWidget> _feed;
 	object_ptr<Composer> _composer;
+	object_ptr<QueueStrip> _queueStrip;
 	object_ptr<RpWidget> _welcome;
 	object_ptr<Ui::FlatLabel> _welcomeLabel;
 	object_ptr<Ui::FlatLabel> _handoffNote;

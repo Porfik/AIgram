@@ -48,6 +48,7 @@ private:
 	void capturePayload();
 	void build();
 	void buildSendFilesPreview();
+	void buildTaskRows(bool pendingNow);
 	void refreshButtons();
 	void decide(CardAction action);
 

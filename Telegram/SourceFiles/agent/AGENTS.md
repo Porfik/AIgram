@@ -294,6 +294,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   of the proposed task and, for `UpdateTask`, `previousTask` of the task
   as it was; `text` is the editable task instruction and `proposedText`
   the model's.
+- `Action`: a reversible action a background run wants outside its
+  frame; no targets, `detail` is the tool name and `text` the summary
+  (the tool's title and the chats), not editable. Done, it ends with the
+  tool's own result.
 - `Expired` is a final status: a background task's card nobody answered
   for `kTaskCardExpireSeconds`; nothing was done.
 - `CardTextEditable()` is true for `Send`, `Draft`, `Edit`, `SendFiles`,
@@ -1083,7 +1087,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   group entries included, without `load_tools`; media abilities are those
   of the run's provider; and `PendingCall::notify` shows a task
   notification. `expire()` finishes a pending card `Expired` with its
-  result text. `ToolPolicyByName()` is the policy of a table entry. Tools that are only
+  result text. `ToolPolicyByName()` is the policy of a table entry.
+- Reversible tools never ask by themselves, so when the gate says
+  `Confirm` for one (an action outside a run's frame), the registry asks
+  an `Action` card first and runs the tool only after the user approves. Tools that are only
   for normal sessions have `background` false: `load_tools`, the memory
   tools, `find_setting`, `open`, `continue_in_general`, `set_draft`,
   `draft_files` and the `tasks` group.
@@ -1490,7 +1497,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   rows, each with `lng_agent_card_task_was` and the old value. Buttons
   are "Create" or "Save" and "Decline"; a done card reads
   `lng_agent_card_task_created` or `_task_updated`. Every card kind shows
-  `lng_agent_card_expired` for `Expired`.
+  `lng_agent_card_expired` for `Expired`. An `Action` card shows
+  `lng_agent_card_title_action` and its text, with "Confirm" and
+  "Decline". An auto-approved card of a run reads
+  `lng_agent_card_auto_task` instead of `lng_agent_card_auto`.
 - `pause_task` and `delete_task` action rows read
   `lng_agent_action_task_pause`, `_task_resume` or `_task_delete` with the
   result's task title; `list_tasks` and `notify` steps are titled

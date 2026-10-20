@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_scope.h"
+#include "ui/widgets/labels.h"
 #include "ui/rp_widget.h"
 
 namespace Window {
@@ -34,7 +35,13 @@ protected:
 private:
 	const not_null<Manager*> _manager;
 	const Scope _scope;
+	object_ptr<FlatLabel> _title = { nullptr };
+	int _waiting = 0;
 	rpl::event_stream<> _clicks;
+
+	void refresh();
+	void paintEvent(QPaintEvent *e) override;
+	void mousePressEvent(QMouseEvent *e) override;
 
 };
 

@@ -10,3 +10,36 @@ using "ui/widgets/widgets.style";
 using "agent/ui/agent.style";
 
 agentQueueStripHeight: 36px;
+agentQueueStripBg: historyPinnedBg;
+agentQueueStripTitle: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowActiveTextFg;
+	style: TextStyle(defaultTextStyle) {
+		font: font(13px semibold);
+	}
+}
+agentQueueStripTextLeft: 16px;
+agentQueueStripTextRight: 44px;
+agentQueueStripArrowIcon: icon {{ "pinned_show_all", windowActiveTextFg }};
+agentQueueStripArrowSize: 22px;
+agentQueueStripArrowRight: 13px;
+
+agentQueueRowPadding: margins(16px, 10px, 16px, 10px);
+agentQueueRowGap: 4px;
+agentQueueRowButton: SettingsButton(defaultSettingsButton) {
+	padding: margins(0px, 0px, 0px, 0px);
+	height: 0px;
+	textBg: transparent;
+	textBgOver: transparent;
+}
+agentQueueRowTitle: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowFg;
+	style: TextStyle(defaultTextStyle) {
+		font: font(13px semibold);
+	}
+}
+agentQueueRowSubtitle: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowSubTextFg;
+}
