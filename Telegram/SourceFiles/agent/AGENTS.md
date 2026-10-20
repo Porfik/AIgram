@@ -1399,7 +1399,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   target with the peer, its title and `@username` as `preview`.
   `ParseLocalTime()` reads `YYYY-MM-DD HH:MM` local time. `MtpErrorText()`
   is an English explanation of common MTP errors with the error type in
-  parentheses, else the type. `ForEachTarget()` runs `each` for every
+  parentheses, else the type. `WhenFullLoaded()` runs `ready` at once
+  when the peer's full info is loaded, else after requesting it, when it
+  arrives or after 5 seconds; `update_profile` and `edit_chat_info` use
+  it so their rows show the current values. `ForEachTarget()` runs `each` for every
   checked target without an error, in order, one at a time, 300 ms
   apart; `done(error)` stores the target's error (empty on success); an
   error with `FLOOD_WAIT` or `PEER_FLOOD` stops the run and marks the
@@ -1504,7 +1507,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `create_chat` (account scope, no chat parameter) takes `type`
   (`group` or `channel`), `title`, `description` and `users` (optional,
   up to 50). A group is a supergroup: `channels.createChannel` with
-  `megagroup` or `broadcast`, then `channels.inviteToChannel`. Rows: the
+  `megagroup` or `broadcast`, then `channels.inviteToChannel` (the user's
+  own entry in `users` is skipped). Rows: the
   title, description and members; it finishes with `done` of `{"chat":
   {"id", "title"}, "invited": [ids], "failed": [{"id", "error"}]}`.
 - `join_chat` (account scope, no chat parameter) takes `link`: an

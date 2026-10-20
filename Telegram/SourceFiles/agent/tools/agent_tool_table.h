@@ -115,6 +115,10 @@ struct PendingCall final : base::has_weak_ptr {
 	const QJsonValue &value,
 	QString &error);
 [[nodiscard]] QString MtpErrorText(const MTP::Error &error);
+void WhenFullLoaded(
+	not_null<PendingCall*> call,
+	not_null<PeerData*> peer,
+	Fn<void()> ready);
 void ForEachTarget(
 	not_null<PendingCall*> call,
 	Card card,

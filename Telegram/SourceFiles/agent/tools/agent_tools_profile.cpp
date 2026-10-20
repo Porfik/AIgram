@@ -56,7 +56,15 @@ constexpr auto kMaxEmojiStatusMinutes = 525600;
 	return sticker ? sticker->alt : QString();
 }
 
+void RunUpdateProfileLoaded(not_null<PendingCall*> call);
+
 void RunUpdateProfile(not_null<PendingCall*> call) {
+	WhenFullLoaded(call, call->session->user(), [=] {
+		RunUpdateProfileLoaded(call);
+	});
+}
+
+void RunUpdateProfileLoaded(not_null<PendingCall*> call) {
 	const auto session = call->session;
 	const auto user = session->user();
 	const auto firstValue = call->input.value("first_name");

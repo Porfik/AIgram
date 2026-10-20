@@ -7,7 +7,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/tools/agent_tool_table.h"
 
+#include "apiwrap.h"
 #include "base/call_delayed.h"
+#include "base/timer.h"
+#include "data/data_changes.h"
 #include "data/data_histories.h"
 #include "data/data_peer.h"
 #include "data/data_peer_id.h"
@@ -225,6 +228,32 @@ QString MtpErrorText(const MTP::Error &error) {
 			" (PREMIUM_ACCOUNT_REQUIRED)."_q;
 	}
 	return type;
+}
+
+void WhenFullLoaded(
+		not_null<PendingCall*> call,
+		not_null<PeerData*> peer,
+		Fn<void()> ready) {
+	constexpr auto kTimeout = crl::time(5000);
+	if (peer->isFullLoaded()) {
+		ready();
+		return;
+	}
+	const auto once = call->lifetime.make_state<bool>(false);
+	const auto trigger = [=] {
+		if (!*once) {
+			*once = true;
+			ready();
+		}
+	};
+	peer->session().changes().peerUpdates(
+		peer,
+		Data::PeerUpdate::Flag::FullInfo
+	) | rpl::on_next([=](const Data::PeerUpdate &) {
+		trigger();
+	}, call->lifetime);
+	call->lifetime.make_state<base::Timer>(trigger)->callOnce(kTimeout);
+	peer->session().api().requestFullPeer(peer);
 }
 
 void ForEachTarget(

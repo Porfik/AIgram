@@ -437,7 +437,15 @@ void RunRevokeInviteLinks(not_null<PendingCall*> call) {
 		}));
 }
 
+void RunEditChatInfoLoaded(not_null<PendingCall*> call);
+
 void RunEditChatInfo(not_null<PendingCall*> call) {
+	WhenFullLoaded(call, call->peer, [=] {
+		RunEditChatInfoLoaded(call);
+	});
+}
+
+void RunEditChatInfoLoaded(not_null<PendingCall*> call) {
 	const auto session = call->session;
 	const auto peer = call->peer;
 	const auto titleValue = call->input.value("title");
@@ -876,15 +884,17 @@ void RunCreateChat(not_null<PendingCall*> call) {
 		return;
 	}
 	auto error = QString();
-	const auto users = ResolveUserRefs(
-		session,
-		call->input.value("users"),
-		50,
-		error);
+	const auto usersValue = call->input.value("users");
+	auto users = (usersValue.isUndefined() || usersValue.isNull())
+		? std::vector<not_null<UserData*>>()
+		: ResolveUserRefs(session, usersValue, 50, error);
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;
 	}
+	users.erase(
+		ranges::remove_if(users, &UserData::isSelf),
+		end(users));
 	auto card = Card{ .kind = CardKind::Change };
 	card.text = (type == u"group"_q)
 		? tr::lng_agent_card_title_create_group(tr::now)
