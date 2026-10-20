@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/fields/input_field.h"
 
 namespace Ui {
+class IconButton;
 class SendButton;
 } // namespace Ui
 
@@ -26,6 +27,8 @@ public:
 	[[nodiscard]] rpl::producer<QString> sends() const;
 	[[nodiscard]] rpl::producer<> stops() const;
 	[[nodiscard]] rpl::producer<> heightChanges() const;
+	[[nodiscard]] rpl::producer<> attachRequests() const;
+	void setMimeDataHook(InputField::MimeDataHook hook);
 	void focusField();
 	[[nodiscard]] QString draft() const;
 	void setDraft(const QString &text);
@@ -39,11 +42,13 @@ private:
 	void refresh();
 
 	object_ptr<VerticalLayout> _queued;
+	object_ptr<Ui::IconButton> _attach;
 	object_ptr<Ui::InputField> _field;
 	object_ptr<Ui::SendButton> _send;
 	bool _working = false;
 	rpl::event_stream<QString> _sends;
 	rpl::event_stream<> _stops;
+	rpl::event_stream<> _attachRequests;
 	rpl::event_stream<> _heightChanges;
 
 };

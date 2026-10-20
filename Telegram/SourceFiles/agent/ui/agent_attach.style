@@ -9,4 +9,15 @@ using "ui/basic.style";
 using "ui/chat/chat.style";
 using "agent/ui/agent.style";
 
-agentAttachThumbSize: 120px;
+agentAttachCellRadius: 8px;
+agentAttachCellSkip: 2px;
+agentAttachSingleMinHeight: 100px;
+agentAttachSingleMaxHeight: 280px;
+agentAttachMinCellSize: 120px;
+agentAttachDocThumbSize: 40px;
+agentAttachDocRowHeight: 50px;
+agentAttachRowSkip: 6px;
+agentAttachTextSkip: 8px;
+agentAttachVideoBg: msgDateImgBg;
+agentAttachDocFg: windowFg;
+agentAttachDocStatusFg: windowSubTextFg;

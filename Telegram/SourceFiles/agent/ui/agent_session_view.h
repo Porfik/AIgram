@@ -23,7 +23,14 @@ class SessionController;
 namespace Agent {
 class Manager;
 class Session;
+struct AttachmentInput;
 } // namespace Agent
+
+namespace Ui {
+struct PreparedBundle;
+struct PreparedFile;
+struct PreparedList;
+} // namespace Ui
 
 namespace Agent::Ui {
 
@@ -70,6 +77,21 @@ private:
 	void applyState();
 	void refreshSpending();
 	void sendCurrentText(const QString &text);
+	void chooseAttach();
+	[[nodiscard]] bool confirmSendingFiles(
+		not_null<const QMimeData*> data,
+		std::optional<bool> overrideSendImagesAsPhotos,
+		const QString &insertTextOnCancel);
+	void confirmSendingFiles(
+		PreparedList &&list,
+		const QString &insertTextOnCancel);
+	void sendingFilesConfirmed(std::shared_ptr<PreparedBundle> bundle);
+	[[nodiscard]] bool checkAttachmentLimits(
+		const std::vector<const PreparedFile *> &files) const;
+	void sendWithAttachments(
+		const QString &text,
+		std::vector<Agent::AttachmentInput> attachments);
+	[[nodiscard]] Session *ensureSession();
 	void handoffRequested(const QString &text);
 	void refreshHandoffNote();
 	void sessionGone();

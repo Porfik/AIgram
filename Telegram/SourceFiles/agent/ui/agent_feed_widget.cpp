@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_feed_widget.h"
 
+#include "agent/ui/agent_feed_attachments.h"
 #include "agent/ui/agent_feed_cards.h"
 #include "agent/ui/agent_spending_format.h"
 #include "base/variant.h"
@@ -93,6 +94,14 @@ object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
 	using Result = object_ptr<FeedItemWidget>;
 	return v::match(item,
 		[&](const FeedUser &data) -> Result {
+			if (!data.attachments.empty()) {
+				return MakeFeedAttachments(
+					_list,
+					_context,
+					data.text,
+					data.attachments,
+					st::agentFeedMaxTextWidth);
+			}
 			auto result = object_ptr<BubbleWidget>(
 				_list,
 				st::agentFeedUserLabel,

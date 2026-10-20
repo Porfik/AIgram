@@ -11,9 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent::Ui {
 
-[[nodiscard]] object_ptr<RpWidget> MakeFeedAttachments(
+[[nodiscard]] object_ptr<FeedItemWidget> MakeFeedAttachments(
 	QWidget *parent,
 	const FeedContext &context,
+	const QString &text,
 	const std::vector<MediaBlock> &attachments,
 	int maxWidth);
 

@@ -11,8 +11,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/controls/send_button.h"
 #include "ui/painter.h"
 #include "ui/wrap/vertical_layout.h"
+#include "ui/widgets/buttons.h"
 
 #include "styles/style_agent.h"
+#include "styles/style_agent_attach.h"
 #include "styles/style_chat_helpers.h"
 
 namespace Agent::Ui {
@@ -20,6 +22,7 @@ namespace Agent::Ui {
 Composer::Composer(QWidget *parent)
 : RpWidget(parent)
 , _queued(this)
+, _attach(this, st::historyAttach)
 , _field(
 	this,
 	st::historyComposeField,
@@ -36,6 +39,9 @@ Composer::Composer(QWidget *parent)
 	) | rpl::on_next([=] {
 		submit();
 	}, lifetime());
+	_attach->setClickedCallback([=] {
+		_attachRequests.fire({});
+	});
 	_field->heightChanges(
 	) | rpl::on_next([=] {
 		refresh();
@@ -116,6 +122,14 @@ rpl::producer<> Composer::heightChanges() const {
 	return _heightChanges.events();
 }
 
+rpl::producer<> Composer::attachRequests() const {
+	return _attachRequests.events();
+}
+
+void Composer::setMimeDataHook(InputField::MimeDataHook hook) {
+	_field->setMimeDataHook(std::move(hook));
+}
+
 void Composer::focusField() {
 	_field->setFocus();
 }
@@ -143,12 +157,17 @@ int Composer::resizeGetHeight(int newWidth) {
 		_queued->hide();
 	}
 	const auto sendSize = st::historySendSize;
-	const auto fieldLeft = st::agentComposerFieldLeft;
+	const auto fieldLeft = st::historyAttach.width;
 	_field->resizeToWidth(
 		std::max(newWidth - fieldLeft - sendSize.width(), 1));
 	const auto rowHeight = std::max(
 		_field->height() + 2 * st::historySendPadding,
 		sendSize.height());
+	_attach->resize(st::historyAttach.width, st::historyAttach.height);
+	_attach->moveToLeft(
+		0,
+		top + rowHeight - _attach->height(),
+		newWidth);
 	_field->moveToLeft(
 		fieldLeft,
 		top + rowHeight - st::historySendPadding - _field->height(),
