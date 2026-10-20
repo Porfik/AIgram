@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/agent_attachments.h"
 #include "agent/core/agent_card.h"
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_providers.h"
@@ -33,6 +34,7 @@ struct SendRequest {
 	std::vector<PeerKey> mentions;
 	QString hint;
 	QString untrusted;
+	std::vector<AttachmentInput> attachments;
 };
 
 enum class SessionStatus : uchar {

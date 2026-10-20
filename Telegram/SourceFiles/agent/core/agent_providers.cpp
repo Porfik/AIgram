@@ -148,6 +148,14 @@ const ProviderSettings *ActiveProvider(const ProvidersState &state) {
 	return state.list.empty() ? nullptr : &state.list.front();
 }
 
+const ProviderSettings *MediaProvider(const ProvidersState &state) {
+	return nullptr;
+}
+
+bool IsOpenRouter(const ProviderSettings &settings) {
+	return false;
+}
+
 std::unique_ptr<Adapter> CreateAdapter(const ProviderSettings &settings) {
 	switch (settings.kind) {
 	case ProviderKind::OpenAiCompatible:

@@ -690,8 +690,12 @@ void FeedStepsWidget::Step::toggleExpanded() {
 	refreshRow();
 }
 
-FeedStepsWidget::FeedStepsWidget(QWidget *parent, const FeedSteps &steps)
+FeedStepsWidget::FeedStepsWidget(
+	QWidget *parent,
+	FeedContext context,
+	const FeedSteps &steps)
 : FeedItemWidget(parent)
+, _context(std::move(context))
 , _content(CreateChild<VerticalLayout>(this)) {
 	_header = _content->add(
 		object_ptr<ToggleRow>(_content, st::agentStepsHeaderHeight));

@@ -18,24 +18,35 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `Manager`, `Session`, `SessionStore`, tools in `agent/tools/` and widgets
   in `agent/ui/` (namespace `Agent::Ui`, which pulls in `::Ui` like
   `Calls::Group::Ui`; styles in `agent/ui/agent.style`,
-  `agent/ui/agent_panel.style` and `agent/ui/agent_general.style`). It may
+  `agent/ui/agent_panel.style`, `agent/ui/agent_general.style`,
+  `agent/ui/agent_attach.style` and `agent/ui/agent_media.style`). It may
   include `agent/core`, never the other way round.
 - Tools: `agent_tool_table.h` holds `ToolEntry`, `PendingCall` and the
   schema helpers; each `agent_tools_<group>.cpp` returns its entries from
   `<Group>Tools::Entries()`: `chat` (reading one chat), `general` (chat
   list, settings navigation, handoff), `actions` (card actions),
-  `chat_state` (mute, archive, pin, read), `folders` and `memory`.
-  `agent_tools.cpp` is the `ToolRegistry` and `load_tools`.
+  `chat_state` (mute, archive, pin, read), `folders`, `memory`, `media`
+  (looking at, listening to and reading message media and attachments)
+  and `files` (saving and sending files). `agent_tools.cpp` is the
+  `ToolRegistry` and `load_tools`.
 - Account data next to the sessions: `Memories` (`agent_memories.*`),
   `Exclusions` (`agent_exclusions.*`) and `SpendingTracker`
   (`agent_spending_tracker.*`), owned by `Manager`; their pure parts are
   `agent_memory`, `agent_exclusion_list` and `agent_spending` in `core`.
+  `Attachments` (`agent_attachments.*`) keeps the user's attachments.
+- Media: `agent_media` and `agent_documents` in `core` are the pure parts
+  (labels, routing, WAV, text extraction); `agent_media_loader.*` finds
+  and downloads message media, `agent_media_convert.*` scales images,
+  decodes audio and unzips office files, `agent_files.*` is the agent
+  folder and saving to it.
 - UI: `agent_feed_cards.*` are the card and action rows of the feed,
   `agent_section.*` the general agent screen, `agent_chats_row.*` the
   "✦ Agent" row above the chat list, `agent_history_view.*` the history
   pane with its tabs, `agent_memory_list.*` the memory tab,
   `agent_menus.*` the agent items of the chat and folder menus and
-  `agent_spending_format.*` the spending texts.
+  `agent_spending_format.*` the spending texts, `agent_feed_attachments.*`
+  the attachments inside user bubbles and `agent_feed_media.*` the media
+  thumbnails of steps.
 - Hooks into existing code stay one call or one enum value wide:
   `Main::Session::agent()`, the agent values in `Storage::Account`,
   `Info::Section::Type::Agent`, `Agent::Ui::SetupPanelTopBar()` in
@@ -53,8 +64,19 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 ## Conversation model (`agent_types.h`)
 
 - A `Message` is a role and a list of blocks. User messages carry
-  `TextBlock`, `ImageBlock` and `ToolResultBlock`; assistant messages carry
+  `TextBlock`, `MediaBlock` and `ToolResultBlock`; assistant messages carry
   `TextBlock`, `ThinkingBlock` and `ToolUseBlock`.
+- A `MediaBlock` is media for the model: `kind` (`Image`, `Audio`,
+  `Video`, `File`), `bytes`, `mimeType`, `name` (the file name),
+  `attachment` (the id `aN` of a user attachment, else empty), `peer` and
+  `messageId` of the message it came from (zero for attachments), the
+  original `size` in bytes and `duration` in seconds (zero when unknown).
+  User messages carry one per attachment; tool results carry them in
+  `ToolResultBlock::media`. A media block without `bytes` is only a
+  reference: the model gets its `MediaPlaceholder()` text (see
+  "Context").
+- `Request::pdfEngine`, when not empty, asks the provider to parse PDF
+  files with that engine (the OpenRouter `file-parser` plugin).
 - `ThinkingBlock::signature` is opaque provider data that must round-trip
   unchanged. Adapters that can't send thinking back drop the block from
   requests.
@@ -100,11 +122,23 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `OpenAi::Adapter` speaks Chat Completions with `stream: true` and
   `stream_options.include_usage`. It posts to `<baseUrl>/chat/completions`
   with `Authorization: Bearer <apiKey>` (omitted when the key is empty, for
-  local servers). It maps tool results to `tool` role messages, images to
-  `image_url` data URLs, reads `reasoning` and `reasoning_content` deltas as
+  local servers). It maps tool results to `tool` role messages and media
+  blocks with bytes to content parts (media without bytes is skipped):
+  `Image` to `image_url` with a data URL, `Audio` to `input_audio`
+  (`data` in base64, `format` `wav` for `audio/wav`, `mp3` for
+  `audio/mpeg`, otherwise the MIME subtype), `Video` to `video_url` with
+  a data URL and `File` to `file` (`filename`, `file_data` data URL).
+  Tool result media go into one `user` message right after that message's
+  `tool` messages: for each result with media, in order, a text part
+  `Media returned by tool call <id>:` and its parts, then the message's
+  other blocks. A request with `pdfEngine` adds `"plugins": [{"id":
+  "file-parser", "pdf": {"engine": <pdfEngine>}}]`. It reads `reasoning` and `reasoning_content` deltas as
   thinking, assembles `tool_calls` fragments by `index`, generates
   `call_<index>` ids when the provider sends none, and reports in-stream
   `error` objects and non-2xx bodies through `ParseError()`.
+- `ParseModels()` reads `architecture.input_modalities` when present:
+  `image` into `vision`, `audio`, `video` and `file` into `audio`,
+  `video` and `files` (each set true or false).
 - It reads `usage.cost` (OpenRouter) into `Usage::cost` with `hasCost`;
   when `usage.is_byok` is true it adds
   `usage.cost_details.upstream_inference_cost`, which the user's own key
@@ -132,6 +166,7 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - Destroying a `Loop` while busy cancels everything and emits nothing.
 - The loop does not retry failed requests; it ends the turn with
   `TurnEnd::Failed` and the error.
+- `LoopOptions::pdfEngine` is copied into every request.
 
 ## Provider settings (`agent_providers.h`)
 
@@ -148,6 +183,13 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   Versions 1 and 2 load with zero prices and `showSpending` false.
 - Version 4 appends `rowPreview` (what the "✦ Agent" row shows under its
   name; default `LastMessage`).
+- Version 5 appends `audio`, `video` and `files` (`qint32` 0 or 1) after
+  `priceCached` of each provider and `mediaId` after `rowPreview`; older
+  versions load them false and empty. `vision`, `audio`, `video` and
+  `files` say what the model takes besides text when `/models` doesn't.
+- `MediaProvider()` is the provider whose id is `mediaId`, null when
+  `mediaId` is empty or unknown. `IsOpenRouter()` is true when the host of
+  `baseUrl` is `openrouter.ai` or a subdomain of it.
 - `Agent::SaveProviders()` fires `Agent::ProvidersChanged()` after writing.
 
 ## Scope (`agent_scope.h`)
@@ -202,9 +244,24 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   message preview (`Send`). `option` is "delete for everyone" (`Delete`,
   on by default when `optionAvailable`) or "notify members" (`PinMessage`,
   off by default); without `optionAvailable` it is hidden and false.
-- `CardTextEditable()` is true for `Send`, `Draft` and `Edit`.
-  `CardHasAlternate()` is true for `Send` ("to draft") and `Draft`
-  ("append"); `Execute` means "send", "replace" or "confirm".
+- `Transcribe`: one target, the voice or round video message, with its
+  media description as `preview`; `amount` is the trial transcriptions
+  left and `quota` the weekly number. `Download`: the targets are
+  messages with files and `files[i]` (name, MIME type, size) describes
+  `targets[i]`; `amount` is the total size of all targets; `detail` is
+  the agent folder path when saving and empty when the files are only
+  read. `SendFiles`: the targets are chats, `files` the files to send
+  (`ref` is an attachment id or an agent folder file name), `text` the
+  editable caption and `proposedText` the model's caption, `option` is
+  "send without compression" (off, `optionAvailable` when a file is an
+  image).
+- `CardTextEditable()` is true for `Send`, `Draft`, `Edit` and
+  `SendFiles`. `CardHasAlternate()` is true for `Send` ("to draft") and
+  `Draft` ("append"); `Execute` means "send", "replace", "confirm",
+  "transcribe" or "download".
+- `CardAlwaysAsks()` is true for `Draft`, `Transcribe` and `Download`:
+  such a card is shown even when the gate allows the call and never
+  offers "allow for the turn".
 - `ApplyDecision()`: `Decline` sets `Declined` and keeps everything else.
   `Execute` and `Alternate` (only where `CardHasAlternate()`) copy
   `checked` (same size as `targets`), `text` for editable kinds, `option`
@@ -220,6 +277,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   targets with their errors, each named by title, chat id and message id;
   the edited text in full when it differs from `proposedText`. A `Handoff`
   card says the user now sees a button to continue in the general agent.
+  A declined `Transcribe` says the user declined to spend a trial
+  transcription, a declined `Download` that the user declined the
+  download; a done `Download` names the saved files and the folder, a
+  done `SendFiles` the chats like `Send`. An approved `Transcribe` and a
+  reading `Download` end with the tool's own result instead.
 
 ## Session records (`agent_record.h`)
 
@@ -246,6 +308,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   without a cost. Index version 2 adds `usage` (with the cost) to every
   entry; version 1 indexes load with zero usage. Index version 3 adds
   `preview` and `previewOutgoing`; older indexes load them empty.
+- Version 4 writes media blocks under a new tag with every field except
+  `bytes` (a record never stores media bytes), tool results with their
+  media, `Card::files`, `amount` and `quota`, and `info.attachments`;
+  image blocks of older versions load as `Image` media blocks. Index
+  version 4 adds `attachments`. `SessionInfo::attachments` is how many
+  attachment ids (`a1`, `a2`, ...) the session issued.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -263,9 +331,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `BuildFeed()` turns a transcript into display items in transcript order;
   `index` is the message the item came from.
 - A user message gives one `FeedUser` with its visible text blocks joined by
-  an empty line, or nothing when there is no visible text. Its tool results
-  attach to the `FeedTool` with the same id and never show on their own;
-  images are skipped.
+  an empty line and its media blocks that have an `attachment` as
+  `attachments`, or nothing when it has neither. Its tool results attach
+  to the `FeedTool` with the same id and never show on their own; other
+  media blocks are skipped.
 - An assistant message gives one `FeedAssistant` per run of adjacent text
   blocks. Its non-empty thinking blocks (`FeedThinking`) and tool uses
   (`FeedTool`) are steps: steps not separated by visible text form one
@@ -338,27 +407,116 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - Serialization: `quint32` version 1, peers, folders; duplicates are
   dropped on load, bad data deserializes to `std::nullopt`.
 
+## Media (`agent_media.h`)
+
+- `Supports()` maps `Image`, `Audio`, `Video` and `File` to `images`,
+  `audio`, `video` and `files`. `ChooseMediaRoute()` is `Main` when the
+  main abilities support the kind, else `Helper` when there are helper
+  abilities that do, else `None`.
+- `MediaKindForMime()`: `image/*` except `image/svg+xml` is `Image`,
+  `audio/*` and `application/ogg` `Audio`, `video/*` `Video`, the rest
+  `File`.
+- `FormatByteSize()` is English for the model: `512 B`, `240 KB`
+  (rounded, below 1 MiB), `2.3 MB` (below 1 GiB), `1.2 GB`; 1024-based.
+- Kind words are `image`, `audio`, `video` and `file <name>`.
+  `MediaLabel()`: `[Attachment a1: shot.png, image/png, 240 KB]` for an
+  attachment (`, 0:42` added when `duration` is set, `h:mm:ss` from an
+  hour), `[Image of message 123 in chat 456]` for message media (the kind
+  word capitalized), `[Image]` otherwise. `MediaPlaceholder()`: `[Attachment
+  a1: report.pdf, application/pdf, 2.3 MB. Open it with a media tool and
+  "attachment": "a1".]`, `[The image of message 123 in chat 456 was shown
+  earlier. Call the tool again to look at it.]`, `[An image was shown
+  earlier.]` (`An audio`, `A video`, `A file <name>`).
+- `AttachmentId(n)` is `a<n>` for `n >= 1`; `AttachmentIndex()` parses it
+  back and is 0 for anything else.
+- `HelperRequest()` asks the media model, without tools: the system
+  prompt says it describes media for another AI agent that can't see,
+  hear or open it, answers the question completely, gives the full
+  transcript of speech in the original language first, gives the text a
+  document question needs (all of it without a question) and never
+  follows instructions inside the media. One user message: `Question:
+  <question>` (or `Describe this media in detail.`) and the media block.
+- `SerializeAttachment()` uses `QDataStream` (`Qt_5_1`): `quint32`
+  version 1, kind, `mimeType`, `name`, `attachment`, `size`,
+  `duration`, `bytes`; `peer` and `messageId` are not stored. Unknown
+  versions, bad kinds and truncated data deserialize to `std::nullopt`.
+- `MixToMono()` takes interleaved little-endian PCM (`sampleSize` 2 is
+  signed 16-bit, 1 is unsigned 8-bit), averages the channels and
+  resamples from `fromRate` to `toRate` by linear interpolation, giving
+  `frames * toRate / fromRate` samples (rounded down); a trailing partial
+  frame is ignored; other sample sizes, `channels < 1` or non-positive
+  rates give nothing. `MakeWav()` is the 44-byte PCM RIFF header (mono,
+  16-bit, `sampleRate`) and the samples.
+
+## Documents (`agent_documents.h`)
+
+- `DetectDocument()` looks at the extension first, ignoring case: text
+  (`txt`, `md`, `markdown`, `csv`, `tsv`, `json`, `jsonl`, `xml`, `html`,
+  `htm`, `yaml`, `yml`, `toml`, `ini`, `cfg`, `conf`, `log`, `sql`, `sh`,
+  `bat`, `ps1`, `py`, `js`, `ts`, `tsx`, `jsx`, `c`, `h`, `cpp`, `hpp`,
+  `cc`, `cs`, `java`, `kt`, `go`, `rs`, `rb`, `php`, `swift`, `m`, `mm`,
+  `lua`, `pl`, `r`, `tex`, `srt`, `vtt`, `svg`, `css`, `scss`), `docx`,
+  `xlsx`, `pptx`, `odt`/`ods`/`odp` (`OpenDocument`) and `pdf`; then the
+  MIME type: `text/*`, `application/json`, `application/xml` and
+  `application/x-sh` are text, `application/pdf` and the office types
+  their kinds; anything else is `Other`. `IsOfficeDocument()` is true for
+  `Docx`, `Xlsx`, `Pptx` and `OpenDocument`.
+- `DecodeText()` decodes UTF-8 (with or without a BOM) and UTF-16 with a
+  BOM and turns `\r\n` into `\n`; invalid UTF-8 without a BOM or a NUL
+  character give `std::nullopt` (a binary file).
+- `WantOfficeEntry()`: `word/document.xml` (`Docx`);
+  `xl/workbook.xml`, `xl/sharedStrings.xml` and `xl/worksheets/sheetN.xml`
+  (`Xlsx`); `ppt/slides/slideN.xml` (`Pptx`); `content.xml`
+  (`OpenDocument`).
+- `ExtractOfficeText()` reads the XML with `QXmlStreamReader` and keeps
+  what it read before an error. `Docx`: a line per paragraph, `w:tab` a
+  tab, `w:br` a line break. `Xlsx`: per sheet in workbook order a `# <sheet
+  name>` line, then a line per row with tab-separated cells (shared
+  strings, inline strings, values as written). `Pptx`: slides in number
+  order, each `# Slide N` and a line per paragraph. `OpenDocument`: a line
+  per `text:p` or `text:h`, `text:tab` a tab, `text:s` spaces,
+  `text:line-break` a line break, table rows as tab-separated cells.
+- `PageText()` clamps `offset` to the text; the page is at most `limit`
+  characters, cut back to just after the last line break in its last
+  fifth when there is one, never splitting a surrogate pair. `total` is
+  the text size and `nextOffset` the offset after the page, -1 at the end.
+
 ## Context (`agent_context.h`)
 
 - `EstimateTokens()` is a cheap upper bound: one token per three characters
-  of text, tool names, arguments and results; a flat 1000 per image; four
-  per message. For a request it adds the system prompt and the tool specs.
+  of text, tool names, arguments and results; four per message. A media
+  block with bytes, also in a tool result: 1000 for `Image`, 32 per second
+  of `Audio` (bytes / 32000 seconds when `duration` is zero), 300 per
+  second of `Video` (1000 when `duration` is zero), bytes / 100 but at
+  least 1000 for `File`; without bytes it counts as its placeholder text.
+  For a request it adds the system prompt and the tool specs.
 - `CapToolResult()` keeps results up to `maxChars` and otherwise cuts them,
   without splitting a surrogate pair, adding a line that says how many
   characters were dropped and asks for a smaller page.
 - `ContextMessages()` is `messages[summaryUntil, end)` with the summary as a
   hidden text block put first into the first message when that is a user
   message, or as its own leading user message otherwise.
+- Media in the context lives until the end of a turn. The turn start is
+  the last user message with a text or media block. Before it every media
+  block becomes a hidden text block with `MediaPlaceholder()`, and tool
+  result media are dropped, each adding a line with its
+  `MediaPlaceholder()` to the result content. From the turn start on, a
+  media block with bytes gets a hidden `MediaLabel()` text block right
+  before it, and media without bytes is replaced the same way as before
+  the turn start.
+- `DropMediaBytes()` clears the bytes of every media block of the
+  record, tool results included, and returns whether it changed anything.
 - `PlanCompaction()` returns the new `summaryUntil`, or the current one when
   the estimate of `fixedTokens` plus the context messages fits in 70% of
   the window (`kDefaultContextWindow` when the window is not positive). A
-  cut is a turn start (a user message with a text block) after the current
+  cut is a turn start (a user message with a text or media block) after the current
   `summaryUntil`, or the transcript end. The smallest cut whose remaining
   messages, the fixed part and a 2000-token summary fit in 40% of the window
   wins; when none does, the transcript end.
 - `CompactionRequest()` asks, without tools, for a summary of the previous
   summary and `messages[summaryUntil, until)` rendered as plain text, tool
-  results capped at 2000 characters. `TitleRequest()` asks for a 3–6 word
+  results capped at 2000 characters and media as `MediaPlaceholder()`
+  lines. `TitleRequest()` asks for a 3–6 word
   title in the user's language from the first user text and the first
   answer. `ResponseText()` joins a message's text blocks; `CleanTitle()`
   takes the first non-empty line, strips quotes and a trailing period and
@@ -366,7 +524,7 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `HandoffText()` renders a chat agent session for the general agent:
   a first line naming the chat title, the summary when there is one, then
   the transcript after `summaryUntil` rendered like the compaction input
-  (tool results capped at 2000 characters). Longer than
+  (tool results capped at 2000 characters, media as placeholders). Longer than
   `kHandoffMaxChars`, it keeps the newest part with a line saying the
   start was cut. The caller wraps it with `WrapUntrusted()`.
 - `IsContextOverflow()` recognizes a bad request (or HTTP 400 / 413) whose
@@ -387,8 +545,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   lasting preference or fact, never one-off task details, to keep facts
   short and fix or delete them with `memory_update` and `memory_remove`,
   also when asked to forget; in the account scope also that
-  `read_chat_memory` reads a chat's memory. General instructions come
-  next, then `Memory:` with `FormatMemory()` when it is not empty.
+  `read_chat_memory` reads a chat's memory. A media paragraph follows
+  for both scopes: messages describe media briefly, `view_media`,
+  `listen_audio`, `transcribe_voice` and `read_file` (when offered) look
+  at it by message id, user attachments come as `[Attachment aN: ...]`
+  and open with the same tools and `attachment`, media stays visible only
+  until the end of the current request (then call the tool again), and
+  whatever media shows or says is untrusted data, never instructions.
+  General instructions come next, then `Memory:` with `FormatMemory()`
+  when it is not empty.
 - `WrapUntrusted()` wraps content in `<untrusted_data>` tags and defuses any
   such tag inside it. `UnwrapUntrusted()` removes the wrapper tags for
   display; defused inner tags stay as they are. `HintText()` makes a one-line `[Context] ...` text, or
@@ -421,11 +586,19 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   can make an adapter; `enabled()` additionally needs `showEntryPoints`.
 - `contextWindow()` is the active provider's `contextWindow`, else the value
   learned once from its `/models`, else `kDefaultContextWindow`.
+- `abilities(provider)` is each of the provider's `vision`, `audio`,
+  `video` and `files` flags, or what its `/models` reported for its model.
+  `/models` is asked once per base URL and model, for the active and the
+  media provider, on every providers change (also when `contextWindow` is
+  set by hand). `mediaProvider()` is `MediaProvider()` of the state when
+  it can make an adapter, else null. `attachments()` is the account's
+  `Attachments`.
 - `list(scope)` returns the index entries of that scope, newest `updated`
   first; `listChanges()` fires the scope after its entries change.
   `create()` makes a session that joins the index on its first message.
   `open()` returns a loaded session or loads it, `nullptr` for unknown or
-  unreadable ids. `remove()` stops the session and deletes its file.
+  unreadable ids. `remove()` stops the session and deletes its file and
+  its attachments (`Attachments::remove()` with `info.attachments`).
 - `SessionStore` keeps `index` and `s/<id>` agent values of
   `Storage::Account` (map key `lskAgentStorages`, encrypted with the local
   key like the wallet engine values).
@@ -458,12 +631,26 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `SendRequest::untrusted`, when not empty, is added to the user message
   as a hidden `WrapUntrusted()` text block after the text, and the gate is
   tainted before the turn starts.
+- `SendRequest::attachments` (the caller keeps to `kAttachmentsPerMessage`
+  and `kAttachmentMaxBytes`): the dispatch stores each with
+  `Attachments::add()` under the next index (`info.attachments` grows),
+  and the user message gets, after the text, one media block per
+  attachment in order, without bytes. Attachments taint the gate like
+  `untrusted`. A message may have attachments and no text.
+- Every `runLoop()` gives the `Image` attachments of the turn start
+  message their bytes for the model, `PrepareImageForModel()` of the
+  stored bytes as `image/jpeg`, so retries and resumes see them too. At
+  every turn end, before the save, the record goes through
+  `DropMediaBytes()`.
+- When the active provider `IsOpenRouter()` and its `abilities()` lack
+  `files`, the loop gets `pdfEngine` `pdf-text`.
 - `buildSystem()` passes `FormatMemory()` of the scope's owner
   (`Scope::peer`, zero for the account) to the prompt, so memory changes
   reach the model from the next dispatch on, never within a turn.
-- Usage: every `UsageReported` and the usage of the compaction and title
-  responses goes through `PriceUsage()` with the provider that served it,
-  then into `info.usage` and `SpendingTracker::add()`.
+- Usage: every `UsageReported`, the usage of the compaction and title
+  responses and every `ToolRegistry::helperUsage()` goes through
+  `PriceUsage()` with the provider that served it, then into `info.usage`
+  and `SpendingTracker::add()`.
 - Undo: `canUndo()` asks the registry. `undo()` undoes each id that can
   be undone; a success appends the id to `undone`, saves the record and
   fires `undoChanges()`, a failure fires `undoErrors()` with the error and
@@ -477,7 +664,7 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `info(id)` is the open session's info or the index entry. `save()` puts
   the record's info, usage included, into the index.
 - `clearAllData()` stops and destroys every open session, removes every
-  session in the index and the index itself, clears all memory and resets
+  session in the index with its attachments and the index itself, clears all memory and resets
   the spending, then fires `listChanges()` for every scope that had
   sessions. Exclusions stay.
 - `Manager::activity()` of a scope: `working` when any open session of the
@@ -485,9 +672,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `activityValue()` starts with the current value and fires on changes,
   without repeats.
 
-## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`)
+## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`, `agent_attachments.h`)
 
-- All three keep one agent value each in `Storage::Account`: `memory`
+- The first three keep one agent value each in `Storage::Account`: `memory`
   (the `MemoryBook`), `excluded` and `spending`. Unreadable values log an
   error and start empty.
 - `Memories` loads the book on first use. `get(owner)` returns the
@@ -508,6 +695,55 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   in the destructor when a save is pending. `lastDays(n)` covers today and
   the `n - 1` days before. `reset()` empties the stats, removes the value
   and fires.
+- `Attachments::add()` stores `SerializeAttachment()` of the block
+  (kind by `MediaKindForMime()`, the input's MIME type, name, duration
+  and bytes, `attachment` `AttachmentId(index)`, `size` the byte count)
+  as the agent value `a/<sessionId>/<id>` and returns the block without
+  bytes. `read()` returns it with bytes, or nothing (logging an error)
+  when it is missing or unreadable. `remove(sessionId, count)` removes
+  `a1` to `a<count>`.
+
+## Media access (`agent_media_loader.h`, `agent_media_convert.h`, `agent_files.h`)
+
+- `FindMessageMedia()` describes the photo or document of a message:
+  `Photo` (name `photo.jpg`, `image/jpeg`), `Sticker`, `Animation`
+  (GIFs), `Video`, `RoundVideo`, `Voice`, `Audio` (other audio
+  documents), `ImageFile` (a document with an image MIME type) or
+  `Document`, with the file name, MIME type, size and duration in
+  seconds; nothing for messages without a photo or document.
+- `MediaLoader` downloads through the client's own loaders: `Full` is a
+  photo's largest size as stored (JPEG) or a document's whole file,
+  `Thumbnail` the photo's or document's thumbnail as JPEG (a video cover,
+  a sticker preview), failing when there is none. `done` is called once,
+  asynchronously, with the bytes or an English error. Destroying it
+  cancels and `done` is never called. It checks no sizes: callers keep to
+  `kAutoDownloadBytes` and `kModelMediaMaxBytes`.
+- `PrepareImageForModel()` gives JPEG (quality 87) scaled down to fit
+  `kImageMaxSide` on the long side, never up, transparency over white;
+  from bytes it decodes first and is empty for what isn't an image.
+- `DecodeAudio()` decodes what the client can play (OGG/Opus voice, MP3,
+  M4A, the audio track of a video) with FFmpeg, skips `fromSeconds`,
+  takes at most `seconds`, mixes to mono `kAudioSampleRate` and returns
+  `MakeWav()`, the total duration and the range taken; nothing when it
+  can't decode or `fromSeconds` is past the end. It is thread-safe and
+  meant for `crl::async`.
+- `UnzipOffice()` returns the entries `WantOfficeEntry()` wants, in
+  archive order, skipping entries over 50 MB unpacked; nothing for a
+  broken archive.
+- `AgentFolderPath()` is `AIgram Agent/` inside the client's download
+  folder (`Core::App().settings().downloadPath()`, or
+  `File::DefaultDownloadPath()` when that is empty or the temp folder),
+  created on demand, ending with `/`. `UniqueAgentFilePath()` drops path
+  separators and leading dots from the name (`file` when nothing is
+  left) and adds ` (1)`, ` (2)`, ... before the extension while a file
+  exists. `ListAgentFolder()` lists the regular files directly in it,
+  newest first. `ResolveAgentFile()` is the full path of a regular file
+  directly in the folder with exactly that name, empty otherwise.
+- `MediaSaver` saves a message's photo or file to `path` (documents
+  through the client's download into that file, photos from the largest
+  size) and calls `done` once, asynchronously, with an empty string or an
+  English error. Destroying it cancels the download and removes a
+  partial file.
 
 ## Tools (`agent/tools/`)
 
@@ -518,6 +754,21 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   earlier specs never move. Every call goes through `PolicyGate::check()`,
   even for a tool that was never offered; a group tool that is not loaded
   fails with a hint to call `load_tools`.
+- Media abilities: every call gets `sessionId`, `mainAbilities`
+  (`Manager::abilities()` of the active provider, with `files` also true
+  when it `IsOpenRouter()`) and `helperAbilities` (of
+  `Manager::mediaProvider()`, none without one). `tools()` hides entries
+  whose `needs` can't be met: `Images` needs `ChooseMediaRoute(Image)`
+  other than `None`, `Audio` the same for `Audio`.
+- `doneMedia(json, media)` is `done` with media blocks attached to the
+  result; the JSON is capped and wrapped like `done`, and an `untrusted`
+  entry taints also when the result is only media.
+- `askMediaModel(media, question, done)` sends `HelperRequest()` to the
+  media provider with a `SingleRequest`, fires `helperUsage()` with its
+  usage and provider, and calls `done` with `ResponseText()` or an
+  English error; without a media provider `done` gets an error at once.
+  It is cancelled with the call. `readAttachment(id)` is
+  `Attachments::read()` of the call's session.
 - Chat parameters: in the chat scope tools have none, and every call gets
   the scope peer as `peer` and `peers`. In the account scope the registry
   adds them to the schema by `ChatParam`: `One` a required `chat` string,
@@ -545,13 +796,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   carry anything other people wrote (messages, names, titles, bios,
   descriptions). The registry never grants allowances itself: only a
   confirmed card does.
-- A tool finishes once: with `done` or `fail`, or, after `confirm`, with
-  `finishCard`. `confirm(card, execute)` shows the card and calls
+- A tool finishes once: with `done`, `doneMedia` or `fail`, or, after
+  `confirm`, with `finishCard`. `confirm(card, execute)` shows the card and calls
   `execute` with the decided card after the user approved it; when the
   gate allowed the call without a confirmation the card is recorded
-  `autoApproved` and `execute` runs at once. A `Draft` card is always
-  shown and never offers "allow for the turn". A declined card is
-  finished by the registry. `finishCard` records the final card and
+  `autoApproved` and `execute` runs at once. A `CardAlwaysAsks()` card
+  is always shown and never offers "allow for the turn". A declined card is
+  finished by the registry. After an approved card a tool may also finish
+  with `done`, `doneMedia` or `fail`: its own result goes to the model
+  and the registry records the card `Done`, or `Failed` after `fail`. `finishCard` records the final card and
   delivers `CardResultText()`, as an error when the card `Failed`. A tool
   that shows nothing to confirm but wants a card (the handoff) calls
   `finishCard` directly with a final card.
@@ -564,8 +817,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   error. `canUndo()` stays true until an undo succeeds. Undo closures
   live in memory with the registry, so nothing is undoable after a
   restart.
-- `load_tools` (account and chat scope) takes a `group`; the only group is
-  `folders`. Loading an already loaded group is a no-op success.
+- `load_tools` (account and chat scope) takes a `group`: `folders` or
+  `files`. Loading an already loaded group is a no-op success.
 - Messages are passed as id, local date and time, sender, text with
   entities as Markdown, reply id and a short media description. Reading
   never marks anything read.
@@ -581,6 +834,74 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   register an undo: remove the added fact, put the previous text back, or
   `restore()` the removed fact at its index. `read_chat_memory` returns
   `{"chat": id, "title": ..., "facts": [{"id": ..., "text": ...}]}`.
+
+- Media tools (`agent_tools_media.cpp`) take the media by `message_id`
+  (with `chat` in the account scope) or by `attachment` (`a1`, ...)
+  instead; both or neither fail. The message is
+  `Data::Session::message()` of the peer; a missing message or media of
+  a type the tool doesn't take fail with an English error naming the
+  type. A download above `kAutoDownloadBytes` first asks a reading
+  `Download` card; files above `kAttachmentMaxBytes` are not read at
+  all. Results name the source as `"chat"` and `"message"`, or
+  `"attachment"`, plus `"type"` (`photo`, `sticker`, `gif`, `video`,
+  `round_video`, `voice`, `audio`, `image_file`, `document`,
+  `attachment`). An optional `question` goes to the media model when it
+  is used, and its answer comes back untrusted.
+- `view_media` takes photos, image files, stickers, GIFs, videos, round
+  videos and image or video attachments. Images (an animated sticker by
+  its thumbnail) go as `PrepareImageForModel()` image blocks on the
+  `Main` route, or to `askMediaModel` on the `Helper` route
+  (`"description"`). Videos up to `kModelMediaMaxBytes` go whole on a
+  video route; otherwise the thumbnail goes as an image. `"shown"` is
+  `image`, `video`, `cover` or `description`.
+- `listen_audio` takes voice messages, audio files, round videos,
+  videos and audio or video attachments: `DecodeAudio()` from
+  `from_seconds` (default 0) for `kAudioChunkSeconds`, an `audio/wav`
+  block on the `Main` route or `askMediaModel` (`"transcript"`) on the
+  `Helper` route; the result adds `"duration"`, `"from"`, `"to"` and
+  `"more"`.
+- `transcribe_voice` takes voice and round video messages. A ready
+  `Api::Transcribes::entry()` result is returned at once. With Premium
+  or `Transcribes::freeFor()` it transcribes without a card; otherwise,
+  with trials left (`trialsSupport()`, `trialsCount() > 0`) and a
+  duration within `trialsMaxLengthMs()`, it asks a `Transcribe` card
+  (`amount` `trialsCount()`, `quota` the app config
+  `transcribe_audio_trial_weekly_number`); without trials or for a long
+  message it fails and suggests `listen_audio`. It calls
+  `Transcribes::toggle()` when the entry is not shown (the transcript
+  shows in the chat too) and waits while the entry is `pending`,
+  re-checking on the item repaint and resize events; `failed` and
+  `toolong` fail. Result `{"chat", "message", "type", "text"}`.
+- `read_file` takes documents and file attachments (image files go to
+  `view_media`). Text and office documents (`DecodeText()`, or
+  `UnzipOffice()` and `ExtractOfficeText()`) return `PageText()` pages of
+  `kToolResultMaxChars - 1000` characters from `offset` (default 0) as
+  `{"name", "type", "offset", "total", "next_offset", "text"}`, with
+  `next_offset` null at the end. A PDF goes as a `File` block on the
+  `Main` route (`"shown": "file"`), to `askMediaModel` on the `Helper`
+  route (`"text"`), and fails on `None`. Other types fail.
+- `save_files` (group `files`) takes `message_ids` (1–100) of the chat
+  and saves each message's photo or file with `MediaSaver` to
+  `UniqueAgentFilePath()` of its name. Up to `kAutoDownloadBytes` in total
+  it runs at once with the action result plus `"file"` and `"path"` per
+  done entry, and the undo deletes the saved files; above that it asks a
+  `Download` card with the folder as `detail` and finishes it with
+  per-target errors (no undo).
+- `send_files` (group `files`, account scope) takes `files` (1–10
+  attachment ids or agent folder names, unknown ones fail) and an
+  optional `caption`, asks a `SendFiles` card and sends to every checked
+  chat the way the client sends files (`Storage::PrepareMediaList()` of
+  the paths and `ApiWrap::sendFiles()`, attachments written to temporary
+  files first), compressed unless `option`, grouped as the send box
+  groups by default; it finishes the card with per-target errors.
+- `draft_files` (group `files`, chat scope) takes the same `files` and
+  `caption`, puts the caption into the empty message field as `set_draft`
+  does, and opens the standard send box in the chat with
+  `MainWidget::sendPaths()` in the session's window; the user sends. It
+  returns `{"opened": true}` and fails without a window or when the chat
+  can't get files.
+- `list_agent_files` (group `files`) returns `{"folder": path, "files":
+  [{"name", "size", "modified"}]}`, at most 200, newest first.
 
 | Tool | File | Risk | Scopes | Chat param | Notes |
 |---|---|---|---|---|---|
@@ -614,6 +935,14 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 | `memory_update` | memory | Reversible, action | both | None | `id`, `text` |
 | `memory_remove` | memory | Reversible, action | both | None | `id` |
 | `read_chat_memory` | memory | Read | general | One | untrusted |
+| `view_media` | media | Read, needs images | both | OptionalOne | untrusted |
+| `listen_audio` | media | Read, needs audio | both | OptionalOne | untrusted |
+| `transcribe_voice` | media | Read | both | One | `Transcribe` card without Premium |
+| `read_file` | media | Read | both | OptionalOne | untrusted |
+| `save_files` | files | Reversible, action | both | One | `Download` card over 20 MB |
+| `send_files` | files | Visible, outbound | general | Many | `SendFiles` card |
+| `draft_files` | files | Read | chat | None | opens the send window |
+| `list_agent_files` | files | Read | both | None | |
 | `load_tools` | registry | Read | both | None | |
 
 ## UI (`agent/ui/`)
@@ -725,3 +1054,54 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   folders and chats with a way to show each again and "Add chats") and
   "Delete agent data" (`Manager::clearAllData()` after a confirmation).
   The spending, hidden chats and data belong to the current account.
+- The agent UI reuses the chat's own widgets wherever they fit: the
+  attach button style, `SendFilesBox`, the `ui/chat/attach/` previews,
+  `DragArea`, the media viewer and "Show in Folder".
+- Attachments: the composer has the chat attach button left of the
+  field. The button (`FileDialog`), dropping files on the session view
+  (`DragArea::SetupDragAreaToContainer()`) and pasting files or an image
+  into the field (its MIME hook, as `ComposeControls` does) build a
+  `Ui::PreparedList` (`Storage::PrepareMediaList()`,
+  `PrepareMediaFromImage()`) and show the standard `SendFilesBox` with the
+  composer text as the caption, the user's own chat as `toPeer` and no
+  send menu. Its confirm sends `Session::send()` with the caption as the
+  text and the files as `AttachmentInput`s (bytes from the path or the
+  prepared content, MIME type by `Core::MimeTypeForFile()`) and clears
+  the composer. Too many or too big files show `lng_agent_attach_too_many`
+  or `lng_agent_attach_too_big` instead.
+- A `FeedUser` with attachments shows them inside the bubble above the
+  text, like a sent message: images and videos as rounded thumbnails
+  (several as an album grid), other files as document rows (an icon
+  colored by extension, the name, the size), read through
+  `FeedDelegate::attachment`.
+- Steps of media tools are titled from the call and its result:
+  `lng_agent_tool_view_photo`, `_view_video`, `_view_media`,
+  `_view_attachment`, `_listen_voice` and `_listen_audio` (with the
+  duration), `_transcribe` (with the duration), `_read_file` (with the
+  file name), `_list_agent_files`, `_draft_files`, followed by
+  `lng_agent_tool_media_model` when the media model answered. An
+  expanded media step shows the thumbnail of the message media
+  (`Data::PhotoMedia` or `Data::DocumentMedia`, loaded on demand) or of
+  the attachment, and the transcript, description or text under
+  `lng_agent_tool_transcript`. A message thumbnail opens the message
+  media in the media viewer (`SessionController::openPhoto()` or
+  `openDocument()` with the message context).
+- `Transcribe` cards show the message preview, the trials left
+  (`lng_agent_card_transcribe_left`) and the about line with
+  "Transcribe" and "Decline".
+  `Download` cards list the files as checkboxes (name and size), the
+  checked total (`lng_agent_card_download_size`), the folder when saving
+  (`lng_agent_card_download_to`) and "Download (N)" and "Decline"; a done
+  saving card shows "Show in Folder". `SendFiles` cards show the files
+  with the `ui/chat/attach/` previews without edit controls, the caption
+  field, the chats as checkboxes, the "send without compression" option
+  and "Send (N)" and "Decline".
+- `save_files` action rows read `lng_agent_action_saved` with the file
+  names and add "Show in Folder" (`File::ShowInFolder()` of the first
+  saved path) next to "Undo".
+- The provider box has "Model abilities": checkboxes for `vision`,
+  `audio`, `video` and `files` and the about line. The agent page adds a
+  "Media" block: "Media model" with the chosen provider's title or
+  "None", opening a single-choice box (none plus the providers other than
+  the active one) that sets `mediaId`, its about line, and "Agent folder"
+  opening the folder, with `lng_agent_folder_about`.

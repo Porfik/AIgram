@@ -26,6 +26,9 @@ enum class CardKind : uchar {
 	UnpinMessage,
 	DeleteFolder,
 	Handoff,
+	Transcribe,
+	Download,
+	SendFiles,
 };
 
 enum class CardStatus : uchar {
@@ -53,6 +56,13 @@ struct CardTarget {
 	QString error;
 };
 
+struct CardFile {
+	QString ref;
+	QString name;
+	QString mimeType;
+	int64 size = 0;
+};
+
 struct Card {
 	QString toolUseId;
 	CardKind kind = CardKind::Send;
@@ -67,6 +77,9 @@ struct Card {
 	bool canAllowForTurn = false;
 	bool allowedForTurn = false;
 	bool autoApproved = false;
+	std::vector<CardFile> files;
+	int64 amount = 0;
+	int64 quota = 0;
 };
 
 struct CardDecision {
@@ -80,6 +93,7 @@ struct CardDecision {
 [[nodiscard]] bool CardFinal(CardStatus status);
 [[nodiscard]] bool CardTextEditable(CardKind kind);
 [[nodiscard]] bool CardHasAlternate(CardKind kind);
+[[nodiscard]] bool CardAlwaysAsks(CardKind kind);
 [[nodiscard]] Card ApplyDecision(Card card, const CardDecision &decision);
 [[nodiscard]] std::vector<PeerKey> CheckedPeers(const Card &card);
 [[nodiscard]] int CheckedCount(const Card &card);

@@ -65,7 +65,8 @@ Session::Session(not_null<Manager*> manager, SessionRecord record)
 , _tools(std::make_unique<ToolRegistry>(
 	&manager->session(),
 	_gate.get(),
-	_record.loadedGroups)) {
+	_record.loadedGroups,
+	_record.info.id)) {
 	_repairedOnLoad = CloseInterruptedTurn(_record);
 	_undoneReported = int(_record.undone.size());
 	_state.pendingCards = CountPendingCards(_record.cards);
@@ -274,7 +275,9 @@ rpl::producer<QString> Session::undoErrors() const {
 }
 
 void Session::dispatch(SendRequest request) {
-	Expects(!request.text.isEmpty() || !request.hint.isEmpty());
+	Expects(!request.text.isEmpty()
+		|| !request.hint.isEmpty()
+		|| !request.attachments.empty());
 
 	auto message = Message{ .role = Role::User, .blocks = {} };
 	if (!request.text.isEmpty()) {

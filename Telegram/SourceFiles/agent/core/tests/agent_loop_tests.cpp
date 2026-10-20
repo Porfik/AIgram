@@ -355,8 +355,8 @@ void ReplayFixture(
 	case 0: return std::get<TextBlock>(a).text
 		== std::get<TextBlock>(b).text;
 	case 1: {
-		const auto &x = std::get<ImageBlock>(a);
-		const auto &y = std::get<ImageBlock>(b);
+		const auto &x = std::get<MediaBlock>(a);
+		const auto &y = std::get<MediaBlock>(b);
 		return x.bytes == y.bytes && x.mimeType == y.mimeType;
 	}
 	case 2: {

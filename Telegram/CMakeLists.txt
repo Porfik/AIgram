@@ -132,17 +132,23 @@ PRIVATE
     agent/tools/agent_tools_chat.cpp
     agent/tools/agent_tools_chat.h
     agent/tools/agent_tools_chat_state.cpp
+    agent/tools/agent_tools_files.cpp
     agent/tools/agent_tools_folders.cpp
     agent/tools/agent_tools_general.cpp
+    agent/tools/agent_tools_media.cpp
     agent/tools/agent_tools_memory.cpp
     agent/ui/agent_chats_row.cpp
     agent/ui/agent_chats_row.h
     agent/ui/agent_composer.cpp
     agent/ui/agent_composer.h
+    agent/ui/agent_feed_attachments.cpp
+    agent/ui/agent_feed_attachments.h
     agent/ui/agent_feed_cards.cpp
     agent/ui/agent_feed_cards.h
     agent/ui/agent_feed_items.cpp
     agent/ui/agent_feed_items.h
+    agent/ui/agent_feed_media.cpp
+    agent/ui/agent_feed_media.h
     agent/ui/agent_feed_widget.cpp
     agent/ui/agent_feed_widget.h
     agent/ui/agent_history_view.cpp
@@ -165,14 +171,22 @@ PRIVATE
     agent/ui/agent_spending_format.h
     agent/ui/agent_userpic.cpp
     agent/ui/agent_userpic.h
+    agent/agent_attachments.cpp
+    agent/agent_attachments.h
     agent/agent_check.cpp
     agent/agent_check.h
     agent/agent_exclusions.cpp
     agent/agent_exclusions.h
+    agent/agent_files.cpp
+    agent/agent_files.h
     agent/agent_http_transport.cpp
     agent/agent_http_transport.h
     agent/agent_manager.cpp
     agent/agent_manager.h
+    agent/agent_media_convert.cpp
+    agent/agent_media_convert.h
+    agent/agent_media_loader.cpp
+    agent/agent_media_loader.h
     agent/agent_memories.cpp
     agent/agent_memories.h
     agent/agent_session.cpp

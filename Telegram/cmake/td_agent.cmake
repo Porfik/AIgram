@@ -15,6 +15,8 @@ PRIVATE
     agent/core/agent_card.h
     agent/core/agent_context.cpp
     agent/core/agent_context.h
+    agent/core/agent_documents.cpp
+    agent/core/agent_documents.h
     agent/core/agent_engine.h
     agent/core/agent_exclusion_list.cpp
     agent/core/agent_exclusion_list.h
@@ -22,6 +24,8 @@ PRIVATE
     agent/core/agent_feed.h
     agent/core/agent_loop.cpp
     agent/core/agent_loop.h
+    agent/core/agent_media.cpp
+    agent/core/agent_media.h
     agent/core/agent_memory.cpp
     agent/core/agent_memory.h
     agent/core/agent_navigation.cpp
@@ -65,9 +69,11 @@ nice_target_sources(td_agent_test ${src_loc}
 PRIVATE
     agent/core/tests/agent_card_tests.cpp
     agent/core/tests/agent_context_tests.cpp
+    agent/core/tests/agent_documents_tests.cpp
     agent/core/tests/agent_exclusion_tests.cpp
     agent/core/tests/agent_feed_tests.cpp
     agent/core/tests/agent_loop_tests.cpp
+    agent/core/tests/agent_media_tests.cpp
     agent/core/tests/agent_memory_tests.cpp
     agent/core/tests/agent_navigation_tests.cpp
     agent/core/tests/agent_openai_tests.cpp

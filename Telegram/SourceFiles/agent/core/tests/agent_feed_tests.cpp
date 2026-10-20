@@ -261,9 +261,12 @@ std::vector<Check> FeedChecks() {
 		{ u"feed_images_skipped"_q, [] {
 			const auto feed = BuildFeed({
 				Message{ Role::User, {
-					ImageBlock{ QByteArray("img"), u"image/png"_q },
+					MediaBlock{
+						.bytes = QByteArray("img"),
+						.mimeType = u"image/png"_q,
+					},
 					TextBlock{ u"caption"_q, false },
-					ImageBlock{ QByteArray(), QString() },
+					MediaBlock{},
 				} },
 			}, 0);
 			if (feed.size() != 1) {

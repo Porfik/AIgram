@@ -27,6 +27,7 @@ struct SessionInfo {
 	Usage usage;
 	QString preview;
 	bool previewOutgoing = false;
+	int attachments = 0;
 };
 
 struct SessionRecord {

@@ -41,7 +41,7 @@ void WriteBlock(QDataStream &stream, const TextBlock &block) {
 	stream << quint8(BlockTag::Text) << block.text << qint32(block.hidden);
 }
 
-void WriteBlock(QDataStream &stream, const ImageBlock &block) {
+void WriteBlock(QDataStream &stream, const MediaBlock &block) {
 	stream
 		<< quint8(BlockTag::Image)
 		<< block.bytes
@@ -102,7 +102,7 @@ std::optional<Block> ReadBlock(QDataStream &stream) {
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
 		}
-		return ImageBlock{ bytes, mimeType };
+		return MediaBlock{ .bytes = bytes, .mimeType = mimeType };
 	}
 	case BlockTag::Thinking: {
 		auto text = QString();

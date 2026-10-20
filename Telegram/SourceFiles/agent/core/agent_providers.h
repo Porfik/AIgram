@@ -37,6 +37,9 @@ struct ProviderSettings {
 	double priceInput = 0.;
 	double priceOutput = 0.;
 	double priceCached = 0.;
+	bool audio = false;
+	bool video = false;
+	bool files = false;
 };
 
 enum class RowPreview : uchar {
@@ -52,6 +55,7 @@ struct ProvidersState {
 	bool showEntryPoints = true;
 	bool showSpending = false;
 	RowPreview rowPreview = RowPreview::LastMessage;
+	QString mediaId;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);
@@ -60,6 +64,9 @@ struct ProvidersState {
 
 [[nodiscard]] const ProviderSettings *ActiveProvider(
 	const ProvidersState &state);
+[[nodiscard]] const ProviderSettings *MediaProvider(
+	const ProvidersState &state);
+[[nodiscard]] bool IsOpenRouter(const ProviderSettings &settings);
 [[nodiscard]] std::unique_ptr<Adapter> CreateAdapter(
 	const ProviderSettings &settings);
 

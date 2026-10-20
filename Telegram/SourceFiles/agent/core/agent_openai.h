@@ -20,6 +20,9 @@ struct ModelInfo {
 	int contextWindow = 0;
 	std::optional<bool> tools;
 	std::optional<bool> vision;
+	std::optional<bool> audio;
+	std::optional<bool> video;
+	std::optional<bool> files;
 };
 
 class Adapter final : public Agent::Adapter {

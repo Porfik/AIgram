@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_prompts.h"
+#include "agent/core/agent_providers.h"
 #include "base/flat_set.h"
 #include "base/weak_ptr.h"
 
@@ -32,6 +33,11 @@ namespace Agent {
 
 struct PendingCall;
 
+struct HelperUsage {
+	Usage usage;
+	ProviderSettings provider;
+};
+
 class ToolRegistry final
 	: public ToolExecutor
 	, public base::has_weak_ptr {
@@ -39,7 +45,8 @@ public:
 	ToolRegistry(
 		not_null<Main::Session*> session,
 		not_null<PolicyGate*> gate,
-		std::vector<QString> loadedGroups = {});
+		std::vector<QString> loadedGroups = {},
+		QString sessionId = QString());
 	~ToolRegistry();
 
 	[[nodiscard]] std::vector<ToolSpec> tools() const override;
@@ -52,6 +59,7 @@ public:
 	[[nodiscard]] rpl::producer<Card> cardUpdates() const;
 	[[nodiscard]] const std::vector<QString> &loadedGroups() const;
 	[[nodiscard]] rpl::producer<> loadedGroupsChanges() const;
+	[[nodiscard]] rpl::producer<HelperUsage> helperUsage() const;
 
 	void decide(const QString &toolUseId, CardDecision decision);
 	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
@@ -83,7 +91,9 @@ private:
 
 	const not_null<Main::Session*> _session;
 	const not_null<PolicyGate*> _gate;
+	const QString _sessionId;
 	rpl::event_stream<PeerKey> _touched;
+	rpl::event_stream<HelperUsage> _helperUsage;
 	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _pending;
 	std::vector<QString> _loadedGroups;
 	rpl::event_stream<Card> _cardUpdates;

@@ -63,7 +63,7 @@ constexpr auto kErrorBodyLimit = 500;
 	return result;
 }
 
-[[nodiscard]] QString ImageDataUrl(const ImageBlock &image) {
+[[nodiscard]] QString ImageDataUrl(const MediaBlock &image) {
 	return u"data:%1;base64,%2"_q.arg(
 		image.mimeType,
 		QString::fromLatin1(image.bytes.toBase64()));
@@ -73,7 +73,7 @@ constexpr auto kErrorBodyLimit = 500;
 		const std::vector<Block> &blocks) {
 	auto hasImage = false;
 	for (const auto &block : blocks) {
-		if (std::get_if<ImageBlock>(&block)) {
+		if (std::get_if<MediaBlock>(&block)) {
 			hasImage = true;
 			break;
 		}
@@ -88,7 +88,7 @@ constexpr auto kErrorBodyLimit = 500;
 			part.insert(u"type"_q, u"text"_q);
 			part.insert(u"text"_q, text->text);
 			parts.append(part);
-		} else if (const auto *image = std::get_if<ImageBlock>(&block)) {
+		} else if (const auto *image = std::get_if<MediaBlock>(&block)) {
 			auto imageObject = QJsonObject();
 			imageObject.insert(u"url"_q, ImageDataUrl(*image));
 			auto part = QJsonObject();

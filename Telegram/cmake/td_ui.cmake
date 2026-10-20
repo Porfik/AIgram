@@ -13,7 +13,9 @@ include(cmake/generate_numbers.cmake)
 
 set(style_files
     agent/ui/agent.style
+    agent/ui/agent_attach.style
     agent/ui/agent_general.style
+    agent/ui/agent_media.style
     agent/ui/agent_panel.style
     ui/td_common.style
     ui/filter_icons.style

@@ -25,6 +25,7 @@ inline constexpr auto kHandoffMaxChars = 24000;
 
 [[nodiscard]] std::vector<Message> ContextMessages(
 	const SessionRecord &record);
+bool DropMediaBytes(SessionRecord &record);
 [[nodiscard]] int PlanCompaction(
 	const SessionRecord &record,
 	int fixedTokens,

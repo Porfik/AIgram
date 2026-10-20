@@ -41,6 +41,7 @@ struct FeedDelegate {
 	Fn<bool(const QString &toolUseId)> isUndone;
 	Fn<void(const std::vector<QString> &toolUseIds)> undo;
 	Fn<void(const QString &text)> startHandoff;
+	Fn<std::optional<MediaBlock>(const QString &attachment)> attachment;
 
 };
 
@@ -123,7 +124,10 @@ private:
 
 class FeedStepsWidget final : public FeedItemWidget {
 public:
-	FeedStepsWidget(QWidget *parent, const FeedSteps &steps);
+	FeedStepsWidget(
+		QWidget *parent,
+		FeedContext context,
+		const FeedSteps &steps);
 	~FeedStepsWidget();
 
 	void updatePayload(const FeedItem &item) override;
@@ -148,6 +152,7 @@ private:
 	void refreshHeader();
 	void toggleExpanded();
 
+	FeedContext _context;
 	VerticalLayout *_content = nullptr;
 	ToggleRow *_header = nullptr;
 	SlideWrap<VerticalLayout> *_list = nullptr;

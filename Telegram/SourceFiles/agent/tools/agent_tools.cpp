@@ -121,6 +121,8 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(ChatStateTools::Entries());
 		append(FolderTools::Entries());
 		append(MemoryTools::Entries());
+		append(MediaTools::Entries());
+		append(FileTools::Entries());
 		result.push_back(LoadToolsEntry());
 		return result;
 	}();
@@ -157,9 +159,11 @@ const base::flat_set<QString> &ActionToolNames() {
 ToolRegistry::ToolRegistry(
 	not_null<Main::Session*> session,
 	not_null<PolicyGate*> gate,
-	std::vector<QString> loadedGroups)
+	std::vector<QString> loadedGroups,
+	QString sessionId)
 : _session(session)
 , _gate(gate)
+, _sessionId(std::move(sessionId))
 , _loadedGroups(std::move(loadedGroups)) {
 }
 
@@ -482,6 +486,10 @@ const std::vector<QString> &ToolRegistry::loadedGroups() const {
 
 rpl::producer<> ToolRegistry::loadedGroupsChanges() const {
 	return _loadedGroupsChanges.events();
+}
+
+rpl::producer<HelperUsage> ToolRegistry::helperUsage() const {
+	return _helperUsage.events();
 }
 
 void ToolRegistry::decide(

@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_manager.h"
 
+#include "agent/agent_attachments.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_http_transport.h"
 #include "agent/agent_memories.h"
@@ -42,7 +43,8 @@ Manager::Manager(not_null<Main::Session*> session)
 , _transport(std::make_unique<HttpTransport>())
 , _memories(std::make_unique<Memories>(session))
 , _exclusions(std::make_unique<Exclusions>(session))
-, _spending(std::make_unique<SpendingTracker>(session)) {
+, _spending(std::make_unique<SpendingTracker>(session))
+, _attachments(std::make_unique<Attachments>(session)) {
 	Agent::ProvidersChanged(
 	) | rpl::on_next([=] {
 		refresh();
@@ -105,6 +107,19 @@ int Manager::contextWindow() const {
 	return (i != _learnedContext.cend() && i->second > 0)
 		? i->second
 		: kDefaultContextWindow;
+}
+
+MediaAbilities Manager::abilities(const ProviderSettings &provider) const {
+	return MediaAbilities{
+		.images = provider.vision,
+		.audio = provider.audio,
+		.video = provider.video,
+		.files = provider.files,
+	};
+}
+
+const ProviderSettings *Manager::mediaProvider() const {
+	return nullptr;
 }
 
 void Manager::learnContextWindow() {
@@ -369,6 +384,10 @@ Memories &Manager::memories() const {
 
 Exclusions &Manager::exclusions() const {
 	return *_exclusions;
+}
+
+Attachments &Manager::attachments() const {
+	return *_attachments;
 }
 
 SpendingTracker &Manager::spending() const {

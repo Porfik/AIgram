@@ -62,6 +62,10 @@ bool CardTextEditable(CardKind kind) {
 		|| kind == CardKind::Edit;
 }
 
+bool CardAlwaysAsks(CardKind kind) {
+	return (kind == CardKind::Draft);
+}
+
 bool CardHasAlternate(CardKind kind) {
 	return kind == CardKind::Send || kind == CardKind::Draft;
 }

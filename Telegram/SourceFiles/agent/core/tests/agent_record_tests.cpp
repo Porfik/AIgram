@@ -36,7 +36,10 @@ namespace {
 	record.messages = {
 		Message{ Role::User, {
 			TextBlock{ u"Привет, мир"_q, false },
-			ImageBlock{ QByteArray("png-bytes"), u"image/png"_q },
+			MediaBlock{
+				.bytes = QByteArray("png-bytes"),
+				.mimeType = u"image/png"_q,
+			},
 			ToolResultBlock{ u"call_0"_q, u"результат"_q, true },
 		} },
 		Message{ Role::Assistant, {
@@ -67,8 +70,8 @@ namespace {
 			result = other
 				&& other->text == value.text
 				&& other->hidden == value.hidden;
-		} else if constexpr (std::is_same_v<T, ImageBlock>) {
-			const auto other = std::get_if<ImageBlock>(&b);
+		} else if constexpr (std::is_same_v<T, MediaBlock>) {
+			const auto other = std::get_if<MediaBlock>(&b);
 			result = other
 				&& other->bytes == value.bytes
 				&& other->mimeType == value.mimeType;

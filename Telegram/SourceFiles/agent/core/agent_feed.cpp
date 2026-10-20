@@ -163,7 +163,7 @@ std::vector<FeedItem> BuildFeed(
 						}
 						text += value.text;
 					}
-				} else if constexpr (std::is_same_v<T, ImageBlock>) {
+				} else if constexpr (std::is_same_v<T, MediaBlock>) {
 				} else if constexpr (std::is_same_v<T, ThinkingBlock>) {
 					if (!user) {
 						flush();

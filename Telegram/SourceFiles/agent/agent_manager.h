@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_media.h"
 #include "agent/core/agent_providers.h"
 #include "agent/core/agent_record.h"
 #include "base/flat_map.h"
@@ -27,6 +28,7 @@ class Session;
 
 namespace Agent {
 
+class Attachments;
 class Exclusions;
 class HttpTransport;
 class Memories;
@@ -56,6 +58,9 @@ public:
 	[[nodiscard]] rpl::producer<bool> enabledValue() const;
 	[[nodiscard]] const ProvidersState &providers() const;
 	[[nodiscard]] int contextWindow() const;
+	[[nodiscard]] MediaAbilities abilities(
+		const ProviderSettings &provider) const;
+	[[nodiscard]] const ProviderSettings *mediaProvider() const;
 
 	[[nodiscard]] std::vector<SessionInfo> list(const Scope &scope) const;
 	[[nodiscard]] std::optional<SessionInfo> info(const QString &id) const;
@@ -73,6 +78,7 @@ public:
 	[[nodiscard]] Memories &memories() const;
 	[[nodiscard]] Exclusions &exclusions() const;
 	[[nodiscard]] SpendingTracker &spending() const;
+	[[nodiscard]] Attachments &attachments() const;
 
 	[[nodiscard]] Transport &transport() const;
 	void save(not_null<Session*> session);
@@ -99,6 +105,7 @@ private:
 	const std::unique_ptr<Memories> _memories;
 	const std::unique_ptr<Exclusions> _exclusions;
 	const std::unique_ptr<SpendingTracker> _spending;
+	const std::unique_ptr<Attachments> _attachments;
 	ProvidersState _providers;
 	rpl::variable<bool> _enabled = false;
 	std::vector<SessionInfo> _index;

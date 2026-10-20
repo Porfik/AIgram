@@ -20,6 +20,7 @@ namespace Agent {
 struct FeedUser {
 	int index = 0;
 	QString text;
+	std::vector<MediaBlock> attachments;
 };
 
 struct FeedAssistant {

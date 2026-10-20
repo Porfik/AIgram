@@ -75,7 +75,10 @@ std::vector<Check> ContextChecks() {
 			}
 			const auto image = EstimateTokens(Message{
 				Role::User,
-				{ ImageBlock{ QByteArray("bytes"), u"image/png"_q } },
+				{ MediaBlock{
+					.bytes = QByteArray("bytes"),
+					.mimeType = u"image/png"_q,
+				} },
 			});
 			if (image != 1004) {
 				return u"image message: %1"_q.arg(image);

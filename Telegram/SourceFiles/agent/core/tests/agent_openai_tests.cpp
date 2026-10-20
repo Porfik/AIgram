@@ -675,7 +675,10 @@ namespace {
 			ToolResultBlock{ u"toolu_1"_q, u"18°C"_q, false },
 			ToolResultBlock{ u"toolu_2"_q, u"failed"_q, true },
 			TextBlock{ u"What now?"_q },
-			ImageBlock{ QByteArray("\x89" "PN", 3), u"image/png"_q },
+			MediaBlock{
+				.bytes = QByteArray("\x89" "PN", 3),
+				.mimeType = u"image/png"_q,
+			},
 		},
 	});
 	request.messages.push_back(Message{

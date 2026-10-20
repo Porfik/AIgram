@@ -31,9 +31,23 @@ struct TextBlock {
 	bool hidden = false;
 };
 
-struct ImageBlock {
+enum class MediaKind : uchar {
+	Image,
+	Audio,
+	Video,
+	File,
+};
+
+struct MediaBlock {
+	MediaKind kind = MediaKind::Image;
 	QByteArray bytes;
 	QString mimeType;
+	QString name;
+	QString attachment;
+	uint64 peer = 0;
+	int64 messageId = 0;
+	int64 size = 0;
+	int duration = 0;
 };
 
 struct ThinkingBlock {
@@ -53,11 +67,12 @@ struct ToolResultBlock {
 	QString toolUseId;
 	QString content;
 	bool error = false;
+	std::vector<MediaBlock> media;
 };
 
 using Block = std::variant<
 	TextBlock,
-	ImageBlock,
+	MediaBlock,
 	ThinkingBlock,
 	ToolUseBlock,
 	ToolResultBlock>;
@@ -103,6 +118,7 @@ struct Request {
 	std::vector<Message> messages;
 	std::vector<ToolSpec> tools;
 	int maxOutputTokens = 0;
+	QString pdfEngine;
 };
 
 enum class ErrorKind : uchar {

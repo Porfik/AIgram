@@ -107,7 +107,7 @@ object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
 			return object_ptr<FeedAssistantWidget>(_list, _context, data.text);
 		},
 		[&](const FeedSteps &data) -> Result {
-			return object_ptr<FeedStepsWidget>(_list, data);
+			return object_ptr<FeedStepsWidget>(_list, _context, data);
 		},
 		[&](const FeedSummary &data) -> Result {
 			return object_ptr<FeedSummaryWidget>(_list);

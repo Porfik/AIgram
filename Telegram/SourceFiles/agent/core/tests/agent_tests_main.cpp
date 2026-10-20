@@ -34,6 +34,8 @@ namespace {
 	append(MemoryChecks());
 	append(SpendingChecks());
 	append(ExclusionChecks());
+	append(MediaChecks());
+	append(DocumentsChecks());
 	return result;
 }
 

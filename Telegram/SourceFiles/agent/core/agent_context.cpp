@@ -124,7 +124,7 @@ int EstimateTokens(const Message &message) {
 	for (const auto &block : message.blocks) {
 		if (const auto text = std::get_if<TextBlock>(&block)) {
 			result += EstimateTokens(text->text);
-		} else if (std::get_if<ImageBlock>(&block)) {
+		} else if (std::get_if<MediaBlock>(&block)) {
 			result += 1000;
 		} else if (const auto thinking = std::get_if<ThinkingBlock>(&block)) {
 			result += EstimateTokens(thinking->text);
@@ -166,6 +166,10 @@ QString CapToolResult(QString content, int maxChars) {
 	return content.left(cut)
 		+ u"\n[%1 characters dropped. Request a smaller page.]"_q.arg(
 			content.size() - cut);
+}
+
+bool DropMediaBytes(SessionRecord &record) {
+	return false;
 }
 
 std::vector<Message> ContextMessages(const SessionRecord &record) {
