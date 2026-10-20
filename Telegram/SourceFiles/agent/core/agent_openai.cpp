@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonDocument>
 #include <QtCore/QUrl>
 
+#include <algorithm>
 #include <type_traits>
 #include <utility>
 
@@ -628,6 +629,39 @@ QJsonObject RequestObject(const Request &request) {
 	return root;
 }
 
+namespace {
+
+[[nodiscard]] double ReadPrice(const QJsonValue &value) {
+	auto ok = false;
+	auto number = 0.;
+	if (value.isString()) {
+		number = value.toString().toDouble(&ok);
+	} else if (value.isDouble()) {
+		number = value.toDouble();
+		ok = true;
+	}
+	return (ok && number > 0.) ? (number * 1'000'000.) : 0.;
+}
+
+[[nodiscard]] std::vector<QString> SplitWords(const QString &text) {
+	auto result = std::vector<QString>();
+	auto word = QString();
+	for (const auto &character : text) {
+		if (character.isLetterOrNumber()) {
+			word += character;
+		} else if (!word.isEmpty()) {
+			result.push_back(word);
+			word = QString();
+		}
+	}
+	if (!word.isEmpty()) {
+		result.push_back(word);
+	}
+	return result;
+}
+
+} // namespace
+
 HttpRequest ModelsRequest(const ProviderSettings &settings) {
 	auto result = HttpRequest();
 	result.url = SlashJoinedUrl(settings.baseUrl, u"models"_q);
@@ -647,7 +681,12 @@ std::vector<ModelInfo> ParseModels(const QByteArray &json) {
 		const auto object = model.toObject();
 		auto info = ModelInfo();
 		info.id = object.value(u"id"_q).toString();
+		info.name = object.value(u"name"_q).toString();
 		info.contextWindow = object.value(u"context_length"_q).toInt();
+		const auto pricing = object.value(u"pricing"_q).toObject();
+		info.priceInput = ReadPrice(pricing.value(u"prompt"_q));
+		info.priceOutput = ReadPrice(pricing.value(u"completion"_q));
+		info.priceCached = ReadPrice(pricing.value(u"input_cache_read"_q));
 		if (const auto parameters = object.value(u"supported_parameters"_q)
 			; parameters.isArray()) {
 			auto has = false;
@@ -691,7 +730,34 @@ std::vector<ModelInfo> ParseModels(const QByteArray &json) {
 std::vector<int> SearchModels(
 		const std::vector<ModelInfo> &models,
 		const QString &query) {
-	return {};
+	const auto words = SplitWords(query);
+	if (words.empty()) {
+		auto every = std::vector<int>(models.size(), 0);
+		for (auto i = 1; i < int(models.size()); ++i) {
+			every[i] = i;
+		}
+		return every;
+	}
+	auto result = std::vector<int>();
+	for (auto i = 0, count = int(models.size()); i != count; ++i) {
+		const auto &model = models[i];
+		auto modelWords = SplitWords(model.name);
+		for (const auto &word : SplitWords(model.id)) {
+			modelWords.push_back(word);
+		}
+		const auto matches = [&](const QString &word) {
+			for (const auto &candidate : modelWords) {
+				if (candidate.startsWith(word, Qt::CaseInsensitive)) {
+					return true;
+				}
+			}
+			return false;
+		};
+		if (std::all_of(words.begin(), words.end(), matches)) {
+			result.push_back(i);
+		}
+	}
+	return result;
 }
 
 HttpRequest EndpointsRequest(const ProviderSettings &settings) {

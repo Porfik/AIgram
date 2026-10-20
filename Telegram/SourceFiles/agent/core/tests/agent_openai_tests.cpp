@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
 
+#include <cmath>
 #include <random>
 
 namespace Agent::Tests {
@@ -659,6 +660,85 @@ namespace {
 				|| text.video.value_or(true)
 				|| text.files.value_or(true)) {
 				return u"modalities must be false"_q;
+			}
+			return QString();
+		} },
+		{ u"openai_parse_models_prices_and_names"_q, [] {
+			const auto models = OpenAi::ParseModels(
+				ReadFixture(u"openrouter-models.json"_q));
+			if (models.size() != 6) {
+				return u"models: got %1, expected 6"_q.arg(models.size());
+			}
+			struct Expected {
+				QString id;
+				QString name;
+				double priceInput;
+				double priceOutput;
+				double priceCached;
+			};
+			const auto expected = std::vector<Expected>{
+				{ u"z-ai/glm-5.3-flash"_q,
+					u"Z.ai: GLM 5.3 Flash"_q, 2.8, 8.0, 0.2 },
+				{ u"z-ai/glm-4.6"_q,
+					u"Z.ai: GLM 4.6"_q, 3.0, 12.0, 0.3 },
+				{ u"openai/gpt-4o-mini"_q,
+					u"OpenAI: GPT-4o Mini"_q, 0., 0., 0. },
+				{ u"google/gemini-2.5-flash"_q,
+					u"Google: Gemini 2.5 Flash"_q, 0., 0., 0. },
+				{ u"qwen/qwen3-235b"_q,
+					u"Qwen: Qwen3 235B"_q, 1.4, 7.0, 0.1 },
+				{ u"deepseek/deepseek-chat-v4"_q,
+					u"DeepSeek: DeepSeek V4"_q, 0.19, 0.97, 0.02 },
+			};
+			auto index = 0;
+			for (const auto &item : expected) {
+				const auto &model = models[index];
+				const auto close = [](double a, double b) {
+					return std::abs(a - b) < 1e-9;
+				};
+				if (model.id != item.id
+					|| model.name != item.name
+					|| !close(model.priceInput, item.priceInput)
+					|| !close(model.priceOutput, item.priceOutput)
+					|| !close(model.priceCached, item.priceCached)) {
+					return u"model %1: got %2, %3, prices %4, %5, %6"_q
+						.arg(index)
+						.arg(model.id, model.name)
+						.arg(model.priceInput)
+						.arg(model.priceOutput)
+						.arg(model.priceCached);
+				}
+				++index;
+			}
+			return QString();
+		} },
+		{ u"openai_search_models"_q, [] {
+			const auto models = OpenAi::ParseModels(
+				ReadFixture(u"openrouter-models.json"_q));
+			const auto search = [&](const QString &query) {
+				auto text = QString();
+				for (const auto index : OpenAi::SearchModels(models, query)) {
+					text += QString::number(index) + u","_q;
+				}
+				return text;
+			};
+			if (search(QString()) != u"0,1,2,3,4,5,"_q) {
+				return u"an empty query must match everything"_q;
+			} else if (search(u"   \t "_q) != u"0,1,2,3,4,5,"_q) {
+				return u"a blank query must match everything"_q;
+			} else if (search(u"glm"_q) != u"0,1,"_q) {
+				return u"glm: got %1, expected 0,1"_q.arg(search(u"glm"_q));
+			} else if (search(u"GLM"_q) != u"0,1,"_q) {
+				return u"the search must ignore case"_q;
+			} else if (search(u"glm 5.3 fl"_q) != u"0,"_q) {
+				return u"glm 5.3 fl: got %1, expected 0"_q
+					.arg(search(u"glm 5.3 fl"_q));
+			} else if (search(u"z-ai"_q) != u"0,1,"_q) {
+				return u"z-ai: got %1, expected 0,1"_q.arg(search(u"z-ai"_q));
+			} else if (search(u"flash glm"_q) != u"0,"_q) {
+				return u"the word order must not matter"_q;
+			} else if (!search(u"lash"_q).isEmpty()) {
+				return u"only prefixes must match"_q;
 			}
 			return QString();
 		} },
