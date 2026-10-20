@@ -7,6 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_model_boxes.h"
 
+#include "agent/ui/agent_claude_boxes.h"
+#include "agent/ui/agent_model_boxes_common.h"
+
 #include "agent/agent_check.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
@@ -44,18 +47,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_widgets.h"
 
 namespace Agent::Ui {
-namespace {
-
-using OpenAi::ModelInfo;
-using OpenAi::ModelRoute;
+namespace details {
 
 constexpr auto kModelsCacheTimeout = crl::time(10 * 60 * 1000);
-
-struct FetchResult {
-	int status = 0;
-	QByteArray body;
-	QString error;
-};
 
 struct ModelsCache {
 	std::vector<ModelInfo> list;
@@ -104,11 +98,13 @@ void Fetch(
 	});
 }
 
-[[nodiscard]] QString FetchErrorText(const FetchResult &result) {
+QString FetchErrorText(
+		const FetchResult &result,
+		Fn<Error(const HttpHead&, const QByteArray&)> parse) {
 	if (!result.error.isEmpty()) {
 		return result.error;
 	}
-	const auto error = OpenAi::ParseError(
+	const auto error = (parse ? parse : OpenAi::ParseError)(
 		HttpHead{ .status = result.status },
 		result.body);
 	return !error.text.isEmpty()
@@ -116,7 +112,7 @@ void Fetch(
 		: (u"HTTP "_q + QString::number(result.status));
 }
 
-[[nodiscard]] QString FormatContext(int tokens) {
+QString FormatContext(int tokens) {
 	if (tokens >= 1'000'000) {
 		return QString::number(tokens / 1'000'000., 'g', 3) + 'M';
 	} else if (tokens >= 1000) {
@@ -125,11 +121,11 @@ void Fetch(
 	return QString::number(tokens);
 }
 
-[[nodiscard]] QString FormatPrice(double price) {
+QString FormatPrice(double price) {
 	return '$' + QString::number(price, 'g', 3);
 }
 
-[[nodiscard]] QString ModelInfoDescription(const ModelInfo &model) {
+QString ModelInfoDescription(const ModelInfo &model) {
 	auto parts = QStringList();
 	if (model.contextWindow > 0) {
 		parts.push_back(tr::lng_agent_model_context(
@@ -184,7 +180,7 @@ void ApplyModelInfo(ProviderSettings &provider, const ModelInfo &model) {
 		names.join(u", "_q));
 }
 
-[[nodiscard]] not_null<::Ui::PasswordInput*> AddKeyField(
+not_null<::Ui::PasswordInput*> AddKeyField(
 		not_null<::Ui::VerticalLayout*> container,
 		const QString &value) {
 	auto wrap = object_ptr<::Ui::RpWidget>(container);
@@ -224,29 +220,6 @@ void RemoveProfile(const QString &id) {
 	});
 }
 
-void ConfirmRemove(
-		not_null<Window::SessionController*> controller,
-		not_null<::Ui::GenericBox*> box,
-		const ProviderSettings &provider) {
-	const auto weak = QPointer<::Ui::GenericBox>(box.get());
-	const auto id = provider.id;
-	controller->show(::Ui::MakeConfirmBox({
-		.text = tr::lng_agent_model_delete_sure(
-			tr::now,
-			lt_name,
-			ModelTitle(provider)),
-		.confirmed = [=](Fn<void()> close) {
-			RemoveProfile(id);
-			close();
-			if (const auto strong = weak.data()) {
-				strong->closeBox();
-			}
-		},
-		.confirmText = tr::lng_box_delete(),
-		.confirmStyle = &st::attentionBoxButton,
-	}));
-}
-
 void ApplyDefault(
 		ProvidersState &state,
 		const QString &id,
@@ -263,7 +236,8 @@ public:
 	ModelList(
 		QWidget *parent,
 		std::vector<ModelInfo> models,
-		QString currentId);
+		QString currentId,
+		Fn<QString(const ModelInfo&)> describe);
 
 	void filter(const QString &query);
 	void chooseFirst();
@@ -296,13 +270,16 @@ private:
 ModelList::ModelList(
 	QWidget *parent,
 	std::vector<ModelInfo> models,
-	QString currentId)
+	QString currentId,
+	Fn<QString(const ModelInfo&)> describe)
 : RpWidget(parent)
 , _models(std::move(models))
 , _currentId(std::move(currentId)) {
 	_descriptions.reserve(_models.size());
 	for (const auto &model : _models) {
-		_descriptions.push_back(ModelInfoDescription(model));
+		_descriptions.push_back(describe
+			? describe(model)
+			: ModelInfoDescription(model));
 	}
 	setMouseTracking(true);
 	filter(QString());
@@ -426,8 +403,8 @@ void ModelList::leaveEventHook(QEvent *e) {
 
 void ModelListBox(
 		not_null<::Ui::GenericBox*> box,
-		not_null<Window::SessionController*> controller,
 		QString currentId,
+		ModelSource source,
 		Fn<void(ModelInfo)> chosen) {
 	box->setTitle(tr::lng_agent_models_choose_title());
 	box->setWidth(st::boxWideWidth);
@@ -458,14 +435,15 @@ void ModelListBox(
 	const auto show = [=](std::vector<ModelInfo> models) {
 		auto usable = std::vector<ModelInfo>();
 		for (auto &model : models) {
-			if (model.tools.value_or(true)) {
+			if (!source.usable || source.usable(model)) {
 				usable.push_back(std::move(model));
 			}
 		}
 		const auto raw = container->add(object_ptr<ModelList>(
 			container,
 			std::move(usable),
-			currentId));
+			currentId,
+			source.describe));
 		*list = raw;
 		raw->filter(select->getQuery());
 		raw->chosen(
@@ -475,47 +453,33 @@ void ModelListBox(
 		}, raw->lifetime());
 		refreshStatus();
 	};
-	const auto manager = &controller->session().agent();
 	const auto load = std::make_shared<Fn<void()>>();
 	*load = [=] {
-		const auto &cache = OpenRouterModels();
-		if (!cache.list.empty()
-			&& crl::now() - cache.loaded < kModelsCacheTimeout) {
-			show(cache.list);
-			return;
-		}
 		box->clearButtons();
 		box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
 		status->entity()->setText(tr::lng_agent_models_loading(tr::now));
 		status->toggle(true, anim::type::instant);
-		Fetch(
-			manager,
-			box->lifetime(),
-			OpenAi::ModelsRequest(OpenRouterRequestSettings()),
-			[=](FetchResult result) {
-				auto models = (result.error.isEmpty()
-					&& result.status == 200)
-					? OpenAi::ParseModels(result.body)
-					: std::vector<ModelInfo>();
-				if (models.empty()) {
-					status->entity()->setText(tr::lng_agent_models_failed(
+		source.load(box, [=](std::vector<ModelInfo> models, QString error) {
+			if (models.empty()) {
+				status->entity()->setText(error.isEmpty()
+					? tr::lng_agent_models_nothing(tr::now)
+					: tr::lng_agent_models_failed(
 						tr::now,
 						lt_text,
-						FetchErrorText(result)));
-					box->clearButtons();
-					box->addButton(tr::lng_agent_models_retry(), [=] {
-						(*load)();
-					});
-					box->addButton(tr::lng_cancel(), [=] {
-						box->closeBox();
-					});
-					return;
-				}
-				auto &cache = OpenRouterModels();
-				cache.list = models;
-				cache.loaded = crl::now();
-				show(std::move(models));
-			});
+						error));
+				box->clearButtons();
+				box->addButton(tr::lng_agent_models_retry(), [=] {
+					(*load)();
+				});
+				box->addButton(tr::lng_cancel(), [=] {
+					box->closeBox();
+				});
+				return;
+			}
+			box->clearButtons();
+			box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
+			show(std::move(models));
+		});
 	};
 	select->setQueryChangedCallback([=](const QString &query) {
 		if (*list) {
@@ -534,8 +498,85 @@ void ModelListBox(
 	box->setFocusCallback([=] {
 		select->setInnerFocus();
 	});
-	box->addButton(tr::lng_cancel(), [=] { box->closeBox(); });
 	(*load)();
+}
+
+ModelSource OpenRouterSource(not_null<Manager*> manager) {
+	auto result = ModelSource();
+	result.usable = [](const ModelInfo &model) {
+		return model.tools.value_or(true);
+	};
+	result.load = [=](
+			not_null<::Ui::GenericBox*> box,
+			Fn<void(std::vector<ModelInfo>, QString)> done) {
+		const auto &cache = OpenRouterModels();
+		if (!cache.list.empty()
+			&& crl::now() - cache.loaded < kModelsCacheTimeout) {
+			done(cache.list, QString());
+			return;
+		}
+		Fetch(
+			manager,
+			box->lifetime(),
+			OpenAi::ModelsRequest(OpenRouterRequestSettings()),
+			[=](FetchResult result) {
+				auto models = (result.error.isEmpty()
+					&& result.status == 200)
+					? OpenAi::ParseModels(result.body)
+					: std::vector<ModelInfo>();
+				if (models.empty()) {
+					done({}, FetchErrorText(result));
+					return;
+				}
+				auto &cache = OpenRouterModels();
+				cache.list = models;
+				cache.loaded = crl::now();
+				done(std::move(models), QString());
+			});
+	};
+	return result;
+}
+
+void ConfirmRemove(
+		not_null<Window::SessionController*> controller,
+		not_null<::Ui::GenericBox*> box,
+		const ProviderSettings &provider) {
+	const auto weak = QPointer<::Ui::GenericBox>(box.get());
+	const auto id = provider.id;
+	controller->show(::Ui::MakeConfirmBox({
+		.text = tr::lng_agent_model_delete_sure(
+			tr::now,
+			lt_name,
+			ModelTitle(provider)),
+		.confirmed = [=](Fn<void()> close) {
+			RemoveProfile(id);
+			close();
+			if (const auto strong = weak.data()) {
+				strong->closeBox();
+			}
+		},
+		.confirmText = tr::lng_box_delete(),
+		.confirmStyle = &st::attentionBoxButton,
+	}));
+}
+
+} // namespace details
+
+namespace {
+
+using namespace details;
+using OpenAi::ModelRoute;
+
+void ModelListBox(
+		not_null<::Ui::GenericBox*> box,
+		not_null<Window::SessionController*> controller,
+		QString currentId,
+		Fn<void(ModelInfo)> chosen) {
+	details::ModelListBox(
+		box,
+		std::move(currentId),
+		OpenRouterSource(&controller->session().agent()),
+		std::move(chosen));
 }
 
 void OpenRouterKeyBox(
@@ -1178,6 +1219,15 @@ void AddModelBox(
 	});
 	Settings::AddButtonWithIcon(
 		container,
+		tr::lng_agent_add_anthropic(),
+		st::settingsButton,
+		{ &st::agentModelChoiceAnthropicIcon }
+	)->setClickedCallback([=] {
+		box->closeBox();
+		ShowAnthropicChoice(controller, added);
+	});
+	Settings::AddButtonWithIcon(
+		container,
 		tr::lng_agent_add_custom(),
 		st::settingsButton,
 		{ &st::agentModelChoiceCustomIcon }
@@ -1207,6 +1257,10 @@ QString ModelTitle(const ProviderSettings &provider) {
 QString ModelDescription(const ProviderSettings &provider) {
 	const auto where = (provider.service == ProviderService::OpenRouter)
 		? tr::lng_agent_service_openrouter(tr::now)
+		: (provider.service == ProviderService::Anthropic)
+		? tr::lng_agent_service_anthropic(tr::now)
+		: (provider.service == ProviderService::ClaudeSubscription)
+		? tr::lng_agent_service_claude(tr::now)
 		: QUrl(provider.baseUrl).host();
 	return where.isEmpty()
 		? provider.model
@@ -1230,6 +1284,10 @@ void ShowEditModel(
 		return;
 	} else if (provider->service == ProviderService::OpenRouter) {
 		controller->show(Box(EditOpenRouterBox, controller, *provider));
+	} else if (provider->service == ProviderService::ClaudeSubscription) {
+		ShowEditClaude(controller, *provider);
+	} else if (provider->service == ProviderService::Anthropic) {
+		ShowEditAnthropic(controller, *provider);
 	} else {
 		controller->show(Box(
 			EditCustomBox,

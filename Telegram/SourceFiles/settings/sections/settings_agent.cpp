@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/ui/agent_claude_boxes.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_spending_format.h"
 #include "boxes/peer_list_box.h"
@@ -356,9 +357,12 @@ void RebuildProviderRows(
 		const auto about = row->lifetime().make_state<Ui::Text::String>(
 			st::defaultTextStyle,
 			::Agent::Ui::ModelDescription(provider));
-		const auto &icon = (provider.service
-				== ::Agent::ProviderService::OpenRouter)
+		const auto service = provider.service;
+		const auto &icon = (service == ::Agent::ProviderService::OpenRouter)
 			? st::agentModelChoiceOpenRouterIcon
+			: (service == ::Agent::ProviderService::Anthropic
+				|| service == ::Agent::ProviderService::ClaudeSubscription)
+			? st::agentModelChoiceAnthropicIcon
 			: st::agentModelChoiceCustomIcon;
 		row->paintOn([=, &icon](QPainter &p) {
 			if (row->isOver()) {
@@ -912,6 +916,26 @@ void BuildSpending(
 		.label = label([=] { return spending->allTime(); }),
 		.keywords = { u"all"_q, u"time"_q, u"spending"_q },
 	});
+	const auto subscription = ranges::any_of(
+		state->providers.list,
+		[](const ::Agent::ProviderSettings &provider) {
+			return (provider.service
+				== ::Agent::ProviderService::ClaudeSubscription);
+		});
+	if (subscription) {
+		builder.addButton({
+			.id = u"agent/spending/claude/hours"_q,
+			.title = tr::lng_agent_claude_limit_five_hours(),
+			.label = ::Agent::Ui::ClaudeLimitValue(false),
+			.keywords = { u"claude"_q, u"limit"_q, u"subscription"_q },
+		});
+		builder.addButton({
+			.id = u"agent/spending/claude/week"_q,
+			.title = tr::lng_agent_claude_limit_week(),
+			.label = ::Agent::Ui::ClaudeLimitValue(true),
+			.keywords = { u"claude"_q, u"limit"_q, u"week"_q },
+		});
+	}
 	builder.addButton({
 		.id = u"agent/spending/reset"_q,
 		.title = tr::lng_agent_spending_reset(),

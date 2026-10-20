@@ -87,10 +87,18 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 	) | rpl::on_next([=] {
 		_retryRequests.fire({});
 	}, lifetime());
+	_status->settingsClicks(
+	) | rpl::on_next([=] {
+		_settingsRequests.fire({});
+	}, lifetime());
 }
 
 rpl::producer<> FeedWidget::retryRequests() const {
 	return _retryRequests.events();
+}
+
+rpl::producer<> FeedWidget::settingsRequests() const {
+	return _settingsRequests.events();
 }
 
 rpl::producer<int> FeedWidget::naturalHeightValue() const {
@@ -258,7 +266,10 @@ void FeedWidget::refreshActive() {
 	}
 }
 
-void FeedWidget::setStatus(const SessionState &state) {
+void FeedWidget::setStatus(
+		const SessionState &state,
+		const QString &errorOverride,
+		bool settings) {
 	using Kind = FeedStatusWidget::Kind;
 	_working = (state.status == SessionStatus::Working)
 		|| (state.status == SessionStatus::Compacting);
@@ -274,14 +285,17 @@ void FeedWidget::setStatus(const SessionState &state) {
 			Kind::Compacting,
 			tr::lng_agent_compacting(tr::now));
 	} else if (state.status == SessionStatus::Failed) {
-		const auto error = state.error.has_value()
+		const auto error = !errorOverride.isEmpty()
+			? errorOverride
+			: state.error.has_value()
 			? (!state.error->text.isEmpty()
 				? state.error->text
 				: ErrorKindName(state.error->kind))
 			: QString();
 		_status->showStatus(
 			Kind::Failed,
-			tr::lng_agent_failed(tr::now, lt_error, error));
+			tr::lng_agent_failed(tr::now, lt_error, error),
+			settings);
 	} else if (state.lastEnd.has_value()
 		&& *state.lastEnd != TurnEnd::Completed) {
 		auto text = QString();

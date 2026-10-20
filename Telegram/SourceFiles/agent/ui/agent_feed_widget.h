@@ -24,12 +24,16 @@ public:
 
 	void rebuild(const std::vector<FeedItem> &items);
 	void handleLiveEvent(const EngineEvent &event);
-	void setStatus(const SessionState &state);
+	void setStatus(
+		const SessionState &state,
+		const QString &error = QString(),
+		bool settings = false);
 	void setSpending(const SpendingTotals &totals);
 	void setContentMaxWidth(int width);
 	void scrollToBottom();
 	[[nodiscard]] bool empty() const;
 	[[nodiscard]] rpl::producer<> retryRequests() const;
+	[[nodiscard]] rpl::producer<> settingsRequests() const;
 	[[nodiscard]] rpl::producer<int> naturalHeightValue() const;
 	[[nodiscard]] int naturalHeight() const;
 
@@ -72,6 +76,7 @@ private:
 	bool _stick = true;
 	bool _stickFrozen = false;
 	rpl::event_stream<> _retryRequests;
+	rpl::event_stream<> _settingsRequests;
 	rpl::variable<int> _naturalHeight = 0;
 
 };

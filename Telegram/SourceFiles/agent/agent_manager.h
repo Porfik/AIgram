@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "agent/core/agent_adapter.h"
 #include "agent/core/agent_media.h"
 #include "agent/core/agent_providers.h"
 #include "agent/core/agent_record.h"
@@ -29,8 +30,11 @@ class Session;
 namespace Agent {
 
 class Attachments;
+class ClaudeLauncher;
+class ClaudePool;
 class Exclusions;
 class HttpTransport;
+class PendingRequest;
 class Memories;
 class Session;
 class SessionStore;
@@ -111,6 +115,13 @@ public:
 	[[nodiscard]] bool acting() const;
 
 	[[nodiscard]] Transport &transport() const;
+	[[nodiscard]] bool canRun(const ProviderSettings &provider) const;
+	[[nodiscard]] std::unique_ptr<PendingRequest> single(
+		const ProviderSettings &provider,
+		Request request,
+		Fn<void(Response)> done);
+	[[nodiscard]] ClaudeLauncher &claudeLauncher() const;
+	[[nodiscard]] ClaudePool &claudePool() const;
 	void save(not_null<Session*> session);
 
 private:
@@ -132,6 +143,8 @@ private:
 	const not_null<Main::Session*> _session;
 	const std::unique_ptr<SessionStore> _store;
 	const std::unique_ptr<HttpTransport> _transport;
+	const std::unique_ptr<ClaudeLauncher> _claudeLauncher;
+	const std::unique_ptr<ClaudePool> _claudePool;
 	const std::unique_ptr<Memories> _memories;
 	const std::unique_ptr<Exclusions> _exclusions;
 	const std::unique_ptr<SpendingTracker> _spending;

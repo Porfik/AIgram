@@ -188,8 +188,9 @@ public:
 
 	FeedStatusWidget(QWidget *parent);
 
-	void showStatus(Kind kind, QString text);
+	void showStatus(Kind kind, QString text, bool settings = false);
 	[[nodiscard]] rpl::producer<> retryClicks() const;
+	[[nodiscard]] rpl::producer<> settingsClicks() const;
 
 protected:
 	int resizeGetHeight(int newWidth) override;
@@ -198,9 +199,11 @@ protected:
 private:
 	object_ptr<Ui::FlatLabel> _label;
 	object_ptr<Ui::RoundButton> _retry;
+	object_ptr<Ui::RoundButton> _settings;
 	Ui::InfiniteRadialAnimation _animation;
 	Kind _kind = Kind::None;
 	rpl::event_stream<> _retryClicks;
+	rpl::event_stream<> _settingsClicks;
 
 };
 

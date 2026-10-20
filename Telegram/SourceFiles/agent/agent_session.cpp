@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_session.h"
 
+#include "agent/agent_claude.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_media_convert.h"
 #include "agent/agent_exclusions.h"
@@ -477,6 +478,17 @@ void Session::failWithoutProvider() {
 		TurnEnd::Failed);
 }
 
+void Session::failWithoutClaude() {
+	applyState(
+		SessionStatus::Failed,
+		Error{
+			ErrorKind::Auth,
+			0,
+			ClaudeMissingText(),
+		},
+		TurnEnd::Failed);
+}
+
 void Session::accountUsage(
 		const Usage &usage,
 		const ProviderSettings &provider) {
@@ -538,18 +550,13 @@ int Session::planCompaction(
 
 void Session::startCompaction(int until) {
 	const auto provider = currentProvider();
-	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
-	if (!provider || !adapter) {
+	if (!provider || !_manager->canRun(*provider)) {
 		failWithoutProvider();
 		return;
 	}
-	if (!applyState(SessionStatus::Compacting)) {
-		return;
-	}
 	const auto providerCopy = *provider;
-	_compaction = std::make_unique<SingleRequest>(
-		std::move(adapter),
-		&_manager->transport(),
+	auto request = _manager->single(
+		providerCopy,
 		CompactionRequest(_record, until, provider->model),
 		[=](Response response) {
 			base::take(_compaction);
@@ -570,6 +577,13 @@ void Session::startCompaction(int until) {
 			}
 			runTurn();
 		});
+	if (!request) {
+		failWithoutClaude();
+		return;
+	} else if (!applyState(SessionStatus::Compacting)) {
+		return;
+	}
+	_compaction = std::move(request);
 }
 
 void Session::runTurn() {
@@ -581,21 +595,43 @@ void Session::runTurn() {
 	runLoop(*provider);
 }
 
-void Session::runLoop(const ProviderSettings &provider) {
+std::unique_ptr<Engine> Session::createEngine(
+		const ProviderSettings &provider,
+		std::vector<Message> messages) {
+	const auto maxSteps = _run ? kTaskMaxSteps : 25;
+	if (UsesClaudeCode(provider)) {
+		const auto program = FindClaudeProgram(
+			_manager->providers().claudePath);
+		if (program.isEmpty()) {
+			return nullptr;
+		}
+		return std::make_unique<Claude::Engine>(
+			&_manager->claudeLauncher(),
+			_run ? nullptr : &_manager->claudePool(),
+			_tools.get(),
+			Claude::EngineOptions{
+				.session = {
+					.model = provider.model,
+					.effort = provider.effort,
+					.system = buildSystem(),
+					.maxTurns = maxSteps,
+				},
+				.launch = ClaudeLaunchSettings(program),
+				.owner = id(),
+				.recordMessages = int(_record.messages.size()),
+				.summaryUntil = _record.summaryUntil,
+				.keepWarm = !_run,
+				.limits = [](Claude::Limits limits) {
+					UpdateClaudeLimits(std::move(limits));
+				},
+			},
+			std::move(messages));
+	}
 	auto adapter = CreateAdapter(provider);
 	if (!adapter) {
-		failWithoutProvider();
-		return;
+		return nullptr;
 	}
-	if (!applyState(SessionStatus::Working)) {
-		return;
-	}
-	auto messages = _manager->abilities(provider).images
-		? ContextMessages(withAttachedImages())
-		: ContextMessages(_record);
-	_loopLifetime.destroy();
-	_loop = nullptr;
-	_loop = std::make_unique<Loop>(
+	return std::make_unique<Loop>(
 		std::move(adapter),
 		&_manager->transport(),
 		_tools.get(),
@@ -603,7 +639,7 @@ void Session::runLoop(const ProviderSettings &provider) {
 			.model = provider.model,
 			.system = buildSystem(),
 			.maxOutputTokens = 0,
-			.maxSteps = _run ? kTaskMaxSteps : 25,
+			.maxSteps = maxSteps,
 			.pdfEngine = (IsOpenRouter(provider)
 				&& !_manager->abilities(provider).files
 				? u"pdf-text"_q
@@ -611,6 +647,25 @@ void Session::runLoop(const ProviderSettings &provider) {
 			.cacheKey = cacheKey(),
 		},
 		std::move(messages));
+}
+
+void Session::runLoop(const ProviderSettings &provider) {
+	if (!_manager->canRun(provider)) {
+		failWithoutProvider();
+		return;
+	}
+	auto messages = _manager->abilities(provider).images
+		? ContextMessages(withAttachedImages())
+		: ContextMessages(_record);
+	_loopLifetime.destroy();
+	_loop = nullptr;
+	_loop = createEngine(provider, std::move(messages));
+	if (!_loop) {
+		failWithoutClaude();
+		return;
+	} else if (!applyState(SessionStatus::Working)) {
+		return;
+	}
 	_loopContext = int(_loop->history().size());
 	_loopBase = int(_record.messages.size());
 	_loopProvider = provider;
@@ -792,15 +847,13 @@ bool Session::publishRecord() {
 
 void Session::startTitleRequest() {
 	const auto provider = currentProvider();
-	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
-	if (!provider || !adapter) {
+	if (!provider || !_manager->canRun(*provider)) {
 		return;
 	}
 	_titleRequested = true;
 	const auto providerCopy = *provider;
-	_titleRequest = std::make_unique<SingleRequest>(
-		std::move(adapter),
-		&_manager->transport(),
+	_titleRequest = _manager->single(
+		providerCopy,
 		TitleRequest(_record, provider->model),
 		[=](Response response) {
 			base::take(_titleRequest);

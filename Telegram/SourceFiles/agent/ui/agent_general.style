@@ -83,3 +83,7 @@ agentModelListStatus: FlatLabel(defaultFlatLabel) {
 agentModelListStatusPadding: margins(22px, 24px, 22px, 12px);
 agentModelChoiceOpenRouterIcon: icon {{ "menu/ai_prompt", menuIconColor }};
 agentModelChoiceCustomIcon: icon {{ "menu/ip_address", menuIconColor }};
+agentModelChoiceAnthropicIcon: icon {{ "menu/edit_stars", menuIconColor }};
+agentModelChoiceSubscriptionIcon: icon {{ "menu/premium", menuIconColor }};
+agentModelChoiceKeyIcon: icon {{ "menu/lock", menuIconColor }};
+agentClaudeCommandPadding: margins(22px, 12px, 22px, 0px);

@@ -1074,18 +1074,17 @@ void ToolRegistry::askMediaModel(
 		QString question,
 		Fn<void(QString text, QString error)> done) {
 	const auto provider = _session->agent().mediaProvider();
-	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
-	if (!adapter) {
+	if (!provider) {
 		done(QString(), u"No media model is set up."_q);
 		return;
 	}
 	const auto settings = *provider;
 	const auto weak = base::make_weak(this);
 	const auto holder = call->lifetime.make_state<
-		std::unique_ptr<SingleRequest>>();
-	*holder = std::make_unique<SingleRequest>(
-		std::move(adapter),
-		&_session->agent().transport(),
+		std::unique_ptr<PendingRequest>>();
+	const auto failed = std::make_shared<Fn<void(QString, QString)>>(done);
+	*holder = _session->agent().single(
+		settings,
 		HelperRequest(settings.model, std::move(media), question),
 		[=, done = std::move(done)](Response response) {
 			if (!weak) {
@@ -1110,6 +1109,9 @@ void ToolRegistry::askMediaModel(
 				done(text, QString());
 			}
 		});
+	if (!*holder) {
+		(*failed)(QString(), u"The media model can't be started."_q);
+	}
 }
 
 } // namespace Agent

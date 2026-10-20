@@ -1152,17 +1152,23 @@ FeedStatusWidget::FeedStatusWidget(QWidget *parent)
 : RpWidget(parent)
 , _label(this, QString(), st::agentFeedStatusLabel)
 , _retry(this, tr::lng_agent_retry(), st::agentFeedRetry)
+, _settings(this, tr::lng_agent_model_settings(), st::agentFeedRetry)
 , _animation([=] { update(); }, st::agentFeedWorking) {
 	_retry->setClickedCallback([=] {
 		_retryClicks.fire({});
 	});
+	_settings->setClickedCallback([=] {
+		_settingsClicks.fire({});
+	});
+	_settings->hide();
 	hide();
 }
 
-void FeedStatusWidget::showStatus(Kind kind, QString text) {
+void FeedStatusWidget::showStatus(Kind kind, QString text, bool settings) {
 	_kind = kind;
 	_label->setText(std::move(text));
 	_retry->setVisible(kind == Kind::Failed);
+	_settings->setVisible(kind == Kind::Failed && settings);
 	if (kind == Kind::Working) {
 		_animation.start();
 	} else {
@@ -1175,6 +1181,10 @@ void FeedStatusWidget::showStatus(Kind kind, QString text) {
 
 rpl::producer<> FeedStatusWidget::retryClicks() const {
 	return _retryClicks.events();
+}
+
+rpl::producer<> FeedStatusWidget::settingsClicks() const {
+	return _settingsClicks.events();
 }
 
 int FeedStatusWidget::resizeGetHeight(int newWidth) {
@@ -1200,7 +1210,16 @@ int FeedStatusWidget::resizeGetHeight(int newWidth) {
 	auto height = padding.top() + _label->height();
 	if (_kind == Kind::Failed) {
 		height += st::agentFeedRetryMargin.top();
-		_retry->moveToLeft((newWidth - _retry->width()) / 2, height, newWidth);
+		const auto skip = st::agentFeedRetryMargin.left();
+		const auto both = _settings->isHidden()
+			? _retry->width()
+			: (_retry->width() + skip + _settings->width());
+		const auto left = (newWidth - both) / 2;
+		_retry->moveToLeft(left, height, newWidth);
+		_settings->moveToLeft(
+			left + _retry->width() + skip,
+			height,
+			newWidth);
 		height += _retry->height();
 	}
 	return height + padding.bottom();

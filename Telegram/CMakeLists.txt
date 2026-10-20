@@ -148,6 +148,8 @@ PRIVATE
     agent/tools/agent_tools_telegram_ai.cpp
     agent/ui/agent_chats_row.cpp
     agent/ui/agent_chats_row.h
+    agent/ui/agent_claude_boxes.cpp
+    agent/ui/agent_claude_boxes.h
     agent/ui/agent_composer.cpp
     agent/ui/agent_composer.h
     agent/ui/agent_feed_attachments.cpp
@@ -168,6 +170,7 @@ PRIVATE
     agent/ui/agent_menus.h
     agent/ui/agent_model_boxes.cpp
     agent/ui/agent_model_boxes.h
+    agent/ui/agent_model_boxes_common.h
     agent/ui/agent_palette.cpp
     agent/ui/agent_palette.h
     agent/ui/agent_panel.cpp
@@ -194,6 +197,8 @@ PRIVATE
     agent/agent_attachments.h
     agent/agent_check.cpp
     agent/agent_check.h
+    agent/agent_claude.cpp
+    agent/agent_claude.h
     agent/agent_exclusions.cpp
     agent/agent_exclusions.h
     agent/agent_files.cpp

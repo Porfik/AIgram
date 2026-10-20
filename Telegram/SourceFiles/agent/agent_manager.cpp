@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 
 #include "agent/agent_attachments.h"
+#include "agent/agent_claude.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_http_transport.h"
 #include "agent/agent_memories.h"
@@ -19,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_tasks.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_openai.h"
+#include "agent/core/agent_request.h"
 #include "base/algorithm.h"
 #include "base/unixtime.h"
 #include "crl/crl_on_main.h"
@@ -53,6 +55,8 @@ Manager::Manager(not_null<Main::Session*> session)
 : _session(session)
 , _store(std::make_unique<SessionStore>(session))
 , _transport(std::make_unique<HttpTransport>())
+, _claudeLauncher(std::make_unique<ClaudeLauncher>())
+, _claudePool(std::make_unique<ClaudePool>())
 , _memories(std::make_unique<Memories>(session))
 , _exclusions(std::make_unique<Exclusions>(session))
 , _spending(std::make_unique<SpendingTracker>(session))
@@ -74,6 +78,7 @@ Manager::Manager(not_null<Main::Session*> session)
 
 Manager::~Manager() {
 	_runner = nullptr;
+	_claudePool->clear();
 }
 
 Main::Session &Manager::session() const {
@@ -95,7 +100,7 @@ bool Manager::available() const {
 	if (!provider) {
 		return false;
 	}
-	return CreateAdapter(*provider) != nullptr;
+	return canRun(*provider);
 }
 
 bool Manager::enabled() const {
@@ -142,17 +147,60 @@ MediaAbilities Manager::abilities(const ProviderSettings &provider) const {
 const ProviderSettings *Manager::sessionProvider(
 		const QString &profileId) const {
 	const auto result = SessionProvider(_providers, profileId);
-	return (result && CreateAdapter(*result)) ? result : nullptr;
+	return (result && canRun(*result)) ? result : nullptr;
 }
 
 const ProviderSettings *Manager::mediaProvider() const {
 	const auto result = MediaProvider(_providers);
-	return (result && CreateAdapter(*result)) ? result : nullptr;
+	return (result && canRun(*result)) ? result : nullptr;
 }
 
 const ProviderSettings *Manager::taskProvider(const Task &task) const {
 	const auto result = BackgroundProvider(_providers, task.providerId);
-	return (result && CreateAdapter(*result)) ? result : nullptr;
+	return (result && canRun(*result)) ? result : nullptr;
+}
+
+bool Manager::canRun(const ProviderSettings &provider) const {
+	return UsesClaudeCode(provider) || (CreateAdapter(provider) != nullptr);
+}
+
+std::unique_ptr<PendingRequest> Manager::single(
+		const ProviderSettings &provider,
+		Request request,
+		Fn<void(Response)> done) {
+	if (UsesClaudeCode(provider)) {
+		const auto program = FindClaudeProgram(_providers.claudePath);
+		if (program.isEmpty()) {
+			return nullptr;
+		}
+		auto messages = std::move(request.messages);
+		return std::make_unique<Claude::OneShot>(
+			_claudeLauncher.get(),
+			ClaudeLaunchSettings(program),
+			Claude::SessionOptions{
+				.model = provider.model,
+				.system = request.system,
+			},
+			std::move(messages),
+			std::move(done));
+	}
+	auto adapter = CreateAdapter(provider);
+	if (!adapter) {
+		return nullptr;
+	}
+	return std::make_unique<SingleRequest>(
+		std::move(adapter),
+		_transport.get(),
+		std::move(request),
+		std::move(done));
+}
+
+ClaudeLauncher &Manager::claudeLauncher() const {
+	return *_claudeLauncher;
+}
+
+ClaudePool &Manager::claudePool() const {
+	return *_claudePool;
 }
 
 void Manager::startModels(const ProviderSettings &provider) {

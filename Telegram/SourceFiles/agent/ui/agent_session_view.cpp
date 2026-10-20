@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
 #include "agent/ui/agent_model_boxes.h"
+#include "agent/agent_claude.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
@@ -317,6 +318,12 @@ SessionView::SessionView(
 	) | rpl::on_next([=] {
 		if (_session) {
 			_session->retry();
+		}
+	}, lifetime());
+	_feed->settingsRequests(
+	) | rpl::on_next([=] {
+		if (_session) {
+			ShowEditModel(_controller, _session->profileId());
 		}
 	}, lifetime());
 
@@ -629,7 +636,21 @@ void SessionView::applyState() {
 		state.status == SessionStatus::Working
 		|| state.status == SessionStatus::Compacting);
 	_composer->setQueued(state.queued);
-	_feed->setStatus(state);
+	auto error = QString();
+	auto settings = false;
+	if (state.status == SessionStatus::Failed
+		&& state.error
+		&& state.error->kind == ErrorKind::Auth) {
+		settings = true;
+		const auto provider = _manager->sessionProvider(
+			session->profileId());
+		if (state.error->text == ClaudeMissingText()) {
+			error = tr::lng_agent_claude_error_missing(tr::now);
+		} else if (provider && UsesClaudeCode(*provider)) {
+			error = tr::lng_agent_claude_error_login(tr::now);
+		}
+	}
+	_feed->setStatus(state, error, settings);
 }
 
 void SessionView::sendCurrentText(const QString &text) {

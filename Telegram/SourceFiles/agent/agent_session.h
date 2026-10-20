@@ -24,10 +24,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent {
 
-class Loop;
 class Manager;
+class PendingRequest;
 class PolicyGate;
-class SingleRequest;
 class ToolRegistry;
 
 struct SendRequest {
@@ -103,6 +102,10 @@ private:
 	void applyCard(Card card);
 	[[nodiscard]] QString undoHint();
 	void failWithoutProvider();
+	void failWithoutClaude();
+	[[nodiscard]] std::unique_ptr<Engine> createEngine(
+		const ProviderSettings &provider,
+		std::vector<Message> messages);
 	[[nodiscard]] std::optional<ProviderSettings> currentProvider() const;
 	[[nodiscard]] QString cacheKey() const;
 	void accountUsage(const Usage &usage, const ProviderSettings &provider);
@@ -135,10 +138,10 @@ private:
 	SessionState _state;
 	std::unique_ptr<PolicyGate> _gate;
 	std::unique_ptr<ToolRegistry> _tools;
-	std::unique_ptr<Loop> _loop;
+	std::unique_ptr<Engine> _loop;
 	std::vector<SendRequest> _queue;
-	std::unique_ptr<SingleRequest> _compaction;
-	std::unique_ptr<SingleRequest> _titleRequest;
+	std::unique_ptr<PendingRequest> _compaction;
+	std::unique_ptr<PendingRequest> _titleRequest;
 	std::optional<ProviderSettings> _loopProvider;
 	int _loopBase = 0;
 	int _loopContext = 0;

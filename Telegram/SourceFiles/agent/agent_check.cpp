@@ -7,7 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_check.h"
 
+#include "agent/agent_claude.h"
 #include "agent/agent_http_transport.h"
+#include "agent/agent_settings.h"
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_loop.h"
 #include "lang/lang_keys.h"
@@ -52,8 +54,9 @@ public:
 
 struct CheckState {
 	HttpTransport transport;
+	ClaudeLauncher launcher;
 	TestExecutor executor;
-	std::unique_ptr<Loop> loop;
+	std::unique_ptr<Engine> loop;
 	QString log;
 
 };
@@ -148,12 +151,34 @@ void AgentCheckBox(not_null<Ui::GenericBox*> box, ProviderSettings provider) {
 		box->closeBox();
 	});
 
-	if (auto adapter = CreateAdapter(provider)) {
+	if (UsesClaudeCode(provider)) {
+		const auto program = FindClaudeProgram(LoadProviders().claudePath);
+		if (!program.isEmpty()) {
+			state->loop = std::make_unique<Claude::Engine>(
+				&state->launcher,
+				nullptr,
+				&state->executor,
+				Claude::EngineOptions{
+					.session = {
+						.model = provider.model,
+						.effort = provider.effort,
+						.maxTurns = 5,
+					},
+					.launch = ClaudeLaunchSettings(program),
+					.keepWarm = false,
+					.limits = [](Claude::Limits limits) {
+						UpdateClaudeLimits(std::move(limits));
+					},
+				});
+		}
+	} else if (auto adapter = CreateAdapter(provider)) {
 		state->loop = std::make_unique<Loop>(
 			std::move(adapter),
 			&state->transport,
 			&state->executor,
 			LoopOptions{ .model = provider.model });
+	}
+	if (state->loop) {
 		state->loop->events(
 		) | rpl::on_next([=](EngineEvent event) {
 			HandleEvent(*state, event);

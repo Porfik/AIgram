@@ -39,7 +39,7 @@ QString FormatSpending(const SpendingTotals &totals) {
 		return QString();
 	}
 	const auto tokens = float64(totals.tokens());
-	return totals.hasCost
+	const auto result = totals.hasCost
 		? tr::lng_agent_spending_tokens_cost(
 			tr::now,
 			lt_count_short,
@@ -47,6 +47,13 @@ QString FormatSpending(const SpendingTotals &totals) {
 			lt_cost,
 			FormatCost(totals.cost))
 		: tr::lng_agent_spending_tokens(tr::now, lt_count_short, tokens);
+	const auto cached = CachedPercent(totals);
+	return (cached > 0)
+		? (result + u" · "_q + tr::lng_agent_spending_cached(
+			tr::now,
+			lt_percent,
+			QString::number(cached)))
+		: result;
 }
 
 QString FormatSpendingDetails(const SpendingTotals &totals) {
