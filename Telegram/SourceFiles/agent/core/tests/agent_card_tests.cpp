@@ -390,6 +390,54 @@ std::vector<Check> CardChecks() {
 			}
 			return QString();
 		} },
+		{ u"card_task_kinds"_q, [] {
+			for (const auto kind : {
+				CardKind::CreateTask, CardKind::UpdateTask,
+			}) {
+				if (!CardTextEditable(kind) || !CardAlwaysAsks(kind)) {
+					return u"task cards must be editable and always ask"_q;
+				} else if (CardHasAlternate(kind)) {
+					return u"task cards have no alternate"_q;
+				}
+			}
+			if (!CardFinal(CardStatus::Expired)) {
+				return u"expired must be final"_q;
+			}
+			auto card = Card();
+			card.kind = CardKind::CreateTask;
+			card.text = card.proposedText = u"Reply politely."_q;
+			card = ApplyDecision(card, CardDecision{
+				.action = CardAction::Execute,
+				.text = u"Reply briefly."_q,
+			});
+			if (card.text != u"Reply briefly."_q) {
+				return u"instruction not taken from the decision"_q;
+			}
+			card.status = CardStatus::Done;
+			const auto created = CardResultText(card);
+			if (!created.contains(u"it is active now"_q)
+				|| !created.contains(u"Reply briefly."_q)) {
+				return u"create result: "_q + created;
+			}
+			card.kind = CardKind::UpdateTask;
+			card.text = card.proposedText;
+			const auto updated = CardResultText(card);
+			if (!updated.contains(u"approved the changes"_q)
+				|| updated.contains(u"edited"_q)) {
+				return u"update result: "_q + updated;
+			}
+			return QString();
+		} },
+		{ u"card_result_text_expired"_q, [] {
+			auto card = SampleCard();
+			card.status = CardStatus::Expired;
+			const auto text = CardResultText(card);
+			if (!text.contains(u"expired and nothing was done"_q)
+				|| text.contains(u"Skipped"_q)) {
+				return u"expired: "_q + text;
+			}
+			return QString();
+		} },
 	};
 }
 

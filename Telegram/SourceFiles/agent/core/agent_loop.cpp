@@ -142,6 +142,7 @@ void Loop::step() {
 		_tools->tools(),
 		_options.maxOutputTokens,
 		_options.pdfEngine,
+		_options.cacheKey,
 	};
 	_streamText = QString();
 	_parser = _adapter->parser();

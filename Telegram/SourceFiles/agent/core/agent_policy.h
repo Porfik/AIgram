@@ -106,6 +106,9 @@ private:
 		const std::vector<PeerKey> &peers) const;
 	[[nodiscard]] bool hasUnnamedPeer(
 		const std::vector<PeerKey> &peers) const;
+	[[nodiscard]] bool peersInFrame(
+		const std::vector<PeerKey> &peers) const;
+	[[nodiscard]] bool toolInFrame(const QString &tool) const;
 
 	const Scope _scope;
 	const Fn<bool(PeerKey)> _excluded;

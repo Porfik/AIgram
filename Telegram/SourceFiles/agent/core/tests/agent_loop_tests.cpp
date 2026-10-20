@@ -491,6 +491,22 @@ std::vector<Check> LoopChecks() {
 			}
 			return QString();
 		} },
+		{ u"loop_copies_cache_key"_q, [] {
+			auto h = Harness(LoopOptions{
+				.model = u"m"_q,
+				.pdfEngine = u"pdf-text"_q,
+				.cacheKey = u"key1"_q,
+			});
+			h.loop->send(UserText(u"hi"_q));
+			if (h.adapter->prepared.size() != 1) {
+				return u"expected one prepared request"_q;
+			}
+			const auto &request = h.adapter->prepared[0];
+			return (request.cacheKey == u"key1"_q
+					&& request.pdfEngine == u"pdf-text"_q)
+				? QString()
+				: u"cache key or pdf engine not copied"_q;
+		} },
 		{ u"loop_tool_round_trip"_q, [] {
 			auto h = Harness(LoopOptions{ u"m"_q, u"s"_q, 50 });
 			h.loop->send(UserText(u"run it"_q));

@@ -172,10 +172,19 @@ std::vector<Check> PromptsChecks() {
 			};
 			const auto text = FormatChatBrief(brief);
 			const auto expected = u"Chat: \"My chat\" (supergroup, "
-				u"@mychat, id 123)\nMembers: 42\nYour role: admin\n"
-				u"Unread messages: 5\nYou can write messages here: yes"_q;
+				u"@mychat, id 123)\nYour role: admin\n"
+				u"You can write messages here: yes"_q;
 			if (text != expected) {
 				return u"full brief: %1"_q.arg(text);
+			}
+			const auto counters = FormatChatCounters(brief);
+			if (counters != u"Members: 42. Unread messages: 5."_q) {
+				return u"counters: %1"_q.arg(counters);
+			} else if (!FormatChatCounters(ChatBrief()).isEmpty()) {
+				return u"empty counters are not empty"_q;
+			} else if (FormatChatCounters(ChatBrief{ .unread = 2 })
+					!= u"Unread messages: 2."_q) {
+				return u"unread only counters"_q;
 			}
 			const auto minimal = FormatChatBrief(ChatBrief{
 				.title = u"Empty"_q,
@@ -225,6 +234,39 @@ std::vector<Check> PromptsChecks() {
 			const auto hint = HintText(u"line one\nline two"_q);
 			if (hint != u"[Context] line one line two"_q) {
 				return u"hint: %1"_q.arg(hint);
+			}
+			return QString();
+		} },
+		{ u"prompts_task_prompt"_q, [] {
+			const auto context = TaskPromptContext{
+				.scope = Scope::Account(),
+				.account = u"Test"_q,
+				.instructions = u"Be brief."_q,
+				.title = u"Vacation"_q,
+				.task = u"Reply that I am away."_q,
+				.frame = u"Without asking you may use: send_message."_q,
+			};
+			const auto prompt = TaskSystemPrompt(context);
+			if (!prompt.contains(u"background task \"Vacation\""_q)
+				|| !prompt.contains(u"Reply that I am away."_q)
+				|| !prompt.contains(u"you may use: send_message"_q)
+				|| !prompt.contains(u"Be brief."_q)) {
+				return u"task prompt misses parts: "_q + prompt;
+			} else if (prompt.contains(u"memory"_q, Qt::CaseInsensitive)) {
+				return u"task prompt must have no memory paragraph"_q;
+			} else if (!prompt.contains(u"untrusted_data"_q)
+				|| !prompt.contains(u"view_media"_q)) {
+				return u"task prompt misses shared paragraphs"_q;
+			} else if (TaskSystemPrompt(context) != prompt) {
+				return u"task prompt is not stable"_q;
+			}
+			auto chat = context;
+			chat.scope = Scope::Chat(123);
+			chat.chat = ChatBrief{ .peer = 123, .title = u"Team"_q };
+			const auto chatPrompt = TaskSystemPrompt(chat);
+			if (!chatPrompt.contains(u"Chat: \"Team\""_q)
+				|| chatPrompt.contains(u"general agent"_q)) {
+				return u"chat task prompt: "_q + chatPrompt;
 			}
 			return QString();
 		} },

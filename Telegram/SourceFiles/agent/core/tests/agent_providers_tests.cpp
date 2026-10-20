@@ -137,7 +137,7 @@ std::vector<Check> ProvidersChecks() {
 					stream << qint32(0) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
-					stream << qint32(5) << qint32(0) << QString() << QString();
+					stream << qint32(7) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream << QString() << qint32(0) << QString() << QString();
@@ -367,6 +367,68 @@ std::vector<Check> ProvidersChecks() {
 				return u"version 4 must load default media flags"_q;
 			} else if (!restored->mediaId.isEmpty()) {
 				return u"version 4 must load empty mediaId"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v6_round_trip"_q, [] {
+			auto state = SampleState();
+			state.backgroundId = u"openai"_q;
+			state.backgroundDailyCost = 2.5;
+			state.backgroundDailyTokens = 3'000'000;
+			const auto restored = DeserializeProviders(
+				SerializeProviders(state));
+			if (!restored) {
+				return u"v6 failed to deserialize"_q;
+			} else if (restored->backgroundId != state.backgroundId
+				|| restored->backgroundDailyCost != 2.5
+				|| restored->backgroundDailyTokens != 3'000'000) {
+				return u"background fields differ"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v5_loads_background_defaults"_q, [] {
+			auto state = SampleState();
+			state.mediaId = u"openai"_q;
+			auto bytes = SerializeProviders(state);
+			bytes.chop(4 + 8 + 8);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(5);
+			}
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"version 5 failed to deserialize"_q;
+			} else if (!restored->backgroundId.isEmpty()
+				|| restored->backgroundDailyCost != 1.
+				|| restored->backgroundDailyTokens != 1'000'000) {
+				return u"version 5 must load background defaults"_q;
+			} else if (restored->mediaId != u"openai"_q) {
+				return u"version 5 mediaId lost"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_background_provider"_q, [] {
+			auto state = SampleState();
+			const auto active = ActiveProvider(state);
+			if (BackgroundProvider(state) != active) {
+				return u"default must be the active provider"_q;
+			}
+			state.backgroundId = u"openai"_q;
+			const auto background = BackgroundProvider(state);
+			if (!background || background->id != u"openai"_q) {
+				return u"backgroundId must win over the active one"_q;
+			}
+			const auto own = BackgroundProvider(state, active->id);
+			if (own != active) {
+				return u"the task provider must win"_q;
+			}
+			if (BackgroundProvider(state, u"missing"_q) != background) {
+				return u"an unknown task provider must be skipped"_q;
+			}
+			state.backgroundId = u"missing"_q;
+			if (BackgroundProvider(state) != active) {
+				return u"an unknown backgroundId must be skipped"_q;
 			}
 			return QString();
 		} },

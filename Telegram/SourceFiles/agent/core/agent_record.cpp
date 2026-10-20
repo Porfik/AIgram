@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(4);
+constexpr auto kSessionVersion = qint32(5);
 constexpr auto kIndexVersion = qint32(4);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
@@ -366,6 +366,7 @@ void WriteCard(QDataStream &stream, const Card &card) {
 		<< qint32(card.autoApproved ? 1 : 0);
 	WriteCardFiles(stream, card);
 	stream << qint64(card.amount) << qint64(card.quota);
+	stream << card.task << card.previousTask;
 }
 
 [[nodiscard]] bool ReadFlags(
@@ -406,9 +407,9 @@ std::optional<Card> ReadCard(QDataStream &stream, qint32 version) {
 	stream >> toolUseId >> kind >> status >> decided >> targetCount;
 	if (stream.status() != QDataStream::Ok
 		|| kind < 0
-		|| kind > int(CardKind::SendFiles)
+		|| kind > int(CardKind::UpdateTask)
 		|| status < 0
-		|| status > int(CardStatus::NotDone)
+		|| status > int(CardStatus::Expired)
 		|| decided < 0
 		|| decided > int(CardAction::Decline)
 		|| targetCount < 0
@@ -472,6 +473,12 @@ std::optional<Card> ReadCard(QDataStream &stream, qint32 version) {
 			card.files.push_back(std::move(file));
 		}
 		stream >> card.amount >> card.quota;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+	}
+	if (version >= 5) {
+		stream >> card.task >> card.previousTask;
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
 		}
@@ -543,6 +550,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	WriteStringList(stream, record.loadedGroups);
 	WriteStringList(stream, record.undone);
 	stream << qint32(record.info.attachments);
+	stream << record.info.task;
 	return result;
 }
 
@@ -628,6 +636,12 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 			return std::nullopt;
 		}
 		record.info.attachments = attachments;
+	}
+	if (version >= 5) {
+		stream >> record.info.task;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;

@@ -181,6 +181,22 @@ bool PolicyGate::hasUnnamedPeer(const std::vector<PeerKey> &peers) const {
 	});
 }
 
+bool PolicyGate::peersInFrame(const std::vector<PeerKey> &peers) const {
+	for (const auto peer : peers) {
+		if (!_frame->contains || !_frame->contains(peer)) {
+			return false;
+		}
+	}
+	return true;
+}
+
+bool PolicyGate::toolInFrame(const QString &tool) const {
+	return std::find(
+		_frame->tools.begin(),
+		_frame->tools.end(),
+		tool) != _frame->tools.end();
+}
+
 Decision PolicyGate::check(const ActionRequest &request) const {
 	if (!available(request.policy)) {
 		return { Verdict::Deny, DenyReason::NotInMode, false };
@@ -197,6 +213,17 @@ Decision PolicyGate::check(const ActionRequest &request) const {
 			|| (_scope.kind == ScopeKind::Chat && peer != _scope.peer)) {
 			return { Verdict::Deny, DenyReason::OutOfScope, false };
 		}
+	}
+	if (_frame) {
+		const auto inFrame = peersInFrame(request.peers);
+		if (request.policy.risk == Risk::Read) {
+			return inFrame
+				? Decision{ Verdict::Allow, DenyReason::None, false }
+				: Decision{ Verdict::Deny, DenyReason::OutOfFrame, false };
+		}
+		return (inFrame && toolInFrame(request.tool))
+			? Decision{ Verdict::Allow, DenyReason::None, false }
+			: Decision{ Verdict::Confirm, DenyReason::None, false };
 	}
 	if (request.policy.risk != Risk::Visible) {
 		return { Verdict::Allow, DenyReason::None, false };

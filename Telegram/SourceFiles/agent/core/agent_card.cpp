@@ -51,6 +51,10 @@ namespace {
 		? u"The files were downloaded."_q
 		: u"The files were saved to %1."_q.arg(card.detail);
 	case CardKind::SendFiles: return u"The files were sent."_q;
+	case CardKind::CreateTask:
+		return u"The user approved the task; it is active now."_q;
+	case CardKind::UpdateTask:
+		return u"The user approved the changes to the task."_q;
 	}
 	Unexpected("Card kind in CardResultText.");
 }
@@ -65,13 +69,17 @@ bool CardTextEditable(CardKind kind) {
 	return kind == CardKind::Send
 		|| kind == CardKind::Draft
 		|| kind == CardKind::Edit
-		|| kind == CardKind::SendFiles;
+		|| kind == CardKind::SendFiles
+		|| kind == CardKind::CreateTask
+		|| kind == CardKind::UpdateTask;
 }
 
 bool CardAlwaysAsks(CardKind kind) {
 	return kind == CardKind::Draft
 		|| kind == CardKind::Transcribe
-		|| kind == CardKind::Download;
+		|| kind == CardKind::Download
+		|| kind == CardKind::CreateTask
+		|| kind == CardKind::UpdateTask;
 }
 
 bool CardHasAlternate(CardKind kind) {
@@ -159,6 +167,9 @@ QString CardResultText(const Card &card) {
 		lines.push_back(u"The user declined the action."_q);
 	} else if (card.status == CardStatus::Failed) {
 		lines.push_back(u"The action failed."_q);
+	} else if (card.status == CardStatus::Expired) {
+		lines.push_back(u"The user did not answer in time: the card "
+			u"expired and nothing was done."_q);
 	} else {
 		lines.push_back(u"The app was closed while the action was "
 			u"waiting, so it was not performed."_q);

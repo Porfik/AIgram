@@ -207,7 +207,8 @@ namespace {
 		|| a.usage.hasCost != b.usage.hasCost
 		|| a.preview != b.preview
 		|| a.previewOutgoing != b.previewOutgoing
-		|| a.attachments != b.attachments) {
+		|| a.attachments != b.attachments
+		|| a.task != b.task) {
 		return u"info differs"_q;
 	}
 	return QString();
@@ -323,6 +324,8 @@ void WriteHandTextBlock(QDataStream &stream) {
 		return u"amount differs"_q;
 	} else if (a.quota != b.quota) {
 		return u"quota differs"_q;
+	} else if (a.task != b.task || a.previousTask != b.previousTask) {
+		return u"task differs"_q;
 	}
 	for (auto i = 0; i != int(a.files.size()); ++i) {
 		const auto &x = a.files[i];
@@ -780,8 +783,8 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_cards_round_trip"_q, [] {
 			auto record = SessionRecord();
-			for (auto kind = 0; kind <= int(CardKind::Handoff); ++kind) {
-				for (auto status = 0; status <= int(CardStatus::NotDone); ++status) {
+			for (auto kind = 0; kind <= int(CardKind::UpdateTask); ++kind) {
+				for (auto status = 0; status <= int(CardStatus::Expired); ++status) {
 					for (auto decided = 0; decided <= int(CardAction::Decline); ++decided) {
 						auto card = SampleCard();
 						card.kind = CardKind(kind);
@@ -941,6 +944,51 @@ std::vector<Check> RecordChecks() {
 				return u"deserialization failed"_q;
 			}
 			return InfosEqual(info, (*restored)[0]);
+		} },
+		{ u"record_round_trip_task_run"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"7777777777777777"_q;
+			record.info.task = u"0123456789abcdef"_q;
+			auto card = SampleCard();
+			card.kind = CardKind::UpdateTask;
+			card.status = CardStatus::Expired;
+			card.task = QByteArray("new-task");
+			card.previousTask = QByteArray("old-task");
+			record.cards.push_back(card);
+			const auto bytes = SerializeSession(record);
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"deserialization failed"_q;
+			} else if (restored->info.task != record.info.task) {
+				return u"task id lost"_q;
+			} else if (restored->cards.size() != 1) {
+				return u"card lost"_q;
+			}
+			return CardsEqual(card, restored->cards[0]);
+		} },
+		{ u"record_loads_version4_without_task"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"8888888888888888"_q;
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { TextBlock{ u"hi"_q } },
+			});
+			auto bytes = SerializeSession(record);
+			bytes.chop(4);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(4);
+			}
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 4 failed to load"_q;
+			} else if (!restored->info.task.isEmpty()) {
+				return u"version 4 must have no task"_q;
+			} else if (restored->messages.size() != 1) {
+				return u"version 4 messages lost"_q;
+			}
+			return QString();
 		} },
 		{ u"record_close_interrupted_turn_with_cards"_q, [] {
 			auto record = SessionRecord();

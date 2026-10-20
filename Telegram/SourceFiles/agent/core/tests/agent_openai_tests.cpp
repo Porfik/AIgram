@@ -820,6 +820,45 @@ namespace {
 				? QString()
 				: u"model fallback: got %1"_q.arg(model);
 		} },
+		{ u"openai_prepare_cache_key"_q, [] {
+			auto request = Request();
+			request.cacheKey = u"0123456789abcdef"_q;
+			const auto body = [](const HttpRequest &prepared) {
+				return QJsonDocument::fromJson(prepared.body).object();
+			};
+			auto settings = ProviderSettings();
+			settings.baseUrl = u"https://openrouter.ai/api/v1"_q;
+			const auto router = OpenAi::Adapter(settings).prepare(request);
+			if (const auto failure = CheckHeader(
+					router,
+					"x-session-id",
+					"0123456789abcdef");
+				!failure.isEmpty()) {
+				return failure;
+			} else if (body(router).contains(u"prompt_cache_key"_q)) {
+				return u"openrouter must not get prompt_cache_key"_q;
+			}
+			settings.baseUrl = u"https://API.openai.com/v1"_q;
+			const auto openai = OpenAi::Adapter(settings).prepare(request);
+			if (HasHeader(openai, "x-session-id")) {
+				return u"openai must not get x-session-id"_q;
+			} else if (body(openai).value(u"prompt_cache_key"_q).toString()
+					!= u"0123456789abcdef"_q) {
+				return u"openai misses prompt_cache_key"_q;
+			}
+			settings.baseUrl = u"http://localhost:1234/v1"_q;
+			const auto local = OpenAi::Adapter(settings).prepare(request);
+			if (HasHeader(local, "x-session-id")
+				|| body(local).contains(u"prompt_cache_key"_q)) {
+				return u"other hosts must get no cache key"_q;
+			}
+			settings.baseUrl = u"https://openrouter.ai/api/v1"_q;
+			const auto empty = OpenAi::Adapter(settings).prepare(Request());
+			if (HasHeader(empty, "x-session-id")) {
+				return u"an empty key must send nothing"_q;
+			}
+			return QString();
+		} },
 		{ u"openai_prepare_request_trailing_slash_no_key"_q, [] {
 			auto settings = ProviderSettings();
 			settings.baseUrl = u"https://localhost:8000/v1/"_q;

@@ -27,6 +27,20 @@ namespace {
 	return { risk, general, chat, outbound };
 }
 
+[[nodiscard]] PolicyGate FrameGate(
+		Scope scope,
+		std::vector<QString> tools,
+		std::vector<PeerKey> chats,
+		Fn<bool(PeerKey)> excluded = nullptr) {
+	return PolicyGate(scope, std::move(excluded), true, GateFrame{
+		.tools = std::move(tools),
+		.contains = [=](PeerKey peer) {
+			return std::find(chats.begin(), chats.end(), peer)
+				!= chats.end();
+		},
+	});
+}
+
 [[nodiscard]] QString PeerKeys(const std::vector<PeerKey> &peers) {
 	auto result = QString();
 	for (const auto peer : peers) {
@@ -467,6 +481,116 @@ std::vector<Check> PolicyChecks() {
 				Verdict::Confirm,
 				DenyReason::None,
 				true);
+		} },
+		{ u"policy_frame_availability"_q, [] {
+			const auto gate = FrameGate(Scope::Account(), {}, {});
+			if (!gate.background()) {
+				return u"expected a background gate"_q;
+			}
+			auto policy = Policy(Risk::Read);
+			policy.background = false;
+			if (gate.available(policy)) {
+				return u"interactive-only tool available in a run"_q;
+			}
+			policy.background = true;
+			policy.interactive = false;
+			if (!gate.available(policy)) {
+				return u"background-only tool missing in a run"_q;
+			}
+			const auto normal = PolicyGate(Scope::Account());
+			if (normal.background() || normal.available(policy)) {
+				return u"background-only tool available interactively"_q;
+			}
+			return QString();
+		} },
+		{ u"policy_frame_read"_q, [] {
+			const auto gate = FrameGate(Scope::Account(), {}, { 5 });
+			if (const auto error = ExpectDecision(
+					gate.check(Request(u"read"_q, Policy(Risk::Read), { 5 })),
+					Verdict::Allow);
+				!error.isEmpty()) {
+				return error;
+			} else if (const auto error = ExpectDecision(
+					gate.check(Request(u"read"_q, Policy(Risk::Read), {})),
+					Verdict::Allow);
+				!error.isEmpty()) {
+				return error;
+			}
+			return ExpectDecision(
+				gate.check(Request(u"read"_q, Policy(Risk::Read), { 6 })),
+				Verdict::Deny,
+				DenyReason::OutOfFrame);
+		} },
+		{ u"policy_frame_actions"_q, [] {
+			const auto gate = FrameGate(
+				Scope::Account(),
+				{ u"send"_q, u"mute"_q },
+				{ 5 });
+			const auto send = Policy(Risk::Visible, true, true, true);
+			if (const auto error = ExpectDecision(
+					gate.check(Request(u"send"_q, send, { 5 })),
+					Verdict::Allow);
+				!error.isEmpty()) {
+				return u"tainted send in frame: "_q + error;
+			} else if (const auto error = ExpectDecision(
+					gate.check(Request(
+						u"mute"_q,
+						Policy(Risk::Reversible),
+						{ 5 })),
+					Verdict::Allow);
+				!error.isEmpty()) {
+				return u"mute in frame: "_q + error;
+			} else if (const auto error = ExpectDecision(
+					gate.check(Request(u"send"_q, send, { 5, 6 })),
+					Verdict::Confirm);
+				!error.isEmpty()) {
+				return u"send out of frame: "_q + error;
+			}
+			return ExpectDecision(
+				gate.check(Request(
+					u"forward"_q,
+					Policy(Risk::Visible, true, true, true),
+					{ 5 })),
+				Verdict::Confirm);
+		} },
+		{ u"policy_frame_keeps_denials"_q, [] {
+			const auto excluded = [](PeerKey peer) { return peer == 7; };
+			const auto gate = FrameGate(
+				Scope::Chat(5),
+				{ u"send"_q },
+				{ 5, 7, 8 },
+				excluded);
+			const auto send = Policy(Risk::Visible);
+			if (const auto error = ExpectDecision(
+					gate.check(Request(u"send"_q, send, { 7 })),
+					Verdict::Deny,
+					DenyReason::Excluded);
+				!error.isEmpty()) {
+				return error;
+			} else if (const auto error = ExpectDecision(
+					gate.check(Request(
+						u"send"_q,
+						Policy(Risk::Forbidden),
+						{ 5 })),
+					Verdict::Deny,
+					DenyReason::Forbidden);
+				!error.isEmpty()) {
+				return error;
+			}
+			return ExpectDecision(
+				gate.check(Request(u"send"_q, send, { 8 })),
+				Verdict::Deny,
+				DenyReason::OutOfScope);
+		} },
+		{ u"policy_frame_null_contains"_q, [] {
+			const auto gate = PolicyGate(
+				Scope::Account(),
+				nullptr,
+				false,
+				GateFrame{ .tools = { u"send"_q } });
+			return ExpectDecision(
+				gate.check(Request(u"send"_q, Policy(Risk::Visible), { 5 })),
+				Verdict::Confirm);
 		} },
 	};
 }

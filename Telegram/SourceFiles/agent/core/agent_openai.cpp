@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
+#include <QtCore/QUrl>
 
 #include <type_traits>
 #include <utility>
@@ -538,7 +539,15 @@ HttpRequest Adapter::prepare(const Request &request) const {
 	if (adjusted.model.isEmpty()) {
 		adjusted.model = _settings.model;
 	}
-	auto body = SerializeRequest(adjusted);
+	const auto key = adjusted.cacheKey;
+	const auto openRouter = !key.isEmpty() && IsOpenRouter(_settings);
+	const auto openAi = !key.isEmpty()
+		&& !openRouter
+		&& (QUrl(_settings.baseUrl).host().toLower()
+			== u"api.openai.com"_q);
+	auto body = openAi
+		? SerializeRequestWithCacheKey(adjusted)
+		: SerializeRequest(adjusted);
 	auto url = SlashJoinedUrl(_settings.baseUrl, u"chat/completions"_q);
 	auto result = HttpRequest();
 	result.url = std::move(url);
@@ -550,6 +559,9 @@ HttpRequest Adapter::prepare(const Request &request) const {
 		result.headers.push_back(
 			{ "Authorization", "Bearer " + _settings.apiKey.toUtf8() });
 	}
+	if (openRouter) {
+		result.headers.push_back({ "x-session-id", key.toUtf8() });
+	}
 	return result;
 }
 
@@ -558,6 +570,17 @@ std::unique_ptr<ResponseParser> Adapter::parser() const {
 }
 
 QByteArray SerializeRequest(const Request &request) {
+	return QJsonDocument(RequestObject(request)).toJson(
+		QJsonDocument::Compact);
+}
+
+QByteArray SerializeRequestWithCacheKey(const Request &request) {
+	auto root = RequestObject(request);
+	root.insert(u"prompt_cache_key"_q, request.cacheKey);
+	return QJsonDocument(root).toJson(QJsonDocument::Compact);
+}
+
+QJsonObject RequestObject(const Request &request) {
 	auto root = QJsonObject();
 	root.insert(u"model"_q, request.model);
 	root.insert(u"stream"_q, true);
@@ -602,7 +625,7 @@ QByteArray SerializeRequest(const Request &request) {
 		plugins.append(plugin);
 		root.insert(u"plugins"_q, plugins);
 	}
-	return QJsonDocument(root).toJson(QJsonDocument::Compact);
+	return root;
 }
 
 HttpRequest ModelsRequest(const ProviderSettings &settings) {

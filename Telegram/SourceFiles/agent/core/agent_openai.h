@@ -10,6 +10,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_adapter.h"
 #include "agent/core/agent_providers.h"
 
+#include <QtCore/QJsonObject>
+
 #include <optional>
 #include <vector>
 
@@ -38,6 +40,9 @@ private:
 };
 
 [[nodiscard]] QByteArray SerializeRequest(const Request &request);
+[[nodiscard]] QByteArray SerializeRequestWithCacheKey(
+	const Request &request);
+[[nodiscard]] QJsonObject RequestObject(const Request &request);
 [[nodiscard]] HttpRequest ModelsRequest(const ProviderSettings &settings);
 [[nodiscard]] std::vector<ModelInfo> ParseModels(const QByteArray &json);
 [[nodiscard]] Error ParseError(
