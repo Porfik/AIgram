@@ -1068,7 +1068,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   send menu. Its confirm sends `Session::send()` with the caption as the
   text and the files as `AttachmentInput`s (bytes from the path or the
   prepared content, MIME type by `Core::MimeTypeForFile()`) and clears
-  the composer. Too many or too big files show `lng_agent_attach_too_many`
+  the composer; closing the box puts its caption back into the composer.
+  Too many or too big files show `lng_agent_attach_too_many`
   or `lng_agent_attach_too_big` instead.
 - A `FeedUser` with attachments shows them inside the bubble above the
   text, like a sent message: images and videos as rounded thumbnails
@@ -1096,7 +1097,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   saving card shows "Show in Folder". `SendFiles` cards show the files
   with the `ui/chat/attach/` previews without edit controls, the caption
   field, the chats as checkboxes, the "send without compression" option
-  and "Send (N)" and "Decline".
+  and "Send (N)" and "Decline". The previews are split into blocks like
+  `SendFilesBox` does (runs of photos and videos as albums, other files
+  one by one) and take no mouse input. Only `view_media` steps show a
+  preview, and only when there is an image to show. Images are decoded
+  with `Images::Read()`, as everywhere in the client.
 - `save_files` action rows read `lng_agent_action_saved` with the file
   names and add "Show in Folder" (`File::ShowInFolder()` of the first
   saved path) next to "Undo".
