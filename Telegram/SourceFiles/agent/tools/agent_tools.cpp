@@ -36,6 +36,7 @@ const auto kAdminGroup = u"admin"_q;
 const auto kContactsGroup = u"contacts"_q;
 const auto kProfileGroup = u"profile"_q;
 const auto kTelegramAiGroup = u"telegram_ai"_q;
+const auto kMtprotoGroup = u"mtproto"_q;
 
 [[nodiscard]] const std::vector<QString> &GroupNames() {
 	static const auto result = std::vector<QString>{
@@ -46,6 +47,7 @@ const auto kTelegramAiGroup = u"telegram_ai"_q;
 		kContactsGroup,
 		kProfileGroup,
 		kTelegramAiGroup,
+		kMtprotoGroup,
 	};
 	return result;
 }
@@ -109,6 +111,7 @@ struct CallAbilities {
 	collect(ContactTools::Entries());
 	collect(ProfileTools::Entries());
 	collect(TelegramAiTools::Entries());
+	collect(MtprotoTools::Entries());
 	return names.join(u", "_q);
 }
 
@@ -131,6 +134,8 @@ struct CallAbilities {
 		{ kProfileGroup, u"the user's own profile"_q },
 		{ kTelegramAiGroup, u"Telegram's own AI: summaries, translation,"
 			" rewriting"_q },
+		{ kMtprotoGroup, u"the raw Telegram API, only for what no other"
+			" tool does"_q },
 	};
 	auto parts = QStringList();
 	auto names = QStringList();
@@ -149,21 +154,28 @@ struct CallAbilities {
 		parts.join(u' '));
 }
 
+const std::vector<ToolEntry> &ToolsTable();
+
 [[nodiscard]] std::vector<QString> UnresolvedUsernames(
 		not_null<Main::Session*> session,
+		const QString &tool,
 		const QJsonObject &input) {
 	constexpr auto kMaxResolve = 10;
 	auto result = std::vector<QString>();
+	const auto add = [&](const QString &username) {
+		if (int(result.size()) < kMaxResolve
+			&& !username.isEmpty()
+			&& !ranges::contains(result, username)) {
+			result.push_back(username);
+		}
+	};
 	const auto check = [&](const QJsonValue &value) {
 		if (int(result.size()) >= kMaxResolve
 			|| !value.isString()
 			|| ResolveChatRef(session, value)) {
 			return;
 		}
-		const auto username = ChatRefUsername(value);
-		if (!username.isEmpty() && !ranges::contains(result, username)) {
-			result.push_back(username);
-		}
+		add(ChatRefUsername(value));
 	};
 	for (const auto &key : { u"chat"_q, u"from_chat"_q }) {
 		check(input.value(key));
@@ -171,6 +183,13 @@ struct CallAbilities {
 	for (const auto &key : { u"chats"_q, u"users"_q }) {
 		for (const auto &value : input.value(key).toArray()) {
 			check(value);
+		}
+	}
+	const auto &table = ToolsTable();
+	const auto i = ranges::find(table, tool, &ToolEntry::name);
+	if (i != end(table) && i->usernames) {
+		for (const auto &username : i->usernames(session, input)) {
+			add(username);
 		}
 	}
 	return result;
@@ -287,6 +306,7 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(ContactTools::Entries());
 		append(ProfileTools::Entries());
 		append(TelegramAiTools::Entries());
+		append(MtprotoTools::Entries());
 		result.push_back(LoadToolsEntry());
 		return result;
 	}();
@@ -401,7 +421,7 @@ void ToolRegistry::execute(
 		ToolUseBlock call,
 		Fn<void(ToolResultBlock)> done) {
 	const auto usernames = (_gate->scope().kind == ScopeKind::Account)
-		? UnresolvedUsernames(_session, call.input)
+		? UnresolvedUsernames(_session, call.name, call.input)
 		: std::vector<QString>();
 	if (usernames.empty()) {
 		executeResolved(std::move(call), std::move(done));
@@ -609,6 +629,24 @@ void ToolRegistry::executeResolved(
 		}
 		}
 	}
+	auto gateTool = entry.name;
+	auto gatePolicy = entry.policy;
+	if (resolveError.isEmpty() && entry.gateRequest) {
+		auto request = entry.gateRequest(_session, call.input);
+		if (!request.error.isEmpty()) {
+			resolveError = std::move(request.error);
+		} else {
+			gateTool = std::move(request.key);
+			gatePolicy = request.policy;
+			for (const auto resolved : request.peers) {
+				if (!ranges::contains(peers, resolved)) {
+					peers.push_back(resolved);
+				}
+			}
+			meta.tool = gateTool;
+			meta.policy = gatePolicy;
+		}
+	}
 	if (resolveError.isEmpty() && entry.forPeer) {
 		for (const auto resolved : peers) {
 			if (!entry.forPeer(resolved)) {
@@ -628,7 +666,7 @@ void ToolRegistry::executeResolved(
 	for (const auto resolved : peers) {
 		keys.push_back(resolved->id.value);
 	}
-	const auto decision = _gate->check({ entry.name, entry.policy, keys });
+	const auto decision = _gate->check({ gateTool, gatePolicy, keys });
 	meta.peers = keys;
 	meta.verdict = decision.verdict;
 	meta.canAllowForTurn = (decision.verdict == Verdict::Confirm)
@@ -641,7 +679,7 @@ void ToolRegistry::executeResolved(
 	raw->peers = std::move(peers);
 	const auto weak = base::make_weak(this);
 	if (decision.verdict == Verdict::Confirm
-		&& entry.policy.risk == Risk::Reversible) {
+		&& gatePolicy.risk == Risk::Reversible) {
 		confirmAction(call.id, entry, raw);
 		if (!weak) {
 			return;
@@ -844,7 +882,9 @@ void ToolRegistry::decide(
 		_gate->allowForTurn({
 			call.tool,
 			call.policy,
-			(card.kind == CardKind::Change) ? call.peers : CheckedPeers(card),
+			(card.kind == CardKind::Change || card.kind == CardKind::Method)
+				? call.peers
+				: CheckedPeers(card),
 		});
 	}
 	call.card = card;

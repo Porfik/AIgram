@@ -49,6 +49,8 @@ private:
 	void build();
 	void buildSendFilesPreview();
 	void buildTaskRows(bool pendingNow);
+	void buildMethodHeader();
+	void buildMethodParams();
 	void refreshButtons();
 	void decide(CardAction action);
 
@@ -74,6 +76,7 @@ private:
 	::Ui::RoundButton *_execute = nullptr;
 	::Ui::RoundButton *_alternate = nullptr;
 	CardButtonsRow *_buttonsRow = nullptr;
+	bool _paramsShown = false;
 
 };
 

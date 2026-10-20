@@ -1875,6 +1875,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_tool_summarize" = "Summarized a message with Telegram AI";
 "lng_agent_tool_translate" = "Translated with Telegram AI";
 "lng_agent_tool_ai_compose" = "Rewrote text with Telegram AI";
+"lng_agent_tool_find_methods" = "Searched the Telegram API";
+"lng_agent_tool_describe_method" = "Looked up {name}";
+"lng_agent_tool_call_method" = "Called {name}";
+"lng_agent_card_title_method" = "Telegram API request";
+"lng_agent_card_method_description" = "Agent's description";
+"lng_agent_card_method_name" = "Method";
+"lng_agent_card_method_chats" = "Chats";
+"lng_agent_card_method_show" = "Show parameters";
+"lng_agent_card_method_hide" = "Hide parameters";
 "lng_agent_action_rename_contact" = "Renamed a contact to {name}";
 "lng_agent_task_tool_add_members" = "add members";
 "lng_agent_task_tool_remove_members" = "remove and ban members";

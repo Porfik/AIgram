@@ -220,6 +220,24 @@ constexpr auto kMaxResultChars = 3000;
 		return tr::lng_agent_tool_translate(tr::now);
 	} else if (name == u"ai_compose"_q) {
 		return tr::lng_agent_tool_ai_compose(tr::now);
+	} else if (name == u"find_methods"_q) {
+		return tr::lng_agent_tool_find_methods(tr::now);
+	} else if (name == u"describe_method"_q) {
+		const auto method = call.input.value(u"name"_q).toString().trimmed();
+		return method.isEmpty()
+			? tr::lng_agent_tool_other(tr::now, lt_name, name)
+			: tr::lng_agent_tool_describe_method(
+				tr::now,
+				lt_name,
+				method.left(64));
+	} else if (name == u"call_method"_q) {
+		const auto method = call.input.value(u"method"_q).toString().trimmed();
+		return method.isEmpty()
+			? tr::lng_agent_tool_other(tr::now, lt_name, name)
+			: tr::lng_agent_tool_call_method(
+				tr::now,
+				lt_name,
+				method.left(64));
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
 }
@@ -465,6 +483,10 @@ void CodeBox::paintEvent(QPaintEvent *e) {
 }
 
 } // namespace
+
+object_ptr<RpWidget> MakeCodeBlock(QWidget *parent, const QString &text) {
+	return object_ptr<CodeBox>(parent, text);
+}
 
 class ToggleRow final : public AbstractButton {
 public:

@@ -81,6 +81,8 @@ namespace {
 		return tr::lng_agent_card_title_update_task(tr::now);
 	case CardKind::Action:
 		return tr::lng_agent_card_title_action(tr::now);
+	case CardKind::Method:
+		return tr::lng_agent_card_title_method(tr::now);
 	}
 	return QString();
 }
@@ -650,7 +652,10 @@ void FeedCardWidget::build() {
 		|| _card.kind == CardKind::UpdateTask) {
 		buildTaskRows(pendingNow);
 	}
-	if (_card.kind == CardKind::Change) {
+	if (_card.kind == CardKind::Method) {
+		buildMethodHeader();
+	}
+	if (_card.kind == CardKind::Change || _card.kind == CardKind::Method) {
 		const auto wasText = [](const QString &text) {
 			return tr::lng_agent_card_task_was(tr::now, lt_text, text);
 		};
@@ -676,6 +681,9 @@ void FeedCardWidget::build() {
 					addGap(0));
 			}
 		}
+	}
+	if (_card.kind == CardKind::Method) {
+		buildMethodParams();
 	}
 	if ((_card.kind == CardKind::Forward || _card.kind == CardKind::Action)
 		&& !_card.text.isEmpty()) {
@@ -1221,6 +1229,67 @@ void FeedCardWidget::buildTaskRows(bool pendingNow) {
 				st::agentFeedCardDetailLabel);
 		}
 	}
+}
+
+void FeedCardWidget::buildMethodHeader() {
+	const auto gap = st::agentFeedCardGap;
+	if (!_card.text.isEmpty()) {
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_agent_card_method_description(tr::now),
+				st::agentFeedCardDetailLabel),
+			style::margins(0, gap, 0, 0));
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				_card.text,
+				st::agentFeedTextLabel),
+			style::margins());
+	}
+	_inner->add(
+		object_ptr<Ui::FlatLabel>(
+			_inner,
+			tr::lng_agent_card_method_name(tr::now),
+			st::agentFeedCardDetailLabel),
+		style::margins(0, gap, 0, 0));
+	const auto name = _inner->add(
+		object_ptr<Ui::FlatLabel>(
+			_inner,
+			QString(),
+			st::agentFeedCardTargetLabel),
+		style::margins());
+	name->setMarkedText(TextWithEntities{
+		_card.detail,
+		{ EntityInText(EntityType::Code, 0, int(_card.detail.size())) },
+	});
+}
+
+void FeedCardWidget::buildMethodParams() {
+	if (_card.proposedText.isEmpty()) {
+		return;
+	}
+	const auto toggle = _inner->add(
+		object_ptr<Ui::LinkButton>(
+			_inner,
+			(_paramsShown
+				? tr::lng_agent_card_method_hide(tr::now)
+				: tr::lng_agent_card_method_show(tr::now))),
+		style::margins(0, st::agentFeedCardGap, 0, 0),
+		style::al_left);
+	const auto wrap = _inner->add(
+		object_ptr<Ui::SlideWrap<Ui::RpWidget>>(
+			_inner,
+			MakeCodeBlock(_inner, _card.proposedText)),
+		style::margins(0, st::agentFeedCardGap, 0, 0));
+	wrap->toggle(_paramsShown, anim::type::instant);
+	toggle->setClickedCallback([=] {
+		_paramsShown = !_paramsShown;
+		toggle->setText(_paramsShown
+			? tr::lng_agent_card_method_hide(tr::now)
+			: tr::lng_agent_card_method_show(tr::now));
+		wrap->toggle(_paramsShown, anim::type::normal);
+	});
 }
 
 void FeedCardWidget::refreshButtons() {

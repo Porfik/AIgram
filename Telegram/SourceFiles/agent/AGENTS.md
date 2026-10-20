@@ -29,7 +29,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `chat_state` (mute, archive, pin, read), `folders`, `memory`, `media`
   (looking at, listening to and reading message media and attachments),
   `files` (saving and sending files), `admin_members` and `admin_chat`
-  (the `admin` group), `contacts`, `profile` and `telegram_ai`.
+  (the `admin` group), `contacts`, `profile`, `telegram_ai` and
+  `mtproto` (the raw Telegram API; `api.tl` is embedded as the resource
+  `:/agent/api.tl` in `telegram.qrc`).
   `agent_tools.cpp` is the `ToolRegistry` and `load_tools`;
   `agent_tool_rights.*` maps admin rights and member restrictions to the
   names tools use.
@@ -317,6 +319,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   on (a link target has the chat as `peer` and the link as `title`), or
   none; `files` an image to preview (`ref` an attachment id or an agent
   folder file name). Done, it usually ends with the tool's own result.
+- `Method`: a raw Telegram API call (`call_method`) that changes
+  something. `text` is the model's one-line description (shown as the
+  agent's words, not editable), `detail` the method name, `proposedText`
+  the call's parameters as indented JSON (as the model wrote them),
+  `rows` one "Chats" line with the titles of the chats the parameters
+  name, or none; no targets. Done, it ends with the tool's own result.
 - `TargetsStatus()` is `Done` without targets or when a checked target
   has no error, otherwise `Failed`.
 - `Expired` is a final status: a background task's card nobody answered
@@ -737,6 +745,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   accepted only for `inputPeerEmpty`, `inputPeerSelf`, `inputUserEmpty`,
   `inputUserSelf` and `inputChannelEmpty`; any other fails with "Pass
   chats as ids or @usernames, not objects.". This holds at any depth.
+- The model never sees `access_hash` and `file_reference`, so an input
+  object whose constructor has a parameter with one of these names fails
+  ("<constructor> needs an access_hash the agent never sees; ..."), and
+  any value of type `InputFile`, `InputEncryptedFile` or
+  `InputSecureFile` fails saying uploads are not supported here and
+  naming `send_files`, `set_chat_photo` and `set_profile_photo`.
 - `DecodeTl()` reads one boxed value of `type` (or a bare one when
   `TlIsBareType()`) from `bytes` and fails when bytes remain after it,
   when the data is truncated, or on an unknown constructor id or one of
@@ -781,14 +795,30 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `messages.getMessagesViews`, `contacts.getLocated` and
   `messages.startBot`; `Read` when the name after the dot starts with
   `get`, `search`, `check` or `resolve`; otherwise `Write`.
+- `MethodRedirect()` lists the tools that cover a method, empty for the
+  rest: the visible actions with their own cards (sending, forwarding,
+  editing, deleting, reactions, pins, reading, mute, archive, chat pins,
+  folders, profile, contacts and blocking, the 3a admin actions).
+  `call_method` refuses such methods and names the tools.
+- `ParsePeerRef()` reads a chat reference for an `InputPeer`,
+  `InputUser` or `InputChannel`: a positive integer (a JSON number or a
+  numeric string) is `Peer` (a `PeerId::value`, as other tools give)
+  when it has bits above the low 48, else `Bare` (a bare id from an
+  MTProto result, or a user's `PeerId::value`); `user:N`, `chat:N` and
+  `channel:N` (any case, N a bare id) are typed; a negative integer is a
+  Bot API id: below -10^12 a channel (`-10^12 - N`), else a chat.
+  Anything else is `None` (the client tries it as an @username or
+  link).
 - `MethodNamespaces()` lists the namespaces (the part before the dot,
   `""` for methods without one) of the functions that are not
   `Forbidden`, with their counts, sorted by name.
 - `FindMethods()` splits the query into words: runs of letters and
   digits, a camelCase word also split at its capitals (`getHistory` is
-  `get` and `history`), compared ignoring case. A non-forbidden function
-  matches when every word is a substring of its name or of one of its
-  parameter names or types. Ranking: all words in the name first, then
+  `get` and `history`), compared ignoring case. A word matches a
+  non-forbidden function when it is a substring of its name or of one of
+  its parameter names or types. The functions matching the most words
+  are the result (all words, or else the best partial count, then
+  `partial` is set). Ranking: all matched words in the name first, then
   shorter names, then file order; at most `limit` results. An empty
   query gives nothing.
 - `MethodSignature()` is `name(param: Type, opt?: Type, ...) -> Result`
@@ -797,9 +827,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `DescribeTl()` explains a function, a constructor or a type for the
   model, in plain text: for a function the signature, its
   `ClassifyMethod()` as "reads, runs without asking" or "changes
-  something, the user confirms it on a card", a line saying that
-  `InputPeer`, `InputUser` and `InputChannel` take a chat id or
-  @username, then for every parameter or result type that is not
+  something, the user confirms it on a card" (for a method with
+  `MethodRedirect()` instead "call_method refuses it: use <tools>
+  instead"), a line naming the chat reference forms of `ParsePeerRef()`
+  and a line saying that values with `access_hash` or `file_reference`
+  and uploaded files can't be passed, then for every parameter or result
+  type that is not
   builtin (vector items included) one line `Type: ctor1{param: Type,
   ...} | ctor2{...}` with at most 12 constructors (then `| ...`), each
   type once, at most 20 types (then a line saying to describe a type
@@ -1218,7 +1251,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   a letter), empty for ids and invite links.
 - In the account scope the registry first resolves the usernames of the
   `chat`, `from_chat`, `chats` and `users` references that are not
-  loaded (at most 10) with `contacts.resolveUsername`, processing the
+  loaded (at most 10, together with the ones the entry's `usernames`
+  returns) with `contacts.resolveUsername`, processing the
   returned users and chats, and only then runs the call as usual;
   failures are ignored (the call then reports the unknown chat). A call
   cancelled meanwhile never runs.
@@ -1250,8 +1284,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   error. `canUndo()` stays true until an undo succeeds. Undo closures
   live in memory with the registry, so nothing is undoable after a
   restart.
+- `ToolEntry::gateRequest`, when set, replaces the entry's name and
+  policy in the gate check: it returns the allowance key, the policy and
+  the peers of this call (added to the chat parameter's peers), or an
+  error that fails the call before the gate. The registry keeps the key
+  and policy for "allow for the turn", so an allowance covers the same
+  key and chats only.
 - `load_tools` (account and chat scope) takes a `group`: `folders`,
-  `files`, `tasks`, `admin`, `contacts`, `profile` or `telegram_ai`. Its
+  `files`, `tasks`, `admin`, `contacts`, `profile`, `telegram_ai` or
+  `mtproto`. Its
   description names each group with the tools the scope may use; a group
   with none of them in the scope (for the chat scope also by `forPeer`)
   fails to load. Loading an already loaded group is a no-op success.
@@ -1588,6 +1629,43 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   of the last five: `ApiWrap::composeWithAi()`; result `{"text"}`. An
   unknown tone fails listing the known ones.
 
+- Group `mtproto` (`agent_tools_mtproto.cpp`, stage 3c): account
+  scope, interactive sessions only (`chat` and `background` false). The
+  schema is `ParseTlSchema()` of `:/agent/api.tl`, parsed once.
+  `find_methods` takes `query` and `limit` (1–50, default 20): without a
+  query `{"namespaces": [{"name", "methods"}], "hint"}`, else
+  `{"methods": [{"name", "signature", "kind": "read"|"write"}]}`, a
+  redirected method with `"use": "<tools>"` instead of `kind`, plus a
+  `hint` when nothing or only a partial match was found.
+  `describe_method` takes `name` and returns `{"name", "schema":
+  DescribeTl()}`.
+- `call_method` takes `method`, `params` (an object, or a JSON string of
+  one) and `description`, all required in the schema (some OpenRouter
+  providers drop optional arguments), though only `Write` methods
+  enforce the description. Its `gateRequest` fails an unknown or
+  forbidden method, a method with `MethodRedirect()` (naming the tools),
+  a `Write` method without a description, and any `EncodeTlCall()`
+  error; otherwise the key is `call_method <method>`, the policy `Read`
+  or `Visible` by `ClassifyMethod()` (always `outbound`), and the peers
+  are every chat the references name. References resolve by
+  `ParsePeerRef()`: `None` through `ResolveChatRef()`, `Peer` as a
+  `PeerId`, typed ids as that kind, a `Bare` id as a user for
+  `InputUser`, a channel for `InputChannel`, and for `InputPeer` the one
+  loaded user, chat or channel with that id (several fail as
+  ambiguous); an `InputUser` must be a user and an `InputChannel` a
+  channel. Hidden chats, people included, are denied by the gate. Its
+  `usernames` dry-runs the encoding and returns the unresolved
+  @usernames.
+- A `Read` call is sent at once; a `Write` call asks a `Method` card
+  first. The request goes as `MTP::details::SerializedRequest` through
+  `MTP::Instance::sendSerialized()` to the main DC, cancelled with the
+  call; flood errors come back as `MtpErrorText()`, other temporary
+  errors are retried by MTP. The response is `DecodeTl()` of the
+  method's result type with spans for `Updates`, `User` and `Chat`: under
+  `actingGuard()` the users and chats are processed, then the updates
+  applied with `ApiWrap::applyUpdates()`. The result is `{"method",
+  "result"}` with `ScrubExcludedPeers()` applied.
+
 | Tool | File | Risk | Scopes | Chat param | Notes |
 |---|---|---|---|---|---|
 | `get_context` | chat | Read | both | None | time, account; the chat brief in the chat scope |
@@ -1667,6 +1745,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 | `summarize_message` | telegram_ai | Read | both | One | untrusted |
 | `translate` | telegram_ai | Read | both | OptionalOne | untrusted |
 | `ai_compose` | telegram_ai | Read | both | None | |
+| `find_methods` | mtproto | Read | general, interactive | None | group `mtproto` |
+| `describe_method` | mtproto | Read | general, interactive | None | |
+| `call_method` | mtproto | per method | general, interactive | None | `Method` card for writes, untrusted |
 | `load_tools` | registry | Read | both | None | |
 
 ## UI (`agent/ui/`)
@@ -1918,6 +1999,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   set), an image from `files` as a rounded preview, "allow until the
   end of the request" when offered, and "Confirm (N)" (with targets) or
   "Confirm", and "Decline". A final card shows its status line.
+- A `Method` card is titled `lng_agent_card_title_method`, then shows
+  `lng_agent_card_method_description` over the model's `text`,
+  `lng_agent_card_method_name` over the method in monospace, its rows
+  like a `Change` card, and a "Show parameters" / "Hide parameters" link
+  that slides the `proposedText` JSON open in a code block
+  (`MakeCodeBlock()` of the feed items); the state survives rebuilds of
+  the card. Steps read `lng_agent_tool_find_methods`,
+  `lng_agent_tool_describe_method` with `name` and
+  `lng_agent_tool_call_method` with `method`.
 - Steps: `list_members` with `filter` `admins` reads
   `lng_agent_tool_list_admins`, with `banned` or `restricted`
   `lng_agent_tool_list_banned`; `list_invite_links`,

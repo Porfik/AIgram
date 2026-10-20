@@ -142,6 +142,7 @@ PRIVATE
     agent/tools/agent_tools_general.cpp
     agent/tools/agent_tools_media.cpp
     agent/tools/agent_tools_memory.cpp
+    agent/tools/agent_tools_mtproto.cpp
     agent/tools/agent_tools_profile.cpp
     agent/tools/agent_tools_tasks.cpp
     agent/tools/agent_tools_telegram_ai.cpp

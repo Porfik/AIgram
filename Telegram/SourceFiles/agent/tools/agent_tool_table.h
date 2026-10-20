@@ -47,6 +47,13 @@ enum class MediaNeed : uchar {
 
 struct PendingCall;
 
+struct ToolGateRequest {
+	QString key;
+	ToolPolicy policy;
+	std::vector<not_null<PeerData*>> peers;
+	QString error;
+};
+
 struct ToolEntry {
 	QString name;
 	QString description;
@@ -61,6 +68,12 @@ struct ToolEntry {
 	MediaNeed needs = MediaNeed::None;
 	Fn<bool(not_null<PeerData*>)> forPeer;
 	QString forPeerError;
+	Fn<std::vector<QString>(
+		not_null<Main::Session*> session,
+		const QJsonObject &input)> usernames;
+	Fn<ToolGateRequest(
+		not_null<Main::Session*> session,
+		const QJsonObject &input)> gateRequest;
 	Fn<void(not_null<PendingCall*>)> run;
 };
 
@@ -193,5 +206,9 @@ namespace ProfileTools {
 namespace TelegramAiTools {
 [[nodiscard]] std::vector<ToolEntry> Entries();
 } // namespace TelegramAiTools
+
+namespace MtprotoTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace MtprotoTools
 
 } // namespace Agent

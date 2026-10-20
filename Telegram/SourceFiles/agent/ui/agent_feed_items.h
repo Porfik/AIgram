@@ -204,4 +204,8 @@ private:
 
 };
 
+[[nodiscard]] object_ptr<RpWidget> MakeCodeBlock(
+	QWidget *parent,
+	const QString &text);
+
 } // namespace Agent::Ui
