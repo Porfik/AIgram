@@ -154,13 +154,17 @@ constexpr auto kDefaultMaxTokens = 32000;
 		object.insert(u"is_error"_q, true);
 	}
 	auto content = QJsonArray();
-	content.append(SerializeText(TextBlock{ result.content }));
+	if (!result.content.isEmpty()) {
+		content.append(SerializeText(TextBlock{ result.content }));
+	}
 	for (const auto &media : result.media) {
 		if (auto block = SerializeMedia(media)) {
 			content.append(*block);
 		}
 	}
-	object.insert(u"content"_q, content);
+	if (!content.isEmpty()) {
+		object.insert(u"content"_q, content);
+	}
 	return object;
 }
 
@@ -208,7 +212,9 @@ struct OutMessage {
 			if (std::get_if<ToolResultBlock>(block)) {
 				continue;
 			} else if (const auto *text = std::get_if<TextBlock>(block)) {
-				content.append(SerializeText(*text));
+				if (!text->text.isEmpty()) {
+					content.append(SerializeText(*text));
+				}
 			} else if (const auto *media = std::get_if<MediaBlock>(block)) {
 				if (auto mapped = SerializeMedia(*media)) {
 					content.append(*mapped);

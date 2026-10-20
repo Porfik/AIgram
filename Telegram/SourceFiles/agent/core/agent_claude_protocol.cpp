@@ -95,7 +95,9 @@ QString IdMapper::result(const QString &id) const {
 		const ToolResultBlock &result,
 		const QString &id) {
 	auto content = QJsonArray();
-	content.append(TextPart(result.content));
+	if (!result.content.isEmpty()) {
+		content.append(TextPart(result.content));
+	}
 	for (const auto &media : result.media) {
 		if (auto part = MediaPart(media, false)) {
 			content.append(*part);
@@ -104,7 +106,9 @@ QString IdMapper::result(const QString &id) const {
 	auto part = QJsonObject();
 	part.insert(u"type"_q, u"tool_result"_q);
 	part.insert(u"tool_use_id"_q, id);
-	part.insert(u"content"_q, content);
+	if (!content.isEmpty()) {
+		part.insert(u"content"_q, content);
+	}
 	if (result.error) {
 		part.insert(u"is_error"_q, true);
 	}
