@@ -99,7 +99,7 @@ void FeedAttachmentsWidget::splitBlocks(
 		}
 		if (block.kind == Agent::MediaKind::Image
 			&& !block.bytes.isEmpty()) {
-			auto image = QImage::fromData(block.bytes);
+			auto image = Images::Read({ .content = block.bytes }).image;
 			if (!image.isNull()) {
 				if (const auto side = std::max(
 						image.width(),

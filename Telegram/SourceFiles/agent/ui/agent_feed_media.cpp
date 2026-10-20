@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/abstract_button.h"
 #include "ui/dynamic_image.h"
 #include "ui/dynamic_thumbnails.h"
+#include "ui/image/image_prepare.h"
 #include "ui/painter.h"
 #include "window/window_session_controller.h"
 
@@ -63,7 +64,7 @@ FeedMediaPreview::FeedMediaPreview(
 			_fileName = block->name;
 			const auto ratio = style::DevicePixelRatio();
 			const auto side = st::agentMediaThumbSize * ratio;
-			auto image = QImage::fromData(block->bytes);
+			auto image = Images::Read({ .content = block->bytes }).image;
 			if (!image.isNull()) {
 				image = image.scaled(
 					side,
@@ -157,7 +158,7 @@ object_ptr<RpWidget> MakeFeedMediaPreview(
 			: std::nullopt;
 		if (!block
 			|| block->kind != MediaKind::Image
-			|| QImage::fromData(block->bytes).isNull()) {
+			|| Images::Read({ .content = block->bytes }).image.isNull()) {
 			return nullptr;
 		}
 	} else if (media.peer && media.messageId) {
