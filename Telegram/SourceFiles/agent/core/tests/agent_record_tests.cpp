@@ -77,6 +77,7 @@ namespace {
 	record.summary = u"Краткое содержание"_q;
 	record.info.usage = Usage{ 100, 200, 30 };
 	record.info.attachments = 5;
+	record.info.profileId = u"profile-openrouter"_q;
 	record.tainted = true;
 	return record;
 }
@@ -154,6 +155,8 @@ namespace {
 		return u"updated differs"_q;
 	} else if (a.info.attachments != b.info.attachments) {
 		return u"attachments differ"_q;
+	} else if (a.info.profileId != b.info.profileId) {
+		return u"profileId differs"_q;
 	} else if (a.info.touched != b.info.touched) {
 		return u"touched differs"_q;
 	} else if (a.summaryUntil != b.summaryUntil) {
@@ -208,7 +211,8 @@ namespace {
 		|| a.preview != b.preview
 		|| a.previewOutgoing != b.previewOutgoing
 		|| a.attachments != b.attachments
-		|| a.task != b.task) {
+		|| a.task != b.task
+		|| a.profileId != b.profileId) {
 		return u"info differs"_q;
 	}
 	return QString();
@@ -408,7 +412,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(5);
+				stream << qint32(8);
 				WriteHandInfo(stream);
 			});
 			if (DeserializeSession(bytes)) {
@@ -764,7 +768,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"index_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(5) << qint32(0);
+				stream << qint32(6) << qint32(0);
 			});
 			if (DeserializeIndex(bytes)) {
 				return u"expected nullopt for a future version"_q;
@@ -1012,7 +1016,7 @@ std::vector<Check> RecordChecks() {
 			record.info.id = u"aaaaaaaaaaaaaaaa"_q;
 			record.cards.push_back(SampleCard());
 			auto bytes = SerializeSession(record);
-			bytes.chop(4);
+			bytes.chop(8);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1034,7 +1038,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(4);
+			bytes.chop(8);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1047,6 +1051,88 @@ std::vector<Check> RecordChecks() {
 				return u"version 4 must have no task"_q;
 			} else if (restored->messages.size() != 1) {
 				return u"version 4 messages lost"_q;
+			}
+			return QString();
+		} },
+		{ u"record_round_trip_profile_id"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"bbbbbbbbbbbbbbbb"_q;
+			record.info.profileId = u"profile-openrouter"_q;
+			record.cards.push_back(SampleCard());
+			record.cards[0].rows = {
+				CardRow{ u"Название"_q, u"Новое"_q, u"Старое"_q },
+			};
+			const auto bytes = SerializeSession(record);
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"deserialization failed"_q;
+			} else if (restored->info.profileId != record.info.profileId) {
+				return u"profileId lost"_q;
+			}
+			const auto diff = RecordsEqual(record, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			} else if (SerializeSession(*restored) != bytes) {
+				return u"re-serialization is not byte-identical"_q;
+			}
+			auto info = SessionInfo();
+			info.id = u"cccccccccccccccc"_q;
+			info.profileId = u"profile-custom"_q;
+			const auto indexBytes = SerializeIndex({ info });
+			const auto indexRestored = DeserializeIndex(indexBytes);
+			if (!indexRestored || indexRestored->size() != 1) {
+				return u"index deserialization failed"_q;
+			}
+			const auto indexDiff = InfosEqual(info, (*indexRestored)[0]);
+			if (!indexDiff.isEmpty()) {
+				return indexDiff;
+			}
+			return (SerializeIndex(*indexRestored) != indexBytes)
+				? u"index re-serialization is not byte-identical"_q
+				: QString();
+		} },
+		{ u"record_loads_version6_without_profile"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"dddddddddddddddd"_q;
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { TextBlock{ u"hi"_q } },
+			});
+			auto bytes = SerializeSession(record);
+			bytes.chop(4);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(6);
+			}
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 6 failed to load"_q;
+			} else if (!restored->info.profileId.isEmpty()) {
+				return u"version 6 must load an empty profileId"_q;
+			} else if (restored->info.id != u"dddddddddddddddd"_q) {
+				return u"version 6 record lost"_q;
+			}
+			return QString();
+		} },
+		{ u"index_loads_version4_without_profile"_q, [] {
+			auto info = SessionInfo();
+			info.id = u"eeeeeeeeeeeeeeee"_q;
+			info.attachments = 3;
+			auto bytes = SerializeIndex({ info });
+			bytes.chop(4);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(4);
+			}
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"index version 4 failed to load"_q;
+			} else if (!(*restored)[0].profileId.isEmpty()) {
+				return u"index version 4 must load an empty profileId"_q;
+			} else if ((*restored)[0].attachments != 3) {
+				return u"index version 4 attachments lost"_q;
 			}
 			return QString();
 		} },

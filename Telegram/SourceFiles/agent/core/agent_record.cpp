@@ -17,8 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(6);
-constexpr auto kIndexVersion = qint32(4);
+constexpr auto kSessionVersion = qint32(7);
+constexpr auto kIndexVersion = qint32(5);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
@@ -557,6 +557,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 			stream << row.label << row.value << row.previous;
 		}
 	}
+	stream << record.info.profileId;
 	return result;
 }
 
@@ -669,6 +670,12 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 			}
 		}
 	}
+	if (version >= 7) {
+		stream >> record.info.profileId;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
 	}
@@ -686,7 +693,8 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 		stream
 			<< info.preview
 			<< qint32(info.previewOutgoing ? 1 : 0)
-			<< qint32(info.attachments);
+			<< qint32(info.attachments)
+			<< info.profileId;
 	}
 	return result;
 }
@@ -740,6 +748,12 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 				return std::nullopt;
 			}
 			info->attachments = attachments;
+		}
+		if (version >= 5) {
+			stream >> info->profileId;
+			if (stream.status() != QDataStream::Ok) {
+				return std::nullopt;
+			}
 		}
 		list.push_back(std::move(*info));
 	}
