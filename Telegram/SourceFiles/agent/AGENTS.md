@@ -2476,6 +2476,48 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   ones are ignored), keeps ignored names that are no longer listed and
   refuses to uncheck all. Deleting asks first, then clears `defaultId`,
   `mediaId` and `backgroundId` that named the profile.
+- Stage 4 (plan 11.8): `ShowAddModel()` also offers "Anthropic", which
+  opens `ShowAnthropicChoice()` ("Claude subscription" and "API key").
+  `agent_model_boxes_common.h` exposes the shared pieces in
+  `Agent::Ui::details`: `ModelListBox()` over a `ModelSource` (`load`,
+  `describe`, `usable`), `Fetch()`, `AddKeyField()`, `ConfirmRemove()`,
+  `ApplyDefault()`.
+- `agent_claude_boxes.*`: the subscription setup box finds the program
+  (`FindClaudeProgram()` of `claudePath`; when missing it shows
+  `ClaudeInstallCommand()` as code, "Check again" and "Choose the
+  program"), runs `claude --version` (older than `kMinVersion` asks to
+  update) and `claude auth status`; when not signed in, "Sign in to
+  Claude" runs `claude auth login --claudeai` and waits for it (the
+  binary opens the browser itself; AIgram never reads its output for
+  codes), then checks again. Signed in, the models come from
+  `Claude::ModelsQuery` (the `default` entry is skipped, each row shows
+  the description and the value) and the name box suggests "Claude
+  <displayName>". The profile: kind `ClaudeCode`, service
+  `ClaudeSubscription`, the model value, context window 200 000, `vision`.
+- "API key": the key box checks the key with `Anthropic::ModelsRequest()`
+  (401/403 marks the field) unless `ServiceKey(Anthropic)` exists; the
+  list is `Anthropic::ParseModels()` with prices from `KnownPrices()`;
+  the profile copies the window, `vision`, `files` (PDF), the prices and
+  `priceCacheWrite`, and keeps `effort` only when the model supports it.
+- Edit boxes: the subscription box has name, model (the same list),
+  "Thinking effort" (`EffortText()`; the levels the model reported, else
+  all of `Anthropic::EffortLevels()`), "Account" (`auth status`; a click
+  opens the setup box), "Claude Code program" (choose a file or go back
+  to automatic search), the two limit rows, "Check connection", "Default
+  model" and Delete. The API key box has name, key, model, effort, "Check
+  connection", "Default model" and Delete. `ShowCheckBox()` runs a
+  `Claude::Engine` with the test tool for subscription profiles.
+- `ClaudeLimitValue(week)` is "<percent>% used · resets <time or date>"
+  of the latest limits, or "Known after the first request";
+  `AddClaudeLimits()` adds both rows. The settings "Spending" block adds
+  them when a subscription profile exists, shows the totals without the
+  cache share and a "Prompt cache" row (`CachedPercent()` of the last 30
+  days); `FormatSpending()` adds "cache N%" when asked to and the share
+  is positive (the session line).
+- A failed turn with an `Auth` error shows "Model settings" next to
+  "Retry" in the feed status (`ShowEditModel()` of the session's
+  profile); for a subscription profile the text is the localized "not
+  found" (`ClaudeMissingText()`) or "not signed in" message.
 - The composer has a model chip above the field (`Composer::setModel()`,
   hidden when the title is empty; `modelRequests()` on a click).
   `SessionView` shows the session's profile title there (none for runs),

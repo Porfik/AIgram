@@ -1457,6 +1457,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_effort_max" = "Max";
 "lng_agent_effort_about" = "How hard Claude thinks before answering. Higher levels answer hard tasks better, but take longer and spend more.";
 "lng_agent_spending_cached" = "cache {percent}%";
+"lng_agent_spending_cache" = "Prompt cache";
+"lng_agent_spending_cache_value" = "{percent}% of input in 30 days";
 "lng_agent_openrouter_key_title" = "OpenRouter Key";
 "lng_agent_openrouter_key_about" = "Create a key at {link} and paste it here.";
 "lng_agent_openrouter_key_checking" = "Checking the key...";

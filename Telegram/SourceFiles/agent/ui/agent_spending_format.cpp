@@ -34,7 +34,7 @@ QString FormatCost(double cost) {
 	return u"$"_q + QString::number(cost, 'f', decimals);
 }
 
-QString FormatSpending(const SpendingTotals &totals) {
+QString FormatSpending(const SpendingTotals &totals, bool withCache) {
 	if (totals.empty()) {
 		return QString();
 	}
@@ -47,7 +47,7 @@ QString FormatSpending(const SpendingTotals &totals) {
 			lt_cost,
 			FormatCost(totals.cost))
 		: tr::lng_agent_spending_tokens(tr::now, lt_count_short, tokens);
-	const auto cached = CachedPercent(totals);
+	const auto cached = withCache ? CachedPercent(totals) : 0;
 	return (cached > 0)
 		? (result + u" · "_q + tr::lng_agent_spending_cached(
 			tr::now,

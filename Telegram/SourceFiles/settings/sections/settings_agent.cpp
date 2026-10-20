@@ -885,7 +885,7 @@ void BuildSpending(
 	const auto totalsText = [](const ::Agent::SpendingTotals &totals) {
 		return totals.empty()
 			? tr::lng_agent_spending_none(tr::now)
-			: ::Agent::Ui::FormatSpending(totals);
+			: ::Agent::Ui::FormatSpending(totals, false);
 	};
 	const auto label = [=](auto compute) {
 		return rpl::single(totalsText(compute()))
@@ -915,6 +915,20 @@ void BuildSpending(
 		.title = tr::lng_agent_spending_all(),
 		.label = label([=] { return spending->allTime(); }),
 		.keywords = { u"all"_q, u"time"_q, u"spending"_q },
+	});
+	const auto cacheText = [=] {
+		const auto totals = spending->lastDays(30);
+		return tr::lng_agent_spending_cache_value(
+			tr::now,
+			lt_percent,
+			QString::number(::Agent::CachedPercent(totals)));
+	};
+	builder.addButton({
+		.id = u"agent/spending/cache"_q,
+		.title = tr::lng_agent_spending_cache(),
+		.label = rpl::single(cacheText()) | rpl::then(
+			spending->changes() | rpl::map(cacheText)),
+		.keywords = { u"cache"_q, u"prompt"_q, u"spending"_q },
 	});
 	const auto subscription = ranges::any_of(
 		state->providers.list,
