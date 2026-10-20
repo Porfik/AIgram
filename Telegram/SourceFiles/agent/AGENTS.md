@@ -846,7 +846,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `"attachment"`, plus `"type"` (`photo`, `sticker`, `gif`, `video`,
   `round_video`, `voice`, `audio`, `image_file`, `document`,
   `attachment`). An optional `question` goes to the media model when it
-  is used, and its answer comes back untrusted.
+  is used, and its answer comes back untrusted; every result built from a
+  media model answer has `"media_model": true`.
 - `view_media` takes photos, image files, stickers, GIFs, videos, round
   videos and image or video attachments. Images (an animated sticker by
   its thumbnail) go as `PrepareImageForModel()` image blocks on the
