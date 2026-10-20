@@ -30,6 +30,14 @@ struct Check {
 	return file.readAll();
 }
 
+[[nodiscard]] inline QByteArray ReadApiTl() {
+	auto file = QFile(QString::fromUtf8(AGENT_TEST_API_TL_PATH));
+	if (!file.open(QIODevice::ReadOnly)) {
+		return QByteArray();
+	}
+	return file.readAll();
+}
+
 [[nodiscard]] std::vector<Check> SseChecks();
 [[nodiscard]] std::vector<Check> OpenAiChecks();
 [[nodiscard]] std::vector<Check> ProvidersChecks();
@@ -48,5 +56,7 @@ struct Check {
 [[nodiscard]] std::vector<Check> MediaChecks();
 [[nodiscard]] std::vector<Check> DocumentsChecks();
 [[nodiscard]] std::vector<Check> TaskChecks();
+[[nodiscard]] std::vector<Check> TlChecks();
+[[nodiscard]] std::vector<Check> MtprotoChecks();
 
 } // namespace Agent::Tests

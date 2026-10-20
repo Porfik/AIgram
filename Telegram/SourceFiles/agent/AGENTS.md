@@ -664,6 +664,144 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `perHour <= 0`), otherwise the time the count drops below it: the
   `(count - perHour + 1)`-th oldest recent time plus 3600.
 
+## TL schema (`agent_tl_schema.h`, stage 3c)
+
+- `ParseTlSchema()` reads the text of a `.tl` file like
+  `mtproto/scheme/api.tl` (the client embeds that file; the build does
+  not generate anything for the agent). Lines are trimmed; empty lines
+  and `//` comments are skipped, except `// LAYER N`, which sets
+  `layer()`. `---types---` and `---functions---` switch between
+  constructors and functions (types first). A combinator line is
+  `name#hexid` (lowercase hex, no `0x`), then optional generic
+  parameters in braces (`{X:Type}`, which makes it `generic`), then
+  parameters `name:type`, then `= Result;`. A line without `#id` (the
+  built-in `int ? = Int;` lines, `vector {t:Type} # [ t ] = Vector t;`)
+  and a line whose id is missing or malformed is skipped, never an
+  error; `vector#1cb5c415 {t:Type} # [ t ] = Vector t;` is skipped too.
+  A parameter type `flags.N?T` (any `#` parameter name, such as
+  `flags2`) becomes `flagParam` (the index of that `#` parameter in
+  `params`) and `flagBit` N with `type` T; the `#` parameter itself has
+  type `#`. A malformed combinator line (no `=`, a bad parameter, a flag
+  that names an unknown or non-`#` parameter) fails the whole parse with
+  `error` naming the line number. Duplicate names or ids: the later one
+  wins.
+- `constructor(id)`, `constructor(name)` and `function(name)` are null
+  when unknown. `constructorsOf(type)` lists the constructors whose
+  `result` is `type`, in file order (`InputPeer` gives `inputPeerEmpty`,
+  `inputPeerSelf`, ...).
+- `TlIsBuiltinType()` is true for `int`, `long`, `double`, `string`,
+  `bytes`, `int128`, `int256`, `Bool`, `true` and `#`.
+  `TlVectorItem()` is the item type of `Vector<T>` or `vector<T>`, else
+  nothing. `TlIsBareType()` is true for the builtin types other than
+  `Bool`, for `vector<T>`, and for a type whose name (after the last
+  `.`) starts with a lowercase letter: such values are written without
+  a constructor id.
+
+## TL codec (`agent_tl_codec.h`, stage 3c)
+
+- JSON shape, both ways: an object is `{"_": "<constructor name>",
+  "<param>": value, ...}` in parameter order; `#` parameters never
+  appear; an absent conditional parameter is omitted. `int` is a number,
+  `long` a string of decimal digits on output (input takes a number or
+  such a string), `double` a number, `string` a string, `Bool` and
+  `true` booleans, a vector an array, `int128` and `int256` lowercase hex
+  strings. `bytes` is base64 on output, or `"[N bytes]"` when longer
+  than `TlDecodeOptions::maxBytesShown`; input takes base64.
+- `EncodeTlCall()` serializes a call of function `method` (not
+  `generic`) with `params` (the function's parameters by name) as the
+  little-endian bytes of the boxed request: the function id, then each
+  parameter. Boxed values start with the constructor id, bare ones
+  don't; a boxed vector is `0x1cb5c415`, the count and the items, a bare
+  vector only the count and the items; items are boxed unless the item
+  type is bare. `string` and `bytes` use the TL byte-string format
+  (length byte or `0xfe` plus a 3-byte length for 254 and more, padding
+  to 4 bytes). `Bool` is `boolTrue` / `boolFalse`. A `#` parameter is
+  computed: the OR of the bits of the conditional parameters that are
+  present, a `true` parameter being present only when it is JSON
+  `true`. Input objects may omit `"_"` when the type has exactly one
+  constructor.
+- Errors (then `nullopt` and one English `error` naming the path, like
+  `params.peer` or `params.filter.q`): unknown or generic method,
+  unknown parameter, missing required parameter, wrong JSON type, an
+  unknown `"_"` or one of another type, a number outside `int` range, a
+  non-integer for `int` or `long`, bad base64 or hex.
+- References: a value of type `InputPeer`, `InputUser` or `InputChannel`
+  given as a JSON string or number goes to `refs.input(type, value,
+  error)`, whose bytes (the boxed value) are written as they are; a
+  null result fails with its error. An object for these types is
+  accepted only for `inputPeerEmpty`, `inputPeerSelf`, `inputUserEmpty`,
+  `inputUserSelf` and `inputChannelEmpty`; any other fails with "Pass
+  chats as ids or @usernames, not objects.". This holds at any depth.
+- `DecodeTl()` reads one boxed value of `type` (or a bare one when
+  `TlIsBareType()`) from `bytes` and fails when bytes remain after it,
+  when the data is truncated, or on an unknown constructor id or one of
+  another type (the error names the id in hex). `gzip_packed` is not
+  supported (the transport unpacks responses). Fields named
+  `access_hash` and `file_reference` are left out of the JSON. Every
+  decoded object whose type is in `spanTypes` and that is not inside an
+  object already recorded adds a `TlSpan` with its type and byte range
+  (`begin` at its constructor id), so the client can read it again with
+  the generated types.
+- `ScrubExcludedPeers()` removes what belongs to hidden chats: an
+  object with a field `peer_id`, `peer` or `saved_peer_id` holding
+  `peerUser` (`user_id`), `peerChat` (`chat_id`) or `peerChannel`
+  (`channel_id`) for which `excluded(kind, id)` is true (`kind` `user`,
+  `chat` or `channel`), and a `chat`, `chatForbidden`, `channel` or
+  `channelForbidden` object whose `id` is excluded (`kind` `chat` for the
+  first two, `channel` for the others). A removed array item disappears
+  from the array; a removed field value becomes `null`; when the value
+  itself is removed the result is `null`. `user` objects stay: people
+  are hidden only as chats, never as members.
+
+## MTProto methods (`agent_mtproto.h`, stage 3c)
+
+- `ClassifyMethod()` is, in this order: `Forbidden` for unknown and
+  `generic` functions, for the namespaces `auth`, `payments`, `wallet`,
+  `toncenter`, `smsjobs` and `fragment`, for a method whose name after
+  the dot contains `Password`, `Authorization`, `SecureValue`,
+  `Takeout`, `WebView`, `UrlAuth`, `Star`, `Gift` or `Paid` (matched
+  case-sensitively, so `startBot` is not caught), and for
+  `account.deleteAccount`,
+  `account.setAccountTTL`, `account.sendChangePhoneCode`,
+  `account.changePhone`, `account.sendConfirmPhoneCode`,
+  `account.confirmPhone`, `account.sendVerifyEmailCode`,
+  `account.verifyEmail`, `account.sendVerifyPhoneCode`,
+  `account.verifyPhone`, `account.invalidateSignInCodes`,
+  `account.resetPassword`, `account.declinePasswordReset`,
+  `users.setSecureValueErrors`, `messages.getBotApp`,
+  `messages.requestChatJoinWebView`, `messages.editChatCreator`,
+  `messages.startHistoryImport`, `messages.declineUrlAuth` and
+  `messages.checkUrlAuthMatchCode`; `Write` for the reads with a side
+  effect `messages.getBotCallbackAnswer`, `messages.getInlineBotResults`,
+  `messages.getMessagesViews`, `contacts.getLocated` and
+  `messages.startBot`; `Read` when the name after the dot starts with
+  `get`, `search`, `check` or `resolve`; otherwise `Write`.
+- `MethodNamespaces()` lists the namespaces (the part before the dot,
+  `""` for methods without one) of the functions that are not
+  `Forbidden`, with their counts, sorted by name.
+- `FindMethods()` splits the query into words: runs of letters and
+  digits, a camelCase word also split at its capitals (`getHistory` is
+  `get` and `history`), compared ignoring case. A non-forbidden function
+  matches when every word is a substring of its name or of one of its
+  parameter names or types. Ranking: all words in the name first, then
+  shorter names, then file order; at most `limit` results. An empty
+  query gives nothing.
+- `MethodSignature()` is `name(param: Type, opt?: Type, ...) -> Result`
+  without `#` parameters, a `?` after conditional parameter names, and
+  `true` parameters written as `flag?: true`.
+- `DescribeTl()` explains a function, a constructor or a type for the
+  model, in plain text: for a function the signature, its
+  `ClassifyMethod()` as "reads, runs without asking" or "changes
+  something, the user confirms it on a card", a line saying that
+  `InputPeer`, `InputUser` and `InputChannel` take a chat id or
+  @username, then for every parameter or result type that is not
+  builtin (vector items included) one line `Type: ctor1{param: Type,
+  ...} | ctor2{...}` with at most 12 constructors (then `| ...`), each
+  type once, at most 20 types (then a line saying to describe a type
+  for more); for a constructor its line and its type; for a type its
+  constructors line. Unknown names and forbidden functions fail with
+  `error` (forbidden ones say they are never allowed).
+
 ## Context (`agent_context.h`)
 
 - `EstimateTokens()` is a cheap upper bound: one token per three characters

@@ -37,6 +37,8 @@ namespace {
 	append(MediaChecks());
 	append(DocumentsChecks());
 	append(TaskChecks());
+	append(TlChecks());
+	append(MtprotoChecks());
 	return result;
 }
 

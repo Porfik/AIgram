@@ -28,6 +28,8 @@ PRIVATE
     agent/core/agent_media.h
     agent/core/agent_memory.cpp
     agent/core/agent_memory.h
+    agent/core/agent_mtproto.cpp
+    agent/core/agent_mtproto.h
     agent/core/agent_navigation.cpp
     agent/core/agent_navigation.h
     agent/core/agent_openai.cpp
@@ -49,6 +51,10 @@ PRIVATE
     agent/core/agent_sse.h
     agent/core/agent_task.cpp
     agent/core/agent_task.h
+    agent/core/agent_tl_codec.cpp
+    agent/core/agent_tl_codec.h
+    agent/core/agent_tl_schema.cpp
+    agent/core/agent_tl_schema.h
     agent/core/agent_transport.h
     agent/core/agent_types.cpp
     agent/core/agent_types.h
@@ -77,6 +83,7 @@ PRIVATE
     agent/core/tests/agent_loop_tests.cpp
     agent/core/tests/agent_media_tests.cpp
     agent/core/tests/agent_memory_tests.cpp
+    agent/core/tests/agent_mtproto_tests.cpp
     agent/core/tests/agent_navigation_tests.cpp
     agent/core/tests/agent_openai_tests.cpp
     agent/core/tests/agent_policy_tests.cpp
@@ -89,6 +96,7 @@ PRIVATE
     agent/core/tests/agent_task_tests.cpp
     agent/core/tests/agent_tests.h
     agent/core/tests/agent_tests_main.cpp
+    agent/core/tests/agent_tl_tests.cpp
 )
 
 target_include_directories(td_agent_test
@@ -99,6 +107,7 @@ PRIVATE
 target_compile_definitions(td_agent_test
 PRIVATE
     AGENT_TEST_FIXTURES_PATH="${src_loc}/agent/core/tests/fixtures"
+    AGENT_TEST_API_TL_PATH="${src_loc}/mtproto/scheme/api.tl"
 )
 
 target_link_libraries(td_agent_test
