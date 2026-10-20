@@ -92,7 +92,9 @@ namespace {
 			|| x.vision != y.vision
 			|| x.priceInput != y.priceInput
 			|| x.priceOutput != y.priceOutput
-			|| x.priceCached != y.priceCached) {
+			|| x.priceCached != y.priceCached
+			|| x.effort != y.effort
+			|| x.priceCacheWrite != y.priceCacheWrite) {
 			return u"provider "_q + QString::number(i) + u" differs"_q;
 		}
 	}
@@ -102,6 +104,8 @@ namespace {
 		return u"showSpending differs"_q;
 	} else if (a.rowPreview != b.rowPreview) {
 		return u"rowPreview differs"_q;
+	} else if (a.claudePath != b.claudePath) {
+		return u"claudePath differs"_q;
 	}
 	return QString();
 }
@@ -137,7 +141,7 @@ std::vector<Check> ProvidersChecks() {
 					stream << qint32(0) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
-					stream << qint32(7) << qint32(0) << QString() << QString();
+					stream << qint32(9) << qint32(0) << QString() << QString();
 				}),
 				Written([](QDataStream &stream) {
 					stream << QString() << qint32(0) << QString() << QString();
@@ -490,8 +494,63 @@ std::vector<Check> ProvidersChecks() {
 				return u"expected an adapter for OpenAiCompatible"_q;
 			}
 			settings.kind = ProviderKind::Anthropic;
+			if (!CreateAdapter(settings)) {
+				return u"expected an adapter for Anthropic"_q;
+			}
+			settings.kind = ProviderKind::ClaudeCode;
 			if (CreateAdapter(settings)) {
-				return u"expected nullptr for Anthropic"_q;
+				return u"expected nullptr for ClaudeCode"_q;
+			} else if (!UsesClaudeCode(settings)) {
+				return u"ClaudeCode must use the claude engine"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v8_round_trip"_q, [] {
+			auto state = SampleState();
+			state.list[2].service = ProviderService::Anthropic;
+			state.list[2].baseUrl = AnthropicBaseUrl();
+			state.list[2].effort = u"high"_q;
+			state.list[2].priceCacheWrite = 5.;
+			auto subscription = ProviderSettings();
+			subscription.id = u"claude"_q;
+			subscription.kind = ProviderKind::ClaudeCode;
+			subscription.service = ProviderService::ClaudeSubscription;
+			subscription.model = u"opus"_q;
+			subscription.effort = u"xhigh"_q;
+			state.list.push_back(subscription);
+			state.claudePath = u"/opt/claude/bin/claude"_q;
+			const auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v8 failed to deserialize"_q;
+			}
+			const auto diff = ProvidersEqual(state, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			} else if (restored->list[3].service
+					!= ProviderService::ClaudeSubscription
+				|| restored->list[3].kind != ProviderKind::ClaudeCode) {
+				return u"the subscription profile must round-trip"_q;
+			}
+			return (SerializeProviders(*restored) == bytes)
+				? QString()
+				: u"re-serialization is not byte-identical"_q;
+		} },
+		{ u"providers_is_claude_on_open_router"_q, [] {
+			auto settings = ProviderSettings();
+			settings.baseUrl = OpenRouterBaseUrl();
+			settings.model = u"anthropic/claude-opus-5.5"_q;
+			if (!IsClaudeOnOpenRouter(settings)) {
+				return u"anthropic/* on OpenRouter must match"_q;
+			}
+			settings.model = u"z-ai/glm-5.3-flash"_q;
+			if (IsClaudeOnOpenRouter(settings)) {
+				return u"other OpenRouter models must not match"_q;
+			}
+			settings.baseUrl = AnthropicBaseUrl();
+			settings.model = u"anthropic/claude-opus-5.5"_q;
+			if (IsClaudeOnOpenRouter(settings)) {
+				return u"other hosts must not match"_q;
 			}
 			return QString();
 		} },
@@ -564,7 +623,7 @@ std::vector<Check> ProvidersChecks() {
 			return QString();
 		} },
 		{ u"providers_v7_reject_bad_service"_q, [] {
-			for (const auto service : { qint32(2), qint32(-1) }) {
+			for (const auto service : { qint32(4), qint32(-1) }) {
 				const auto bytes = Written([&](QDataStream &stream) {
 					stream
 						<< qint32(7)

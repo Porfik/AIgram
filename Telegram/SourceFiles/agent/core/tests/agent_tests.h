@@ -58,5 +58,6 @@ struct Check {
 [[nodiscard]] std::vector<Check> TaskChecks();
 [[nodiscard]] std::vector<Check> TlChecks();
 [[nodiscard]] std::vector<Check> MtprotoChecks();
+[[nodiscard]] std::vector<Check> AnthropicChecks();
 
 } // namespace Agent::Tests

@@ -27,6 +27,7 @@ struct SpendingTotals {
 	double cost = 0.;
 	bool hasCost = false;
 	int requests = 0;
+	qint64 cacheWriteTokens = 0;
 
 	void add(const Usage &usage);
 	void add(const SpendingTotals &other);
@@ -48,6 +49,7 @@ struct SpendingStats {
 	Usage usage,
 	const ProviderSettings &provider);
 
+[[nodiscard]] int CachedPercent(const SpendingTotals &totals);
 void AddSpending(SpendingStats &stats, int day, const Usage &usage);
 [[nodiscard]] SpendingTotals SumSpending(
 	const SpendingStats &stats,

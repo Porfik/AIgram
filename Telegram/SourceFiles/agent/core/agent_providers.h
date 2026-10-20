@@ -23,11 +23,14 @@ class Adapter;
 enum class ProviderKind : uchar {
 	OpenAiCompatible,
 	Anthropic,
+	ClaudeCode,
 };
 
 enum class ProviderService : uchar {
 	Custom,
 	OpenRouter,
+	Anthropic,
+	ClaudeSubscription,
 };
 
 struct ProviderSettings {
@@ -47,6 +50,8 @@ struct ProviderSettings {
 	bool files = false;
 	ProviderService service = ProviderService::Custom;
 	std::vector<QString> ignoredRoutes;
+	QString effort;
+	double priceCacheWrite = 0.;
 };
 
 enum class RowPreview : uchar {
@@ -66,6 +71,7 @@ struct ProvidersState {
 	QString backgroundId;
 	double backgroundDailyCost = 1.;
 	qint64 backgroundDailyTokens = 1'000'000;
+	QString claudePath;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);
@@ -73,6 +79,7 @@ struct ProvidersState {
 	const QByteArray &bytes);
 
 [[nodiscard]] QString OpenRouterBaseUrl();
+[[nodiscard]] QString AnthropicBaseUrl();
 
 [[nodiscard]] const ProviderSettings *FindProvider(
 	const ProvidersState &state,
@@ -95,6 +102,8 @@ void SetServiceKey(
 	ProviderService service,
 	const QString &key);
 [[nodiscard]] bool IsOpenRouter(const ProviderSettings &settings);
+[[nodiscard]] bool IsClaudeOnOpenRouter(const ProviderSettings &settings);
+[[nodiscard]] bool UsesClaudeCode(const ProviderSettings &settings);
 [[nodiscard]] std::unique_ptr<Adapter> CreateAdapter(
 	const ProviderSettings &settings);
 

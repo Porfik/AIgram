@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_providers.h"
 
 #include "agent/core/agent_adapter.h"
+#include "agent/core/agent_anthropic.h"
 #include "agent/core/agent_openai.h"
 #include "base/assertion.h"
 
@@ -17,7 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(7);
+constexpr auto kFormatVersion = qint32(8);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 constexpr auto kMaxIgnoredRoutes = 100;
@@ -50,6 +51,7 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 		for (const auto &route : provider.ignoredRoutes) {
 			stream << route;
 		}
+		stream << provider.effort << provider.priceCacheWrite;
 	}
 	stream << state.defaultId << state.instructions;
 	stream << qint32(state.showEntryPoints ? 1 : 0);
@@ -60,6 +62,7 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 		<< state.backgroundId
 		<< state.backgroundDailyCost
 		<< qint64(state.backgroundDailyTokens);
+	stream << state.claudePath;
 	return result;
 }
 
@@ -98,7 +101,7 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			>> vision;
 		if (stream.status() != QDataStream::Ok
 			|| kind < 0
-			|| kind > int(ProviderKind::Anthropic)) {
+			|| kind > int(ProviderKind::ClaudeCode)) {
 			return std::nullopt;
 		}
 		provider.kind = ProviderKind(kind);
@@ -134,7 +137,7 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			stream >> service >> routes;
 			if (stream.status() != QDataStream::Ok
 				|| service < 0
-				|| service > int(ProviderService::OpenRouter)
+				|| service > int(ProviderService::ClaudeSubscription)
 				|| routes < 0
 				|| routes > kMaxIgnoredRoutes) {
 				return std::nullopt;
@@ -151,6 +154,12 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 				ignored.push_back(std::move(route));
 			}
 			provider.ignoredRoutes = std::move(ignored);
+		}
+		if (version >= 8) {
+			stream >> provider.effort >> provider.priceCacheWrite;
+			if (stream.status() != QDataStream::Ok) {
+				return std::nullopt;
+			}
 		}
 		state.list.push_back(std::move(provider));
 	}
@@ -203,6 +212,12 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		}
 		state.backgroundDailyTokens = tokens;
 	}
+	if (version >= 8) {
+		stream >> state.claudePath;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
 	}
@@ -211,6 +226,10 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 
 QString OpenRouterBaseUrl() {
 	return u"https://openrouter.ai/api/v1"_q;
+}
+
+QString AnthropicBaseUrl() {
+	return u"https://api.anthropic.com/v1"_q;
 }
 
 const ProviderSettings *FindProvider(
@@ -289,11 +308,22 @@ bool IsOpenRouter(const ProviderSettings &settings) {
 		|| host.endsWith(u".openrouter.ai"_q);
 }
 
+bool IsClaudeOnOpenRouter(const ProviderSettings &settings) {
+	return IsOpenRouter(settings)
+		&& settings.model.startsWith(u"anthropic/"_q, Qt::CaseInsensitive);
+}
+
+bool UsesClaudeCode(const ProviderSettings &settings) {
+	return (settings.kind == ProviderKind::ClaudeCode);
+}
+
 std::unique_ptr<Adapter> CreateAdapter(const ProviderSettings &settings) {
 	switch (settings.kind) {
 	case ProviderKind::OpenAiCompatible:
 		return std::make_unique<OpenAi::Adapter>(settings);
 	case ProviderKind::Anthropic:
+		return std::make_unique<Anthropic::Adapter>(settings);
+	case ProviderKind::ClaudeCode:
 		return nullptr;
 	}
 	Unexpected("Kind in Agent::CreateAdapter.");

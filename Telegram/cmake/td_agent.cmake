@@ -11,6 +11,10 @@ add_library(tdesktop::td_agent ALIAS td_agent)
 nice_target_sources(td_agent ${src_loc}
 PRIVATE
     agent/core/agent_adapter.h
+    agent/core/agent_anthropic.cpp
+    agent/core/agent_anthropic.h
+    agent/core/agent_anthropic_stream.cpp
+    agent/core/agent_anthropic_stream.h
     agent/core/agent_card.cpp
     agent/core/agent_card.h
     agent/core/agent_context.cpp
@@ -75,6 +79,7 @@ init_non_host_target(td_agent_test "(agent)")
 
 nice_target_sources(td_agent_test ${src_loc}
 PRIVATE
+    agent/core/tests/agent_anthropic_tests.cpp
     agent/core/tests/agent_card_tests.cpp
     agent/core/tests/agent_context_tests.cpp
     agent/core/tests/agent_documents_tests.cpp

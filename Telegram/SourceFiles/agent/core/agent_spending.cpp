@@ -132,6 +132,10 @@ Usage PriceUsage(Usage usage, const ProviderSettings &provider) {
 	return usage;
 }
 
+int CachedPercent(const SpendingTotals &totals) {
+	return 0;
+}
+
 void AddSpending(SpendingStats &stats, int day, const Usage &usage) {
 	auto it = std::lower_bound(
 		stats.days.begin(),

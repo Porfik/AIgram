@@ -53,6 +53,7 @@ struct MediaBlock {
 struct ThinkingBlock {
 	QString text;
 	QByteArray signature;
+	bool redacted = false;
 };
 
 struct ToolUseBlock {
@@ -94,11 +95,13 @@ struct Usage {
 	int cachedInputTokens = 0;
 	double cost = 0.;
 	bool hasCost = false;
+	int cacheWriteTokens = 0;
 
 	Usage &operator+=(const Usage &other) {
 		inputTokens += other.inputTokens;
 		outputTokens += other.outputTokens;
 		cachedInputTokens += other.cachedInputTokens;
+		cacheWriteTokens += other.cacheWriteTokens;
 		cost += other.cost;
 		hasCost = hasCost || other.hasCost;
 		return *this;
@@ -121,6 +124,7 @@ struct Request {
 	QString pdfEngine;
 	QString cacheKey;
 	std::vector<QString> ignoredRoutes;
+	QString effort;
 };
 
 enum class ErrorKind : uchar {

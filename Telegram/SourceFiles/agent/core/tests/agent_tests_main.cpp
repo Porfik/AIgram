@@ -39,6 +39,7 @@ namespace {
 	append(TaskChecks());
 	append(TlChecks());
 	append(MtprotoChecks());
+	append(AnthropicChecks());
 	return result;
 }
 

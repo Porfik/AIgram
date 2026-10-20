@@ -100,7 +100,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   files with that engine (the OpenRouter `file-parser` plugin).
 - `ThinkingBlock::signature` is opaque provider data that must round-trip
   unchanged. Adapters that can't send thinking back drop the block from
-  requests.
+  requests. A `redacted` block is an Anthropic `redacted_thinking` block:
+  `signature` holds its `data` and `text` is empty.
 - `ToolUseBlock` with a non-empty `inputError` means the model produced
   arguments that are not a JSON object: `input` is empty and `rawInput`
   keeps the exact text. Requests send `rawInput` back verbatim; the loop
@@ -108,7 +109,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `Error::retryAfter` is in milliseconds, zero when the provider gave none.
 - `Usage::cost` is in dollars and meaningful only with `hasCost`. `+=` sums
   tokens and costs and ORs `hasCost`. `inputTokens` include
-  `cachedInputTokens`.
+  `cachedInputTokens` (read from the provider's prompt cache) and
+  `cacheWriteTokens` (written to it).
+- `Request::effort` is empty (the model's default) or one of
+  `Anthropic::EffortLevels()`. Adapters that have no such setting ignore
+  it.
 - `TextBlock::hidden` text is sent to the model but not shown in the feed:
   client hints and the compaction summary.
 
@@ -186,10 +191,131 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   warm: to OpenRouter (`IsOpenRouter()`) it goes as the `x-session-id`
   header, to a provider whose base URL host is `api.openai.com` as the
   `prompt_cache_key` body field; other providers get nothing.
+- For a provider where `IsClaudeOnOpenRouter()` the request body gets a
+  top-level `"cache_control": {"type": "ephemeral"}` (automatic caching
+  of the conversation tail) and the system message is sent as one text
+  content part with `"cache_control": {"type": "ephemeral"}` (the
+  breakpoint that keeps tools and system cached). Other providers get
+  neither. `usage.prompt_tokens_details.cache_write_tokens`, when
+  present, goes to `Usage::cacheWriteTokens`.
 - It reads `usage.cost` (OpenRouter) into `Usage::cost` with `hasCost`;
   when `usage.is_byok` is true it adds
   `usage.cost_details.upstream_inference_cost`, which the user's own key
   pays. Without `usage.cost` the usage has no cost.
+
+## Anthropic (`agent_anthropic.h`, `agent_anthropic_stream.h`, stage 4)
+
+- `StreamAssembler` turns Messages API stream events (the JSON object of
+  each event, the same for SSE and for the `stream_event` lines of
+  `claude`) into deltas and one `Response`. It is shared by
+  `Anthropic::Adapter` and the Claude Code engine. Events:
+  `message_start` (`message.usage`), `content_block_start` (`index`,
+  `content_block` of type `text`, `thinking`, `redacted_thinking` with
+  `data`, or `tool_use` with `id`, `name`, `input`), `content_block_delta`
+  (`text_delta.text`, `thinking_delta.thinking`,
+  `signature_delta.signature`, `input_json_delta.partial_json`),
+  `content_block_stop`, `message_delta` (`delta.stop_reason`, `usage`),
+  `message_stop`, `ping` and `error` (`error` object). Unknown event
+  and block types are ignored.
+- Deltas: `TextDelta` per text delta, `ThinkingDelta` per thinking delta,
+  `ToolUseStarted` at the start of a `tool_use` block. Consecutive deltas
+  of the same kind are merged in `takeDeltas()` like the OpenAI parser.
+- `finish()`: an `error` event gives `Response::error` through
+  `ParseErrorObject()` (status 0). Without `message_start` or without a
+  stop reason it is an error of kind `BadResponse` ("Stream ended without
+  a stop reason"). Otherwise the assistant message has the blocks in
+  `index` order: `ThinkingBlock` (text and signature; `redacted` with the
+  data in `signature`), `TextBlock` (blocks with empty text are dropped),
+  `ToolUseBlock` (the joined `partial_json` parsed as an object; empty
+  means `{}`; anything else sets `inputError` and keeps `rawInput`, as in
+  the OpenAI parser). `stopReason` is `ParseStopReason()`, `ToolUse` when
+  the message has tool uses. `usage` is `ParseUsage()` of the
+  `message_start` usage with every field the `message_delta` usage has
+  replacing it.
+- `ParseUsage()`: `inputTokens` is `input_tokens +
+  cache_creation_input_tokens + cache_read_input_tokens`,
+  `cachedInputTokens` is `cache_read_input_tokens`, `cacheWriteTokens`
+  is `cache_creation_input_tokens`, `outputTokens` is `output_tokens`;
+  missing fields are zero. No cost.
+- `ParseStopReason()`: `tool_use` → `ToolUse`, `max_tokens` and
+  `model_context_window_exceeded` → `MaxTokens`, `refusal` → `Refusal`,
+  everything else (`end_turn`, `stop_sequence`, `pause_turn`) →
+  `EndTurn`.
+- `ErrorKindForType()`: `authentication_error`, `permission_error`,
+  `billing_error` → `Auth`; `rate_limit_error` → `RateLimited`;
+  `overloaded_error`, `api_error`, `timeout_error` → `Overloaded`;
+  `invalid_request_error`, `not_found_error`, `request_too_large` →
+  `BadRequest`; an unknown type falls back to the HTTP status like the
+  OpenAI adapter (401/403 `Auth`, 429 `RateLimited`, 408/5xx/529
+  `Overloaded`, other 4xx `BadRequest`, else `BadResponse`).
+  `ParseErrorObject()` reads `type` and `message` of an error object.
+  `ParseError()` reads a non-2xx body `{"type": "error", "error": {...}}`
+  (the message, else the first 500 bytes of the body), with
+  `retryAfter` from the head as in the OpenAI adapter.
+- `Adapter::prepare()` posts `RequestObject()` (with the profile's model
+  when the request has none, and the profile's `effort` when the request
+  has none) to `<baseUrl>/messages` with `x-api-key: <apiKey>`,
+  `anthropic-version: 2023-06-01`, `content-type: application/json`,
+  `accept: text/event-stream` and, when the body uses any, one
+  `anthropic-beta` header with the betas joined by commas. The parser
+  reads SSE (`SseParser`), feeds each event's JSON to a `StreamAssembler`,
+  collects a non-2xx body for `ParseError()` and reports network errors
+  like the OpenAI parser.
+- `RequestObject()`:
+  - `model`, `stream: true`, `max_tokens` (`maxOutputTokens`, 32000 when
+    it is not positive), top-level `"cache_control": {"type":
+    "ephemeral"}`;
+  - `system` (when not empty) as one text block with `"cache_control":
+    {"type": "ephemeral"}`;
+  - `tools` as `{name, description, input_schema}`;
+  - `thinking` `{"type": "adaptive", "display": "summarized",
+    "block_binding": {"prefix_mismatch_behavior": "drop_block"}}` with
+    the beta `thinking-binding-controls-2026-08-01` when
+    `SupportsAdaptiveThinking()` of the model, else no `thinking`;
+  - `output_config: {"effort": <effort>}` when `effort` is not empty;
+  - `fallbacks: "default"` with the beta
+    `server-side-fallback-2026-07-01` when `SupportsFallbacks()`.
+  - `messages`: roles `user` and `assistant`; consecutive messages of
+    the same role are merged, messages left without content are skipped.
+    Text blocks (hidden ones too) become `text` blocks. Media with bytes:
+    `Image` → `image` with a base64 source; `File` with `application/pdf`
+    → `document` with a base64 source; other media and media without
+    bytes are skipped. Thinking blocks with a non-empty `signature`
+    become `thinking` (`thinking`, `signature`) or `redacted_thinking`
+    (`data`); others are dropped. Tool uses become `tool_use` (`id`,
+    `name`, `input`; `{}` when `inputError` is set). Tool results become
+    `tool_result` (`tool_use_id`, `is_error` when set, `content` a text
+    block followed by the result's media mapped as above) and go first
+    in their user message.
+  - Tool use ids that don't match `^[A-Za-z0-9_-]+$` or repeat an
+    earlier id of the request (OpenAI-compatible providers reuse
+    `call_0`) are replaced, with their results, by
+    `toolu_aigram_<message index>_<block index>` of the tool use, so the
+    same history always gives the same body.
+- `EffortLevels()` is `low`, `medium`, `high`, `xhigh`, `max`.
+  `KnownPrices()` matches a model id or a dated id that starts with it
+  (`claude-haiku-4-5-20251001`): dollars per million tokens input /
+  output / cache read, cache write is 1.25 × input. Fable 5.1 10 / 50 /
+  0.25; Fable 5 10 / 50 / 1; Opus 5.5 4 / 20 / 0.2; Opus 5, 4.8, 4.7,
+  4.6, 4.5 5 / 25 / 0.5; Sonnet 5.5 2 / 10 / 0.2; Sonnet 5 2 / 10 / 0.2;
+  Sonnet 4.6, 4.5 3 / 15 / 0.3; Haiku 5.5 0.1 / 0.5 / 0.01; Haiku 4.5
+  1 / 5 / 0.1. Unknown models have no prices.
+  `SupportsAdaptiveThinking()` is false for `claude-haiku-4-5`,
+  `claude-sonnet-4-5`, `claude-opus-4-5`, `claude-opus-4-1`,
+  `claude-opus-4-0`, `claude-sonnet-4-0`, `claude-opus-4-2025*`,
+  `claude-sonnet-4-2025*` and `claude-3*` ids, true otherwise (newer and
+  unknown models). `SupportsFallbacks()` is true for `claude-fable-5-1`,
+  `claude-opus-5-5`, `claude-opus-5` and `claude-sonnet-5-5` (and their
+  dated ids).
+- `ModelsRequest()` is a GET of `<baseUrl>/models?limit=1000` with the
+  `x-api-key` and `anthropic-version` headers; 200 means the key works,
+  401 or 403 that it doesn't. `ParseModels()` reads `data[]`: `id`,
+  `display_name` into `name`, `max_input_tokens` into `contextWindow`,
+  `max_tokens` into `maxOutput`, `capabilities.image_input.supported`
+  into `vision`, `capabilities.pdf_input.supported` into `pdf`, the
+  levels of `EffortLevels()` whose `capabilities.effort.<level>.supported`
+  is true into `effortLevels` (in that order), and `KnownPrices()` of the
+  id. Malformed JSON gives an empty list.
 
 ## Loop and engines (`agent_engine.h`, `agent_loop.h`)
 
@@ -266,6 +392,21 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   profile of that service (empty for `Custom` or when there is none);
   `SetServiceKey()` sets the key of every profile of that service
   (`Custom` is a programming error).
+- Version 8 (stage 4, plan 11.8) appends `effort` (`QString`) and
+  `priceCacheWrite` (`double`, dollars per million tokens written to the
+  prompt cache, zero when unset) after `ignoredRoutes` of each provider
+  and `claudePath` after `backgroundDailyTokens`; older versions load
+  them empty and zero. Kinds: `Anthropic` profiles talk to the Messages
+  API through `Anthropic::Adapter`, `ClaudeCode` profiles run through the
+  user's `claude` binary (`UsesClaudeCode()`, no adapter: `CreateAdapter()`
+  returns null for them). Services: `Anthropic` is a profile made by
+  "Anthropic → API key" (`AnthropicBaseUrl()`,
+  `https://api.anthropic.com/v1`), `ClaudeSubscription` one made by
+  "Anthropic → Claude subscription" (kind `ClaudeCode`, empty key, the
+  model is the `value` `claude` listed in `initialize`). `claudePath` is
+  the `claude` binary chosen by the user, empty to search `PATH`.
+- `IsClaudeOnOpenRouter()` is `IsOpenRouter()` with a model id starting
+  with `anthropic/` (case ignored).
 
 ## Scope (`agent_scope.h`)
 
@@ -446,6 +587,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   version 5 appends it after `attachments` of every entry; older records
   and indexes load it empty. `profileId` is the model profile the
   session uses (see "Provider settings"); empty means the default one.
+- Version 8 writes `redacted` (`qint32` 0 or 1) after `signature` of
+  every thinking block and appends `info.usage.cacheWriteTokens` after
+  `info.profileId`; index version 6 appends it after `profileId` of every
+  entry. Older records and indexes load them false and zero.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -512,13 +657,16 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 
 - `PriceUsage()` returns a usage with `hasCost` unchanged. Otherwise, when
   any price of the provider is positive, it sets `hasCost` and the cost:
-  uncached input (`inputTokens - cachedInputTokens`, at least zero) times
-  `priceInput`, cached input times `priceCached` (or `priceInput` when
-  that is zero) and output times `priceOutput`, each per million tokens.
-  Without prices it returns the usage unchanged.
-- `SpendingTotals::add(Usage)` adds the tokens, counts one request and
-  adds the cost only when `hasCost` (then sets `hasCost`). `tokens()` is
-  input plus output; `empty()` means no requests.
+  uncached input (`inputTokens - cachedInputTokens - cacheWriteTokens`,
+  at least zero) times `priceInput`, cached input times `priceCached` (or
+  `priceInput` when that is zero), cache writes times `priceCacheWrite`
+  (or `priceInput` when that is zero) and output times `priceOutput`,
+  each per million tokens. Without prices it returns the usage unchanged.
+- `SpendingTotals::add(Usage)` adds the tokens (cache writes included),
+  counts one request and adds the cost only when `hasCost` (then sets
+  `hasCost`). `tokens()` is input plus output; `empty()` means no
+  requests. `CachedPercent()` is `cachedInputTokens * 100 / inputTokens`
+  rounded to the nearest integer, 0 when there is no input.
 - `SpendingStats::days` are per-day totals in ascending `day` order (the
   caller's day number, `QDate::toJulianDay()` of the local date).
   `AddSpending()` adds to the day's bucket, creating it in order, then
@@ -526,9 +674,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   one into `older`.
 - `SumSpending()` sums the buckets with `fromDay <= day <= toDay`;
   `SumAllSpending()` sums all buckets and `older`.
-- Serialization: `quint32` version 1, `older`, the bucket count, each
-  bucket. Unknown versions, truncated data and negative or huge counts
-  deserialize to `std::nullopt`.
+- Serialization: `quint32` version 2, `older`, the bucket count, each
+  bucket; version 2 writes every totals' `cacheWriteTokens` after
+  `requests`, version 1 loads them zero. Unknown versions, truncated data
+  and negative or huge counts deserialize to `std::nullopt`.
 
 ## Exclusions (`agent_exclusion_list.h`)
 
@@ -662,9 +811,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `after`, else 0.
 - `GenerateTaskId()` is 16 lowercase hex digits.
 - Serialization uses `QDataStream` (`Qt_5_1`) with a leading `quint32`
-  version 1: `SerializeTask()` every field of `Task`, `SerializeTasks()`
+  version 2: `SerializeTask()` every field of `Task`, `SerializeTasks()`
   a count and the tasks, `SerializeRuns()` a count and every field of
-  each `TaskRun` (with the usage cost and `hasCost`). Unknown versions,
+  each `TaskRun` (with the usage cost and `hasCost`). Version 2 appends
+  `cacheWriteTokens` at the end of each task (of its `spentToday`) and of
+  each run (of its usage); version 1 loads them zero. Unknown versions,
   truncated data, negative or huge counts and out-of-range enum values
   deserialize to `std::nullopt`.
 - `TaskInputSchema(chatScope, update)` is the JSON schema of the
