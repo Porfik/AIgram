@@ -38,6 +38,7 @@ class SpendingTracker;
 class TaskRunner;
 class Tasks;
 class Transport;
+struct RunSetup;
 struct Task;
 
 struct ScopeActivity {
@@ -47,6 +48,18 @@ struct ScopeActivity {
 	friend inline bool operator==(
 		const ScopeActivity &,
 		const ScopeActivity &) = default;
+};
+
+class ActingGuard final {
+public:
+	explicit ActingGuard(not_null<int*> counter);
+	ActingGuard(const ActingGuard &) = delete;
+	ActingGuard &operator=(const ActingGuard &) = delete;
+	~ActingGuard();
+
+private:
+	const not_null<int*> _counter;
+
 };
 
 class Manager final : public base::has_weak_ptr {
@@ -75,9 +88,13 @@ public:
 		const Scope &scope) const;
 
 	[[nodiscard]] not_null<Session*> create(const Scope &scope);
+	[[nodiscard]] not_null<Session*> startRun(
+		SessionRecord record,
+		RunSetup setup);
 	[[nodiscard]] Session *open(const QString &id);
 	void rename(const QString &id, const QString &title);
 	void remove(const QString &id);
+	void unload(const QString &id);
 	void clearAllData();
 
 	[[nodiscard]] Memories &memories() const;
@@ -87,6 +104,9 @@ public:
 	[[nodiscard]] Tasks &tasks() const;
 	[[nodiscard]] TaskRunner &runner() const;
 	void removeTask(const QString &id);
+
+	[[nodiscard]] ActingGuard actingGuard();
+	[[nodiscard]] bool acting() const;
 
 	[[nodiscard]] Transport &transport() const;
 	void save(not_null<Session*> session);
@@ -118,6 +138,7 @@ private:
 	const std::unique_ptr<Tasks> _tasks;
 	std::unique_ptr<TaskRunner> _runner;
 	ProvidersState _providers;
+	int _acting = 0;
 	rpl::variable<bool> _enabled = false;
 	std::vector<SessionInfo> _index;
 	std::vector<std::unique_ptr<Session>> _sessions;

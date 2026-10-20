@@ -627,4 +627,12 @@ void ShowGeneralAgent(
 	controller->showSection(std::move(memento));
 }
 
+void ShowGeneralAgentSession(
+		not_null<Window::SessionController*> controller,
+		const QString &sessionId) {
+	auto memento = std::make_shared<GeneralAgentMemento>();
+	memento->setSessionId(sessionId);
+	controller->showSection(std::move(memento));
+}
+
 } // namespace Agent::Ui

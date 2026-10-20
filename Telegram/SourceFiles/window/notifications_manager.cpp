@@ -1279,6 +1279,10 @@ void Manager::notificationActivated(
 		NotificationId id,
 		ActivateOptions &&options) {
 	onBeforeNotificationActivated(id);
+	if (const auto custom = _customActivations.take(id)) {
+		(*custom)();
+		return;
+	}
 	if (const auto session = system()->findSession(id.contextId.sessionId)) {
 		const auto history = session->data().history(
 			id.contextId.peerId);
@@ -1657,6 +1661,35 @@ void NativeManager::doShowNotification(NotificationFields &&fields) {
 		.options = options,
 		.actions = std::move(actions),
 	}, userpicView);
+}
+
+void NativeManager::showCustomNotification(
+		NotificationInfo &&info,
+		bool sound,
+		Fn<void()> activated) {
+	const auto peer = info.peer;
+	const auto owner = &peer->owner();
+	_customActivations[NotificationId{
+		.contextId = ContextId{
+			.sessionId = peer->session().uniqueId(),
+			.peerId = peer->id,
+			.topicRootId = info.topicRootId,
+			.monoforumPeerId = info.monoforumPeerId,
+		},
+		.msgId = info.itemId,
+	}] = std::move(activated);
+	if (sound && Core::App().settings().soundNotify()) {
+		info.sound = [=] {
+			const auto lookup = [=] {
+				return Core::App().notifications().lookupSoundBytes(
+					owner,
+					0);
+			};
+			return _localSoundCache.sound(0, lookup, lookup);
+		};
+	}
+	auto userpicView = peer->createUserpicView();
+	doShowNativeNotification(std::move(info), userpicView);
 }
 
 bool NativeManager::forceHideDetails() const {

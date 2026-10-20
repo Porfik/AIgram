@@ -37,10 +37,14 @@ struct CallAbilities {
 };
 
 [[nodiscard]] CallAbilities ComputeAbilities(
-		not_null<Main::Session*> session) {
+		not_null<Main::Session*> session,
+		const std::optional<ProviderSettings> &background) {
 	const auto &manager = session->agent();
 	auto result = CallAbilities();
-	if (const auto provider = ActiveProvider(manager.providers())) {
+	const auto provider = background
+		? &*background
+		: ActiveProvider(manager.providers());
+	if (provider) {
 		result.main = manager.abilities(*provider);
 		result.main.files = result.main.files || IsOpenRouter(*provider);
 	}
@@ -204,6 +208,14 @@ struct ToolRegistry::Call {
 	bool approved = false;
 };
 
+std::optional<ToolPolicy> ToolPolicyByName(const QString &name) {
+	const auto &table = ToolsTable();
+	const auto i = ranges::find(table, name, &ToolEntry::name);
+	return (i != end(table))
+		? std::make_optional(i->policy)
+		: std::nullopt;
+}
+
 const base::flat_set<QString> &ActionToolNames() {
 	static const auto result = [] {
 		auto names = base::flat_set<QString>();
@@ -234,10 +246,18 @@ ToolRegistry::~ToolRegistry() {
 	}
 }
 
+void ToolRegistry::setBackground(
+		ProviderSettings provider,
+		Fn<void(QString text)> notify) {
+	_backgroundProvider = std::move(provider);
+	_notify = std::move(notify);
+}
+
 std::vector<ToolSpec> ToolRegistry::tools() const {
 	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	const auto background = _gate->background();
 	const auto &table = ToolsTable();
-	const auto abilities = ComputeAbilities(_session);
+	const auto abilities = ComputeAbilities(_session, _backgroundProvider);
 	auto result = std::vector<ToolSpec>();
 	const auto add = [&](const ToolEntry &entry) {
 		if (!_gate->available(entry.policy)
@@ -255,9 +275,12 @@ std::vector<ToolSpec> ToolRegistry::tools() const {
 		});
 	};
 	for (const auto &entry : table) {
-		if (entry.group.isEmpty()) {
+		if (entry.group.isEmpty() || background) {
 			add(entry);
 		}
+	}
+	if (background) {
+		return result;
 	}
 	for (const auto &group : _loadedGroups) {
 		for (const auto &entry : table) {
@@ -286,6 +309,7 @@ void ToolRegistry::execute(
 	}
 	const auto &entry = *i;
 	if (!entry.group.isEmpty()
+		&& !_gate->background()
 		&& !ranges::contains(_loadedGroups, entry.group)) {
 		done(ToolResultBlock{
 			.toolUseId = call.id,
@@ -325,7 +349,8 @@ void ToolRegistry::execute(
 		loadGroup(id, std::move(group));
 	};
 	pending->sessionId = _sessionId;
-	const auto abilities = ComputeAbilities(_session);
+	pending->notify = _notify;
+	const auto abilities = ComputeAbilities(_session, _backgroundProvider);
 	pending->mainAbilities = abilities.main;
 	pending->helperAbilities = abilities.helper;
 	pending->doneMedia = [this, id = call.id](
@@ -448,7 +473,14 @@ void ToolRegistry::execute(
 	}
 	raw->peer = peer;
 	raw->peers = std::move(peers);
-	entry.run(raw);
+	const auto weak = base::make_weak(this);
+	{
+		const auto acting = _session->agent().actingGuard();
+		entry.run(raw);
+	}
+	if (!weak) {
+		return;
+	}
 	for (const auto key : keys) {
 		_touched.fire_copy(key);
 	}
@@ -488,6 +520,7 @@ void ToolRegistry::confirmCall(
 	_cardUpdates.fire_copy(card);
 	if (autoApproved && weak) {
 		auto run = call.execute;
+		const auto acting = _session->agent().actingGuard();
 		run(card);
 	}
 }
@@ -610,7 +643,27 @@ void ToolRegistry::decide(
 		return;
 	}
 	auto run = call.execute;
+	const auto acting = _session->agent().actingGuard();
 	run(card);
+}
+
+void ToolRegistry::expire(const QString &toolUseId) {
+	const auto i = _calls.find(toolUseId);
+	if (i == _calls.end()
+		|| !i->second.hasCard
+		|| i->second.card.status != CardStatus::Pending) {
+		return;
+	}
+	const auto untrusted = i->second.untrusted;
+	auto card = i->second.card;
+	card.status = CardStatus::Expired;
+	_calls.erase(i);
+	const auto weak = base::make_weak(this);
+	_cardUpdates.fire_copy(card);
+	if (!weak) {
+		return;
+	}
+	deliver(toolUseId, CardResultText(card), false, untrusted);
 }
 
 bool ToolRegistry::canUndo(const QString &toolUseId) const {

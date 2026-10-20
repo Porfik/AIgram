@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_openai.h"
 #include "base/algorithm.h"
 #include "base/unixtime.h"
+#include "crl/crl_on_main.h"
 #include "main/main_session.h"
 #include "storage/storage_account.h"
 
@@ -38,6 +39,15 @@ namespace {
 }
 
 } // namespace
+
+ActingGuard::ActingGuard(not_null<int*> counter)
+: _counter(counter) {
+	++*_counter;
+}
+
+ActingGuard::~ActingGuard() {
+	--*_counter;
+}
 
 Manager::Manager(not_null<Main::Session*> session)
 : _session(session)
@@ -242,7 +252,12 @@ rpl::producer<Scope> Manager::listChanges() const {
 ScopeActivity Manager::activity(const Scope &scope) const {
 	auto result = ScopeActivity();
 	for (const auto &session : _sessions) {
-		if (!(session->scope() == scope)) {
+		if (session->isRun()) {
+			if (scope.kind == ScopeKind::Account) {
+				result.pendingCards += session->state().pendingCards;
+			}
+			continue;
+		} else if (!(session->scope() == scope)) {
 			continue;
 		}
 		const auto &state = session->state();
@@ -268,7 +283,9 @@ rpl::producer<ScopeActivity> Manager::activityValue(
 void Manager::watchActivity(not_null<Session*> session) {
 	session->stateChanges(
 	) | rpl::on_next([=] {
-		updateActivity(session->scope());
+		updateActivity(session->isRun()
+			? Scope::Account()
+			: session->scope());
 	}, _lifetime);
 }
 
@@ -285,6 +302,18 @@ not_null<Session*> Manager::create(const Scope &scope) {
 	record.info.scope = scope;
 	record.info.created = record.info.updated = base::unixtime::now();
 	_sessions.push_back(std::make_unique<Session>(this, std::move(record)));
+	const auto result = _sessions.back().get();
+	watchActivity(result);
+	return result;
+}
+
+not_null<Session*> Manager::startRun(
+		SessionRecord record,
+		RunSetup setup) {
+	_sessions.push_back(std::make_unique<Session>(
+		this,
+		std::move(record),
+		std::move(setup)));
 	const auto result = _sessions.back().get();
 	watchActivity(result);
 	return result;
@@ -344,7 +373,7 @@ void Manager::remove(const QString &id) {
 	auto known = false;
 	auto attachments = 0;
 	if (const auto session = findOpen(id)) {
-		scope = session->scope();
+		scope = session->isRun() ? Scope::Account() : session->scope();
 		attachments = session->record().info.attachments;
 		known = true;
 		session->stop();
@@ -380,6 +409,21 @@ void Manager::remove(const QString &id) {
 	if (known) {
 		_listChanges.fire_copy(scope);
 	}
+}
+
+void Manager::unload(const QString &id) {
+	const auto it = std::find_if(
+		begin(_sessions),
+		end(_sessions),
+		[&](const auto &session) { return session->id() == id; });
+	if (it == end(_sessions)
+		|| (*it)->state().status == SessionStatus::Working
+		|| (*it)->state().status == SessionStatus::Compacting) {
+		return;
+	}
+	auto taken = std::move(*it);
+	_sessions.erase(it);
+	crl::on_main([holder = std::move(taken)] {});
 }
 
 void Manager::stopExcluded() {
@@ -468,6 +512,14 @@ TaskRunner &Manager::runner() const {
 	return *_runner;
 }
 
+ActingGuard Manager::actingGuard() {
+	return ActingGuard(&_acting);
+}
+
+bool Manager::acting() const {
+	return _acting > 0;
+}
+
 void Manager::removeTask(const QString &id) {
 	_runner->taskRemoved(id);
 	for (const auto &run : _tasks->runs(id)) {
@@ -486,6 +538,7 @@ void Manager::removeTask(const QString &id) {
 		_store->removeSession(run.sessionId);
 	}
 	_tasks->remove(id);
+	updateActivity(Scope::Account());
 }
 
 void Manager::upsertIndex(const SessionInfo &info) {
@@ -516,6 +569,10 @@ Transport &Manager::transport() const {
 void Manager::save(not_null<Session*> session) {
 	const auto &record = session->record();
 	_store->writeSession(record);
+	if (session->isRun()) {
+		_runner->runSaved(session);
+		return;
+	}
 	upsertIndex(record.info);
 	_store->writeIndex(_index);
 	_listChanges.fire_copy(record.info.scope);

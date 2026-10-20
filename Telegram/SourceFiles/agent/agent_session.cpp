@@ -12,6 +12,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_exclusions.h"
 #include "agent/agent_memories.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/agent_task_runner.h"
+#include "agent/agent_tasks.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_loop.h"
 #include "agent/core/agent_memory.h"
@@ -54,20 +56,56 @@ constexpr auto kProvisionalTitleLimit = 60;
 	return result;
 }
 
+[[nodiscard]] std::unique_ptr<PolicyGate> MakeGate(
+		not_null<Manager*> manager,
+		const SessionRecord &record,
+		const std::optional<RunSetup> &run) {
+	auto excluded = [=](PeerKey peer) {
+		return manager->exclusions().excluded(peer);
+	};
+	if (!run) {
+		return std::make_unique<PolicyGate>(
+			record.info.scope,
+			std::move(excluded),
+			record.tainted);
+	}
+	const auto session = &manager->session();
+	const auto chats = run->task.frame.chats;
+	const auto triggers = run->triggerPeers;
+	return std::make_unique<PolicyGate>(
+		record.info.scope,
+		std::move(excluded),
+		record.tainted,
+		GateFrame{
+			.tools = run->task.frame.tools,
+			.contains = [=](PeerKey peer) {
+				return (chats.triggerChat
+						&& ranges::contains(triggers, peer))
+					|| ChatSetContains(
+						chats,
+						MakeChatFacts(session, peer));
+			},
+		});
+}
+
 } // namespace
 
-Session::Session(not_null<Manager*> manager, SessionRecord record)
+Session::Session(
+	not_null<Manager*> manager,
+	SessionRecord record,
+	std::optional<RunSetup> run)
 : _manager(manager)
+, _run(std::move(run))
 , _record(std::move(record))
-, _gate(std::make_unique<PolicyGate>(
-	_record.info.scope,
-	[=](PeerKey peer) { return manager->exclusions().excluded(peer); },
-	_record.tainted))
+, _gate(MakeGate(manager, _record, _run))
 , _tools(std::make_unique<ToolRegistry>(
 	&manager->session(),
 	_gate.get(),
 	_record.loadedGroups,
 	_record.info.id)) {
+	if (_run) {
+		_tools->setBackground(_run->provider, _run->notify);
+	}
 	_repairedOnLoad = CloseInterruptedTurn(_record);
 	_undoneReported = int(_record.undone.size());
 	_state.pendingCards = CountPendingCards(_record.cards);
@@ -132,6 +170,25 @@ const Scope &Session::scope() const {
 	return _record.info.scope;
 }
 
+bool Session::isRun() const {
+	return !_record.info.task.isEmpty();
+}
+
+std::optional<ProviderSettings> Session::currentProvider() const {
+	if (_run) {
+		return _run->provider;
+	} else if (isRun()) {
+		return std::nullopt;
+	} else if (const auto provider = ActiveProvider(_manager->providers())) {
+		return *provider;
+	}
+	return std::nullopt;
+}
+
+QString Session::cacheKey() const {
+	return _run ? _run->task.id : _record.info.id;
+}
+
 const SessionRecord &Session::record() const {
 	return _record;
 }
@@ -191,7 +248,7 @@ void Session::retry() {
 		return;
 	}
 	_overflowRetried = false;
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	if (!provider) {
 		failWithoutProvider();
 		return;
@@ -208,6 +265,22 @@ void Session::decideCard(
 		const QString &toolUseId,
 		CardDecision decision) {
 	_tools->decide(toolUseId, decision);
+}
+
+void Session::expireCards() {
+	auto ids = std::vector<QString>();
+	for (const auto &card : _record.cards) {
+		if (card.status == CardStatus::Pending) {
+			ids.push_back(card.toolUseId);
+		}
+	}
+	const auto weak = base::make_weak(this);
+	for (const auto &id : ids) {
+		_tools->expire(id);
+		if (!weak) {
+			return;
+		}
+	}
 }
 
 bool Session::canUndo(const QString &toolUseId) const {
@@ -299,15 +372,24 @@ void Session::dispatch(SendRequest request) {
 			TextBlock{ WrapUntrusted(request.untrusted), true });
 	}
 	auto hint = request.hint;
-	if (const auto undone = undoHint(); !undone.isEmpty()) {
-		hint = hint.isEmpty() ? undone : hint + '\n' + undone;
+	const auto addHint = [&](const QString &line) {
+		if (!line.isEmpty()) {
+			hint = hint.isEmpty() ? line : hint + '\n' + line;
+		}
+	};
+	addHint(undoHint());
+	if (_record.info.scope.kind == ScopeKind::Chat) {
+		if (const auto peer = _manager->session().data().peerLoaded(
+				PeerId(_record.info.scope.peer))) {
+			addHint(FormatChatCounters(MakeChatBrief(peer)));
+		}
 	}
 	if (!hint.isEmpty()) {
 		message.blocks.push_back(TextBlock{ HintText(hint), true });
 	}
 	Expects(!message.blocks.empty());
 
-	if (_record.messages.empty()) {
+	if (_record.messages.empty() && !isRun()) {
 		_record.info.title = ProvisionalTitle(request.text);
 	}
 	auto named = request.mentions;
@@ -337,7 +419,7 @@ void Session::dispatch(SendRequest request) {
 	if (!weak) {
 		return;
 	}
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	if (!provider) {
 		failWithoutProvider();
 		return;
@@ -367,6 +449,9 @@ void Session::accountUsage(
 	const auto priced = PriceUsage(usage, provider);
 	_record.info.usage += priced;
 	_manager->spending().add(priced);
+	if (isRun()) {
+		_manager->tasks().addUsage(_record.info.task, priced);
+	}
 }
 
 QString Session::buildSystem() const {
@@ -376,6 +461,17 @@ QString Session::buildSystem() const {
 				PeerId(_record.info.scope.peer))) {
 			brief = MakeChatBrief(peer);
 		}
+	}
+	if (_run) {
+		return TaskSystemPrompt({
+			.scope = _record.info.scope,
+			.account = AccountLine(&_manager->session()),
+			.instructions = _manager->providers().instructions,
+			.title = _run->task.title,
+			.task = _run->task.instruction,
+			.frame = _run->frame,
+			.chat = brief,
+		});
 	}
 	return SystemPrompt({
 		.scope = _record.info.scope,
@@ -407,7 +503,7 @@ int Session::planCompaction(
 }
 
 void Session::startCompaction(int until) {
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
 	if (!provider || !adapter) {
 		failWithoutProvider();
@@ -443,7 +539,7 @@ void Session::startCompaction(int until) {
 }
 
 void Session::runTurn() {
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	if (!provider) {
 		failWithoutProvider();
 		return;
@@ -473,11 +569,12 @@ void Session::runLoop(const ProviderSettings &provider) {
 			.model = provider.model,
 			.system = buildSystem(),
 			.maxOutputTokens = 0,
-			.maxSteps = 25,
+			.maxSteps = _run ? kTaskMaxSteps : 25,
 			.pdfEngine = (IsOpenRouter(provider)
 				&& !_manager->abilities(provider).files
 				? u"pdf-text"_q
 				: QString()),
+			.cacheKey = cacheKey(),
 		},
 		std::move(messages));
 	_loopContext = int(_loop->history().size());
@@ -577,6 +674,7 @@ void Session::continueAfterTurn(const TurnFinished &turn) {
 		return;
 	}
 	if (turn.end == TurnEnd::Completed
+		&& !isRun()
 		&& !_record.info.titleFinal
 		&& !_titleRequested) {
 		startTitleRequest();
@@ -585,7 +683,7 @@ void Session::continueAfterTurn(const TurnFinished &turn) {
 }
 
 void Session::compactAndResume() {
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	if (!provider) {
 		return;
 	}
@@ -659,7 +757,7 @@ bool Session::publishRecord() {
 }
 
 void Session::startTitleRequest() {
-	const auto provider = ActiveProvider(_manager->providers());
+	const auto provider = currentProvider();
 	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
 	if (!provider || !adapter) {
 		return;

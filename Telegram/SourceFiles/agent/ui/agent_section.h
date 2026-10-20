@@ -19,5 +19,8 @@ void ShowGeneralAgent(not_null<Window::SessionController*> controller);
 void ShowGeneralAgent(
 	not_null<Window::SessionController*> controller,
 	HandoffDraft draft);
+void ShowGeneralAgentSession(
+	not_null<Window::SessionController*> controller,
+	const QString &sessionId);
 
 } // namespace Agent::Ui

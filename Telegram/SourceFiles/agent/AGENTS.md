@@ -63,8 +63,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `MainWidget::updateThirdColumnToCurrentChat()`,
   `Shortcuts::Command::AgentPanel`, `Agent::Ui::SetupChatsListRow()` in
   `Dialogs::Widget`, `Agent::Ui::FillPeerMenu()` in the `Window::PeerMenu`
-  filler, `Agent::Ui::FillFolderMenu()` in both folder menus and
-  `Agent::Ui::PanelAvailabilityChanges()` in the history top bar.
+  filler, `Agent::Ui::FillFolderMenu()` in both folder menus,
+  `Agent::Ui::PanelAvailabilityChanges()` in the history top bar and
+  `NativeManager::showCustomNotification()` with its activation check at
+  the start of `Window::Notifications::Manager::notificationActivated()`.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
@@ -850,6 +852,20 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   pending cards count for the account scope (the "✦ Agent" badge).
 - Every dispatch passes the session id as `LoopOptions::cacheKey`, and in
   the chat scope adds `FormatChatCounters()` of the chat to the hint.
+- A run is a `Session` made by `Manager::startRun()` with a `RunSetup`
+  (the task copy, the trigger chats, the provider, the frame text and a
+  `notify` callback). Its gate has a `GateFrame` (the task's action tools;
+  chats in the frame chats or, with `triggerChat`, one of the trigger
+  chats), its registry runs in background mode, its prompt is
+  `TaskSystemPrompt()`, it uses the setup's provider, `kTaskMaxSteps`,
+  the task id as the cache key, no title request, and its usage also goes
+  to `Tasks::addUsage()`. A run record loaded later (`isRun()` without a
+  setup) has no provider and is only shown. `expireCards()` decides every
+  pending card `Expired` through `ToolRegistry::expire()`.
+- `Manager::save()` of a run writes the record and tells the runner,
+  never the index. `actingGuard()` marks the registry running a tool or an
+  approved card; `acting()` is true meanwhile, so the runner treats new
+  messages made then as the agent's own.
 - `tasks()` and `runner()` are the account's `Tasks` and `TaskRunner`.
   `taskProvider()` is `BackgroundProvider()` for the task when it can make
   an adapter, else null. `removeTask()` stops the task's runs, deletes
@@ -978,10 +994,14 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   true while a run of the task works or waits; `runningChanges()` fires
   the task id.
 - `ShowTaskNotification()` shows a system notification through the
-  client's notification manager: the userpic of `peer` (the user's own
-  for 0), `title`, `text`, with sound only when `sound`; a click opens
-  the run session in the general agent screen, or in the chat panel for
-  a chat task.
+  client's native notification manager
+  (`NativeManager::showCustomNotification()`, whose click runs its own
+  callback instead of opening a chat): the userpic of `peer` (the user's
+  own for 0), `title`, `text`, with the default sound only when `sound`,
+  nothing while desktop notifications are off, no details while the
+  screen or the app is locked. A click opens the run session in the
+  general agent screen (`ShowGeneralAgentSession()`). Without native
+  notifications it shows a toast in the account's window.
 
 ## Tools (`agent/tools/`)
 
@@ -1057,10 +1077,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   restart.
 - `load_tools` (account and chat scope) takes a `group`: `folders`,
   `files` or `tasks`. Loading an already loaded group is a no-op success.
-- In a background run (`PolicyGate::background()`) `tools()` lists every
-  entry the gate makes available, group entries included, without
-  `load_tools`; media abilities are those of the run's provider; and
-  `PendingCall::notify` shows a task notification. Tools that are only
+- In a background run (`PolicyGate::background()`, set up with
+  `setBackground()`) `tools()` lists every entry the gate makes available,
+  group entries included, without `load_tools`; media abilities are those
+  of the run's provider; and `PendingCall::notify` shows a task
+  notification. `expire()` finishes a pending card `Expired` with its
+  result text. `ToolPolicyByName()` is the policy of a table entry. Tools that are only
   for normal sessions have `background` false: `load_tools`, the memory
   tools, `find_setting`, `open`, `continue_in_general`, `set_draft`,
   `draft_files` and the `tasks` group.

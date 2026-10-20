@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_engine.h"
 #include "agent/core/agent_providers.h"
 #include "agent/core/agent_record.h"
+#include "agent/core/agent_task.h"
 #include "base/weak_ptr.h"
 
 #include <rpl/event_stream.h>
@@ -44,6 +45,14 @@ enum class SessionStatus : uchar {
 	Failed,
 };
 
+struct RunSetup {
+	Task task;
+	std::vector<PeerKey> triggerPeers;
+	ProviderSettings provider;
+	QString frame;
+	Fn<void(QString text)> notify;
+};
+
 struct SessionState {
 	SessionStatus status = SessionStatus::Idle;
 	std::optional<Error> error;
@@ -54,12 +63,16 @@ struct SessionState {
 
 class Session final : public base::has_weak_ptr {
 public:
-	Session(not_null<Manager*> manager, SessionRecord record);
+	Session(
+		not_null<Manager*> manager,
+		SessionRecord record,
+		std::optional<RunSetup> run = std::nullopt);
 	~Session();
 
 	[[nodiscard]] Manager &manager() const;
 	[[nodiscard]] const QString &id() const;
 	[[nodiscard]] const Scope &scope() const;
+	[[nodiscard]] bool isRun() const;
 
 	[[nodiscard]] const SessionRecord &record() const;
 	[[nodiscard]] rpl::producer<> recordChanges() const;
@@ -73,6 +86,7 @@ public:
 	void retry();
 
 	void decideCard(const QString &toolUseId, CardDecision decision);
+	void expireCards();
 	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
 	void undo(const std::vector<QString> &toolUseIds);
 	[[nodiscard]] rpl::producer<> undoChanges() const;
@@ -86,6 +100,8 @@ private:
 	void applyCard(Card card);
 	[[nodiscard]] QString undoHint();
 	void failWithoutProvider();
+	[[nodiscard]] std::optional<ProviderSettings> currentProvider() const;
+	[[nodiscard]] QString cacheKey() const;
 	void accountUsage(const Usage &usage, const ProviderSettings &provider);
 	[[nodiscard]] QString buildSystem() const;
 	[[nodiscard]] SessionRecord withAttachedImages() const;
@@ -111,6 +127,7 @@ private:
 	void applyRename(const QString &title);
 
 	const not_null<Manager*> _manager;
+	const std::optional<RunSetup> _run;
 	SessionRecord _record;
 	SessionState _state;
 	std::unique_ptr<PolicyGate> _gate;

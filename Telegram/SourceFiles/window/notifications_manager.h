@@ -383,6 +383,8 @@ protected:
 	}
 	[[nodiscard]] virtual QString accountNameSeparator();
 
+	base::flat_map<NotificationId, Fn<void()>> _customActivations;
+
 private:
 	Window::SessionController *openNotificationMessage(
 		not_null<History*> history,
@@ -416,6 +418,11 @@ public:
 		DisplayOptions options;
 		std::vector<NotificationAction> actions;
 	};
+
+	void showCustomNotification(
+		NotificationInfo &&info,
+		bool sound,
+		Fn<void()> activated);
 
 protected:
 	using Manager::Manager;
