@@ -17,9 +17,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(6);
+constexpr auto kFormatVersion = qint32(7);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
+constexpr auto kMaxIgnoredRoutes = 100;
 
 } // namespace
 
@@ -43,7 +44,12 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 			<< provider.priceCached
 			<< qint32(provider.audio ? 1 : 0)
 			<< qint32(provider.video ? 1 : 0)
-			<< qint32(provider.files ? 1 : 0);
+			<< qint32(provider.files ? 1 : 0)
+			<< qint32(provider.service)
+			<< qint32(provider.ignoredRoutes.size());
+		for (const auto &route : provider.ignoredRoutes) {
+			stream << route;
+		}
 	}
 	stream << state.defaultId << state.instructions;
 	stream << qint32(state.showEntryPoints ? 1 : 0);
@@ -121,6 +127,30 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			provider.audio = (audio != 0);
 			provider.video = (video != 0);
 			provider.files = (files != 0);
+		}
+		if (version >= 7) {
+			auto service = qint32(0);
+			auto routes = qint32(0);
+			stream >> service >> routes;
+			if (stream.status() != QDataStream::Ok
+				|| service < 0
+				|| service > int(ProviderService::OpenRouter)
+				|| routes < 0
+				|| routes > kMaxIgnoredRoutes) {
+				return std::nullopt;
+			}
+			provider.service = ProviderService(service);
+			auto ignored = std::vector<QString>();
+			ignored.reserve(routes);
+			for (auto i = 0; i != routes; ++i) {
+				auto route = QString();
+				stream >> route;
+				if (stream.status() != QDataStream::Ok) {
+					return std::nullopt;
+				}
+				ignored.push_back(std::move(route));
+			}
+			provider.ignoredRoutes = std::move(ignored);
 		}
 		state.list.push_back(std::move(provider));
 	}

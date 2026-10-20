@@ -387,15 +387,31 @@ std::vector<Check> ProvidersChecks() {
 			return QString();
 		} },
 		{ u"providers_v5_loads_background_defaults"_q, [] {
-			auto state = SampleState();
-			state.mediaId = u"openai"_q;
-			auto bytes = SerializeProviders(state);
-			bytes.chop(4 + 8 + 8);
-			{
-				QDataStream stream(&bytes, QIODevice::ReadWrite);
-				stream.setVersion(QDataStream::Qt_5_1);
-				stream << qint32(5);
-			}
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(5)
+					<< qint32(1)
+					<< u"old"_q
+					<< qint32(0)
+					<< u"Название"_q
+					<< u"https://example.com/v1"_q
+					<< u"key"_q
+					<< u"model"_q
+					<< qint32(8192)
+					<< qint32(1)
+					<< 0.1
+					<< 0.2
+					<< 0.3
+					<< qint32(0)
+					<< qint32(0)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0)
+					<< u"openai"_q;
+			});
 			const auto restored = DeserializeProviders(bytes);
 			if (!restored) {
 				return u"version 5 failed to deserialize"_q;
@@ -476,6 +492,213 @@ std::vector<Check> ProvidersChecks() {
 			settings.kind = ProviderKind::Anthropic;
 			if (CreateAdapter(settings)) {
 				return u"expected nullptr for Anthropic"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v7_round_trip"_q, [] {
+			auto state = SampleState();
+			state.list[0].service = ProviderService::OpenRouter;
+			state.list[0].baseUrl = OpenRouterBaseUrl();
+			state.list[0].ignoredRoutes = {
+				u"InferenceNet"_q,
+				u"Novita"_q,
+			};
+			const auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v7 failed to deserialize"_q;
+			}
+			const auto diff = ProvidersEqual(state, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			} else if (restored->list[1].service
+					!= ProviderService::Custom
+				|| !restored->list[1].ignoredRoutes.empty()) {
+				return u"the Custom profile must have no routes"_q;
+			}
+			return (SerializeProviders(*restored) == bytes)
+				? QString()
+				: u"re-serialization is not byte-identical"_q;
+		} },
+		{ u"providers_v6_loads_custom"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(6)
+					<< qint32(1)
+					<< u"old"_q
+					<< qint32(0)
+					<< u"Название"_q
+					<< u"https://example.com/v1"_q
+					<< u"key"_q
+					<< u"model"_q
+					<< qint32(8192)
+					<< qint32(1)
+					<< 0.1
+					<< 0.2
+					<< 0.3
+					<< qint32(0)
+					<< qint32(0)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0)
+					<< QString()
+					<< QString()
+					<< 1.0
+					<< qint64(1'000'000);
+			});
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"version 6 failed to deserialize"_q;
+			}
+			const auto &provider = restored->list[0];
+			if (provider.service != ProviderService::Custom) {
+				return u"version 6 must load Custom service"_q;
+			} else if (!provider.ignoredRoutes.empty()) {
+				return u"version 6 must load no routes"_q;
+			} else if (restored->defaultId != u"old"_q) {
+				return u"version 6 must keep defaultId"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v7_reject_bad_service"_q, [] {
+			for (const auto service : { qint32(2), qint32(-1) }) {
+				const auto bytes = Written([&](QDataStream &stream) {
+					stream
+						<< qint32(7)
+						<< qint32(1)
+						<< u"x"_q
+						<< qint32(0)
+						<< QString()
+						<< QString()
+						<< QString()
+						<< QString()
+						<< qint32(0)
+						<< qint32(0)
+						<< 0.
+						<< 0.
+						<< 0.
+						<< qint32(0)
+						<< qint32(0)
+						<< qint32(0)
+						<< service
+						<< qint32(0)
+						<< QString()
+						<< QString()
+						<< qint32(1);
+				});
+				if (DeserializeProviders(bytes)) {
+					return u"service %1 must fail"_q.arg(service);
+				}
+			}
+			return QString();
+		} },
+		{ u"providers_v7_reject_bad_route_count"_q, [] {
+			for (const auto routes : { qint32(101), qint32(-1) }) {
+				const auto bytes = Written([&](QDataStream &stream) {
+					stream
+						<< qint32(7)
+						<< qint32(1)
+						<< u"x"_q
+						<< qint32(0)
+						<< QString()
+						<< QString()
+						<< QString()
+						<< QString()
+						<< qint32(0)
+						<< qint32(0)
+						<< 0.
+						<< 0.
+						<< 0.
+						<< qint32(0)
+						<< qint32(0)
+						<< qint32(0)
+						<< qint32(0)
+						<< routes
+						<< QString()
+						<< QString()
+						<< qint32(1);
+				});
+				if (DeserializeProviders(bytes)) {
+					return u"route count %1 must fail"_q.arg(routes);
+				}
+			}
+			return QString();
+		} },
+		{ u"providers_v7_reject_truncated_routes"_q, [] {
+			auto state = ProvidersState();
+			auto provider = ProviderSettings();
+			provider.id = u"router"_q;
+			provider.service = ProviderService::OpenRouter;
+			provider.ignoredRoutes = { u"A"_q, u"B"_q, u"C"_q };
+			state.list.push_back(provider);
+			const auto bytes = SerializeProviders(state);
+			for (auto size = 0; size != bytes.size(); ++size) {
+				if (DeserializeProviders(bytes.mid(0, size))) {
+					return u"expected nullopt for truncation at "_q
+						+ QString::number(size);
+				}
+			}
+			return QString();
+		} },
+		{ u"providers_find_provider"_q, [] {
+			auto state = SampleState();
+			const auto found = FindProvider(state, u"openai"_q);
+			if (!found || found->id != u"openai"_q) {
+				return u"the provider must be found"_q;
+			} else if (FindProvider(state, QString())) {
+				return u"an empty id must yield nullptr"_q;
+			} else if (FindProvider(state, u"missing"_q)) {
+				return u"an unknown id must yield nullptr"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_session_provider"_q, [] {
+			auto state = SampleState();
+			state.defaultId = u"openai"_q;
+			const auto known = SessionProvider(state, u"anthropic"_q);
+			if (!known || known->id != u"anthropic"_q) {
+				return u"a known profileId must win"_q;
+			} else if (SessionProvider(state, u"missing"_q)
+					!= DefaultProvider(state)) {
+				return u"an unknown profileId must fall back"_q;
+			} else if (SessionProvider(state, QString())
+					!= DefaultProvider(state)) {
+				return u"an empty profileId must fall back"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_service_key"_q, [] {
+			auto state = SampleState();
+			state.list[0].apiKey = u"sk-router"_q;
+			state.list[0].service = ProviderService::OpenRouter;
+			if (ServiceKey(state, ProviderService::OpenRouter)
+					!= u"sk-router"_q) {
+				return u"the OpenRouter key must be returned"_q;
+			} else if (!ServiceKey(state, ProviderService::Custom).isEmpty()) {
+				return u"Custom must have no key"_q;
+			}
+			auto empty = ProvidersState();
+			if (!ServiceKey(empty, ProviderService::OpenRouter).isEmpty()) {
+				return u"a missing service must have no key"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_set_service_key"_q, [] {
+			auto state = SampleState();
+			state.list[1].apiKey = u"sk-custom"_q;
+			state.list[0].service = ProviderService::OpenRouter;
+			state.list[2].service = ProviderService::OpenRouter;
+			SetServiceKey(state, ProviderService::OpenRouter, u"sk-new"_q);
+			for (const auto &provider : state.list) {
+				const auto expected = (provider.id == u"локальный"_q)
+					? u"sk-custom"_q
+					: u"sk-new"_q;
+				if (provider.apiKey != expected) {
+					return u"key of "_q + provider.id + u" is wrong"_q;
+				}
 			}
 			return QString();
 		} },
