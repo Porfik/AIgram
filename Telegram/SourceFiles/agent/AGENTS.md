@@ -35,6 +35,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `agent_tools.cpp` is the `ToolRegistry` and `load_tools`;
   `agent_tool_rights.*` maps admin rights and member restrictions to the
   names tools use.
+- `agent_claude.*` is the client side of the Claude Code engine:
+  `ClaudeLauncher` (a `QProcess` per process), `ClaudePool`,
+  `ClaudeCommand` (one-off `claude` commands such as `auth status`),
+  finding the binary and the subscription limits.
 - Account data next to the sessions: `Memories` (`agent_memories.*`),
   `Exclusions` (`agent_exclusions.*`) and `SpendingTracker`
   (`agent_spending_tracker.*`), owned by `Manager`; their pure parts are
@@ -317,10 +321,126 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   is true into `effortLevels` (in that order), and `KnownPrices()` of the
   id. Malformed JSON gives an empty list.
 
+## Claude Code (`agent_claude_process.h`, `agent_claude_protocol.h`, `agent_claude_engine.h`, stage 4)
+
+The subscription engine drives the user's `claude` binary over its
+stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
+`td_agent`; the client supplies the process (`ClaudeLauncher`).
+
+- `Launcher::start()` starts a process and calls the handlers
+  asynchronously, never from inside `start()`: `line` for every non-empty
+  stdout line without the newline, then `finished` exactly once with an
+  empty string for exit code 0, else a short description. Destroying the
+  `Process` kills it and no handler is called afterwards; a handler may
+  destroy the process. `write()` appends a newline.
+- `LaunchArguments()` is `-p --input-format stream-json --output-format
+  stream-json --verbose --include-partial-messages --tools ""
+  --strict-mcp-config --mcp-config <server> --setting-sources ""
+  --no-session-persistence --disable-slash-commands
+  --permission-prompt-tool stdio --thinking-display summarized
+  --max-turns <maxTurns>`, then `--model` and `--effort` when set. The
+  server is `{"mcpServers": {"aigram": {"type": "sdk", "name": "aigram",
+  "alwaysLoad": true}}}`. `InitializeRequest()` declares `aigram` in
+  `sdkMcpServers` with `sdkMcpServerConfigs.aigram` `{"timeout":
+  kToolTimeoutMs, "disableAutoBackground": true}` and the system prompt
+  as `systemPrompt: [<system>]` (a short default when it is blank: an
+  empty one would give Claude Code's own prompt).
+- Lines: `ControlRequestLine()`, `ControlResponseLine()` (success with a
+  `response`), `ControlErrorLine()`, `UserLine()` (`shouldQuery: false`
+  when it must not ask the model) and `AssistantLine()`; compact JSON.
+- `ReplayFrames()` turns messages into stream-json frames: user frames
+  carry `tool_result` blocks first, then text blocks (hidden ones too),
+  `Image` media with bytes and PDF `File` media with bytes; assistant
+  frames carry text and `tool_use` blocks with `ToolName()` names. Thinking
+  is dropped (it is bound to another conversation), other media and media
+  without bytes are skipped, empty frames are skipped and consecutive
+  frames of one role merge. Tool use ids that are not `^[A-Za-z0-9_-]+$`
+  or repeat an earlier id become `toolu_aigram_<message>_<block>`, and
+  the results that follow use the new id. `UserContent()` is the user
+  frame content of one message without id remapping.
+- MCP: `McpToolsList()` lists the tools with `_meta:
+  {"anthropic/maxResultSizeChars": kMaxResultChars}` (otherwise the CLI
+  saves big results into `~/.claude/projects`). `McpToolResult()` is the
+  result text and its `Image` media as MCP image content, `isError` when
+  set; other media are never sent (the CLI writes them to disk) and a
+  line says how many were left out.
+- `ParseLine()` returns the typed line: `ControlRequest` (also for
+  `control_cancel_request`, with that subtype), `ControlResponse`,
+  `StreamEvent` (a Messages API event), `AssistantEcho` (its `error`, e.g.
+  `authentication_failed`, and text), `UserEcho` (the `tool_result`
+  blocks the CLI sent the model; `replay` for `isReplay` echoes),
+  `ResultLine`, `Limits` (`rate_limit_event`: status and the five-hour
+  and seven-day `utilization` 0..1 and `resetsAt` unix time) and
+  `SystemInit`; `nested` marks lines of subagents
+  (`parent_tool_use_id`). Anything else is `std::monostate`.
+- `ParseModels()` reads `models` of the `initialize` response (`value`,
+  `resolvedModel`, `displayName`, `description`,
+  `supportedEffortLevels`), skipping entries without `value`.
+  `ParseAuthStatus()` reads `claude auth status` JSON (`loggedIn`,
+  `authMethod`, `email`, `subscriptionType`). `ParseVersion()` finds
+  `x.y.z` in `claude --version`; `VersionSupported()` is at least
+  `kMinVersion` (2.1.304, the version the protocol was checked with).
+- `ResultError()` maps the assistant `error` (`authentication_failed`,
+  `oauth_org_not_allowed`, `account_on_hold`, `verification_required`,
+  `billing_error`, `cloud_credential_error` → `Auth`; `rate_limit` →
+  `RateLimited`; `overloaded`, `server_error` → `Overloaded`;
+  `invalid_request`, `model_not_found` → `BadRequest`), else
+  `api_error_status` like the HTTP adapters, else `BadResponse`; the text
+  is the result text or its `errors`.
+- `Connection` is one `claude` process with fixed `SessionOptions`, the
+  `owner` (a session id) and a `ConnectionKey` saying which record state
+  the process holds: `messages` record messages and `summaryUntil`. Lines
+  go to the handlers set with `setHandlers()`; without handlers control
+  requests get an error. `ConnectionPool` keeps idle warm connections:
+  `take()` hands out the one of the owner (or null) and removes it.
+- `Engine` implements `Agent::Engine` like `Loop` (events, history,
+  interrupt and destruction rules). `resume()` takes the owner's warm
+  connection when it is alive, initialized, has the same options and the
+  key `{owner, recordMessages - 1, summaryUntil}`, and then sends only the
+  last message as the query. Otherwise it starts a new process, sends
+  `initialize`, and after its success replays `ReplayFrames()` of the
+  history: an assistant frame is written right away, a user frame waits
+  for its `result` with `num_turns` 0 (sending without waiting makes the
+  CLI reorder the frames), the last frame (it must be a user frame) is
+  the query.
+- While the query runs: stream events of the top level go through a
+  `StreamAssembler`; deltas are forwarded (tool names without the
+  `mcp__aigram__` prefix), and at `message_stop` the message is appended
+  to the history and its usage reported. `can_use_tool` is allowed for
+  `mcp__aigram__*` tools (the registry and its `PolicyGate` decide inside
+  the call) and denied for anything else. `mcp_message`: `initialize`,
+  `tools/list`, `ping`, notifications (acknowledged), `tools/call` (the
+  `_meta["claudecode/toolUseId"]` matches the streamed tool use;
+  `ToolCallRequested`, `ToolExecutor::execute()`, then the MCP answer and
+  `ToolCallFinished`), `notifications/cancelled` (cancels that call in the
+  executor). Tool results the CLI made itself (denials, interruptions)
+  arrive in `UserEcho` and complete their tool uses as errors. When every
+  tool use of a message has a result, one user message with them in
+  order is appended. After a tool call, when `tools()` changed (a group
+  was loaded) the engine sends `notifications/tools/list_changed`.
+- The `result` line ends the turn: `error_max_turns` → `StepLimit`, an
+  assistant error `max_output_tokens` → `MaxTokens`, other errors →
+  `Failed` with `ResultError()`, success by the last stop reason
+  (`MaxTokens`, `Refusal` or `Completed`). Unfinished tool uses get an
+  error result first and partial streamed text is kept. A process exit
+  during a turn fails it (`Network`). After `Completed`, `MaxTokens` and
+  `Refusal` with `keepWarm` the connection goes back to the pool with the
+  key `{owner, recordMessages + appended messages, summaryUntil}`; after
+  any other end it is destroyed. `interrupt()` sends `interrupt`, cancels
+  running tools, adds "Interrupted by the user." results and ends the
+  turn at once; that connection is never reused.
+- `limits` gets every `rate_limit_event`.
+- `OneShot` runs one turn without tools (`maxTurns` 1, no pool) over the
+  given messages and calls `done` once with the assistant blocks, the
+  summed usage and the error (also when the turn ended without an
+  answer); `done` may destroy it. `ModelsQuery` starts `claude`, sends
+  `initialize`, answers the MCP handshake and calls `done` once with
+  `ParseModels()` of the answer or an error.
+
 ## Loop and engines (`agent_engine.h`, `agent_loop.h`)
 
 - `Engine` is what sessions and UI talk to; `Loop` is the native engine and
-  the Claude Code engine of stage 4 implements the same interface.
+  `Claude::Engine` (see "Claude Code") implements the same interface.
 - `send()` appends a user message and runs a turn: request, stream, then
   execute every tool use through `ToolExecutor`, append one user message with
   all results in the order of the tool uses, and request again, until the
@@ -1147,6 +1267,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 
 ## Single requests (`agent_request.h`)
 
+- `PendingRequest` is the common base of one-shot requests
+  (`SingleRequest`, `Claude::OneShot`); destroying it cancels.
 - `SingleRequest` sends one request without tools on construction and calls
   `done` exactly once, asynchronously, with the parsed `Response`, network
   errors included. Destroying it cancels the request and `done` is never
@@ -1234,6 +1356,21 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `contextWindow()` follow the session's provider.
 - When the session's provider `IsOpenRouter()` and its `abilities()` lack
   `files`, the loop gets `pdfEngine` `pdf-text`.
+- `Manager::canRun()` is true for a provider with an adapter or
+  `UsesClaudeCode()`; `available()`, `sessionProvider()`,
+  `mediaProvider()` and `taskProvider()` use it. `single()` starts a
+  `PendingRequest` for the provider (`Claude::OneShot` with the
+  request's system prompt and messages, else `SingleRequest`), or returns
+  null when it can't (no adapter, `claude` not found); compaction, titles
+  and `ToolRegistry::askMediaModel()` go through it.
+- A dispatch for a `UsesClaudeCode()` provider runs a `Claude::Engine`
+  instead of a `Loop`: `FindClaudeProgram()` of `claudePath`,
+  `ClaudeLaunchSettings()`, the profile's model and effort, the same
+  system prompt and step limit, the session id as owner, the record's
+  message count and `summaryUntil`, the manager's `ClaudePool` (not for
+  runs, which never stay warm) and `UpdateClaudeLimits()` for the
+  limits. When `claude` is not found the turn fails with an `Auth` error
+  "Claude Code (claude) was not found.".
 - `buildSystem()` passes `FormatMemory()` of the scope's owner
   (`Scope::peer`, zero for the account) to the prompt, so memory changes
   reach the model from the next dispatch on, never within a turn.
@@ -1283,6 +1420,36 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   an adapter, else null. `removeTask()` stops the task's runs, deletes
   their session records and the task. `clearAllData()` also stops every
   run and deletes all tasks with their runs.
+
+## Claude Code client (`agent_claude.h`)
+
+- `ClaudeLauncher` starts `claude` with `QProcess` in the launch
+  settings' working directory. The environment is the system one without
+  `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` and every variable starting
+  with `CLAUDE` except `CLAUDE_CONFIG_DIR` (a parent Claude Code session
+  or an API key must not change how the subscription runs), plus the
+  launch settings' variables. Destroying the process kills it. A
+  non-zero exit reports the exit code and the last stderr line.
+- `ClaudePool` keeps at most three warm connections, each for ten minutes
+  after it was given back; `give()` replaces the owner's older one and
+  drops dead connections; `clear()` closes all (the manager calls it on
+  destruction).
+- `FindClaudeProgram()` is the configured path when it is an executable
+  file (empty otherwise), else `claude` in `PATH`, else the usual install
+  places (`~/.local/bin/claude`, `~/.claude/local/claude`,
+  `/usr/local/bin/claude`, `/opt/homebrew/bin/claude`;
+  `~/.local/bin/claude.exe` on Windows). `ClaudeLaunchSettings()` uses
+  `aigram-claude` in the temp folder as the working directory and sets
+  `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1` and, for an HTTP or SOCKS5
+  application proxy, `HTTPS_PROXY` and `HTTP_PROXY`.
+  `ClaudeInstallCommand()` is the official installer command line.
+- `ClaudeCommand` runs `claude` with arguments (stdin closed, stdout and
+  stderr merged) and calls `done` once with the exit code (-1 when it
+  could not start or crashed) and the output; `progress` gets output
+  chunks as they come. Destroying it kills the process.
+- `ClaudeLimits()` / `ClaudeLimitsValue()` are the latest
+  `rate_limit_event` of any session, with `received` set to the unix time
+  it came; nothing is stored.
 
 ## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`, `agent_attachments.h`)
 

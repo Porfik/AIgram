@@ -17,6 +17,11 @@ PRIVATE
     agent/core/agent_anthropic_stream.h
     agent/core/agent_card.cpp
     agent/core/agent_card.h
+    agent/core/agent_claude_engine.cpp
+    agent/core/agent_claude_engine.h
+    agent/core/agent_claude_process.h
+    agent/core/agent_claude_protocol.cpp
+    agent/core/agent_claude_protocol.h
     agent/core/agent_context.cpp
     agent/core/agent_context.h
     agent/core/agent_documents.cpp
@@ -81,6 +86,7 @@ nice_target_sources(td_agent_test ${src_loc}
 PRIVATE
     agent/core/tests/agent_anthropic_tests.cpp
     agent/core/tests/agent_card_tests.cpp
+    agent/core/tests/agent_claude_tests.cpp
     agent/core/tests/agent_context_tests.cpp
     agent/core/tests/agent_documents_tests.cpp
     agent/core/tests/agent_exclusion_tests.cpp

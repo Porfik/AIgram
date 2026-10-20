@@ -40,6 +40,7 @@ namespace {
 	append(TlChecks());
 	append(MtprotoChecks());
 	append(AnthropicChecks());
+	append(ClaudeChecks());
 	return result;
 }
 

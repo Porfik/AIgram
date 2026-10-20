@@ -14,7 +14,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 namespace Agent {
 
-class SingleRequest final : public base::has_weak_ptr {
+class PendingRequest {
+public:
+	virtual ~PendingRequest() = default;
+
+};
+
+class SingleRequest final
+	: public PendingRequest
+	, public base::has_weak_ptr {
 public:
 	SingleRequest(
 		std::unique_ptr<Adapter> adapter,
