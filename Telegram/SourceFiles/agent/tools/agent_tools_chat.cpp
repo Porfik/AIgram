@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "apiwrap.h"
 #include "base/algorithm.h"
 #include "base/timer.h"
+#include "base/unixtime.h"
 #include "data/data_changes.h"
 #include "data/data_channel.h"
 #include "data/data_chat.h"
@@ -30,6 +31,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "dialogs/dialogs_row.h"
 #include "history/history.h"
 #include "history/history_item.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mtproto/sender.h"
 
@@ -150,6 +152,15 @@ constexpr auto kDefaultMembersLimit = 50;
 	return result;
 }
 
+[[nodiscard]] QStringList PeerDefaultRestrictions(not_null<PeerData*> peer) {
+	if (const auto channel = peer->asChannel()) {
+		return ToolRights::RestrictionNames(channel->defaultRestrictions());
+	} else if (const auto chat = peer->asChat()) {
+		return ToolRights::RestrictionNames(chat->defaultRestrictions());
+	}
+	return {};
+}
+
 [[nodiscard]] QJsonObject BuildPeerInfoJson(
 		not_null<PeerData*> peer,
 		not_null<const PolicyGate*> gate) {
@@ -179,6 +190,14 @@ constexpr auto kDefaultMembersLimit = 50;
 			list.push_back(right);
 		}
 		result.insert("admin_rights", list);
+	}
+	const auto defaultDenied = PeerDefaultRestrictions(peer);
+	if (!defaultDenied.isEmpty()) {
+		auto list = QJsonArray();
+		for (const auto &name : defaultDenied) {
+			list.push_back(name);
+		}
+		result.insert("member_permissions", list);
 	}
 	if (const auto channel = peer->asChannel()) {
 		if (const auto seconds = channel->slowmodeSeconds(); seconds > 0) {
@@ -415,6 +434,76 @@ void DeliverBasicGroupMembers(not_null<PendingCall*> call) {
 	json.insert("members", members);
 	json.insert("has_more", QJsonValue(false));
 	call->done(std::move(json));
+}
+
+void DeliverBasicGroupAdmins(not_null<PendingCall*> call) {
+	const auto chat = call->peer->asChat();
+	auto members = QJsonArray();
+	const auto push = [&](not_null<UserData*> user, const QString &role) {
+		auto member = MemberJson(user, role);
+		const auto rights = ToolRights::AllAdminRightNames();
+		auto list = QJsonArray();
+		for (const auto &right : rights) {
+			list.push_back(right);
+		}
+		member.insert("rights", list);
+		members.push_back(std::move(member));
+	};
+	if (const auto creator = call->session->data().userLoaded(
+			chat->creator.bare)) {
+		push(creator, u"owner"_q);
+	}
+	for (const auto &user : chat->admins) {
+		push(user, u"admin"_q);
+	}
+	auto json = QJsonObject();
+	json.insert("members", members);
+	json.insert("has_more", QJsonValue(false));
+	call->done(std::move(json));
+}
+
+[[nodiscard]] QString MemberRole(const Api::ChatParticipant &participant) {
+	switch (participant.type()) {
+	case Api::ChatParticipant::Type::Creator: return u"owner"_q;
+	case Api::ChatParticipant::Type::Admin: return u"admin"_q;
+	case Api::ChatParticipant::Type::Banned: return u"banned"_q;
+	case Api::ChatParticipant::Type::Restricted: return u"restricted"_q;
+	default: return u"member"_q;
+	}
+}
+
+[[nodiscard]] QJsonObject MemberJsonWithRights(
+		not_null<UserData*> user,
+		const Api::ChatParticipant &participant) {
+	auto member = MemberJson(user, MemberRole(participant));
+	if (participant.isCreatorOrAdmin()) {
+		const auto rank = participant.rank();
+		if (!rank.isEmpty()) {
+			member.insert("rank", rank);
+		}
+		auto list = QJsonArray();
+		for (const auto &right
+				: ToolRights::AdminRightNames(participant.rights().flags)) {
+			list.push_back(right);
+		}
+		if (!list.isEmpty()) {
+			member.insert("rights", list);
+		}
+	} else if (participant.type() == Api::ChatParticipant::Type::Banned
+		|| participant.type() == Api::ChatParticipant::Type::Restricted) {
+		auto list = QJsonArray();
+		for (const auto &name : ToolRights::RestrictionNames(
+				participant.restrictions().flags)) {
+			list.push_back(name);
+		}
+		member.insert("denied", list);
+		const auto until = participant.restrictions().until;
+		if (!ChannelData::IsRestrictedForever(until)) {
+			member.insert("until", base::unixtime::parse(until)
+				.toString(u"yyyy-MM-dd HH:mm"_q));
+		}
+	}
+	return member;
 }
 
 } // namespace
@@ -696,9 +785,42 @@ void RunGetPeerInfo(not_null<PendingCall*> call) {
 	});
 }
 
+[[nodiscard]] QString MembersFilterName(
+		const QJsonObject &input,
+		QString &error) {
+	auto name = input.value("filter").toString().trimmed().toLower();
+	if (name.isEmpty()) {
+		return u"recent"_q;
+	}
+	const auto kFilters = {
+		u"recent"_q,
+		u"admins"_q,
+		u"banned"_q,
+		u"restricted"_q,
+		u"bots"_q,
+	};
+	if (!ranges::contains(kFilters, name)) {
+		error = u"Unknown filter: %1. The filters are: recent, admins,"
+			u" banned, restricted, bots."_q.arg(name);
+	}
+	return name;
+}
+
 void RunListMembers(not_null<PendingCall*> call) {
 	const auto peer = call->peer;
+	auto error = QString();
+	const auto filterName = MembersFilterName(call->input, error);
+	if (!error.isEmpty()) {
+		call->fail(error);
+		return;
+	}
+	const auto recent = (filterName == u"recent"_q);
 	if (const auto user = peer->asUser()) {
+		if (!recent) {
+			call->fail(
+				u"Only supergroups and channels have this list."_q);
+			return;
+		}
 		auto members = QJsonArray();
 		members.push_back(MemberJson(user, u"member"_q));
 		members.push_back(
@@ -710,12 +832,20 @@ void RunListMembers(not_null<PendingCall*> call) {
 		return;
 	}
 	if (const auto chat = peer->asChat()) {
+		if (!recent && filterName != u"admins"_q) {
+			call->fail(
+				u"Only supergroups and channels have this list."_q);
+			return;
+		}
+		const auto deliver = (filterName == u"admins"_q)
+			? DeliverBasicGroupAdmins
+			: DeliverBasicGroupMembers;
 		if (chat->participants.empty() && !peer->isFullLoaded()) {
-			OnFullPeer(call, [call] {
-				DeliverBasicGroupMembers(call);
+			OnFullPeer(call, [call, deliver] {
+				deliver(call);
 			});
 		} else {
-			DeliverBasicGroupMembers(call);
+			deliver(call);
 		}
 		return;
 	}
@@ -726,7 +856,6 @@ void RunListMembers(not_null<PendingCall*> call) {
 	}
 	const auto &input = call->input;
 	const auto query = input.value("query").toString().trimmed();
-	auto error = QString();
 	const auto limitValue = JsonInt(input, "limit", error);
 	const auto offset = JsonInt(input, "offset", error);
 	if (!error.isEmpty()) {
@@ -739,9 +868,20 @@ void RunListMembers(not_null<PendingCall*> call) {
 		return;
 	}
 	const auto offsetValue = offset.value_or(0);
-	const auto filter = query.isEmpty()
-		? MTP_channelParticipantsRecent()
-		: MTP_channelParticipantsSearch(MTP_string(query));
+	auto filter = MTPChannelParticipantsFilter();
+	if (filterName == u"admins"_q) {
+		filter = MTP_channelParticipantsAdmins();
+	} else if (filterName == u"banned"_q) {
+		filter = MTP_channelParticipantsKicked(MTP_string(query));
+	} else if (filterName == u"restricted"_q) {
+		filter = MTP_channelParticipantsBanned(MTP_string(query));
+	} else if (filterName == u"bots"_q) {
+		filter = MTP_channelParticipantsBots();
+	} else if (query.isEmpty()) {
+		filter = MTP_channelParticipantsRecent();
+	} else {
+		filter = MTP_channelParticipantsSearch(MTP_string(query));
+	}
 	call->api.request(MTPchannels_GetParticipants(
 		channel->inputChannel(),
 		std::move(filter),
@@ -763,12 +903,7 @@ void RunListMembers(not_null<PendingCall*> call) {
 			if (!user) {
 				continue;
 			}
-			const auto role = participant.isCreator()
-				? u"owner"_q
-				: participant.isCreatorOrAdmin()
-				? u"admin"_q
-				: u"member"_q;
-			members.push_back(MemberJson(user, role));
+			members.push_back(MemberJsonWithRights(user, participant));
 		}
 		auto json = QJsonObject();
 		json.insert("members", members);
@@ -820,6 +955,10 @@ std::vector<ToolEntry> Entries() {
 	searchProperties.insert("topic_id", MessageIdProperty(
 		u"Forum topic root message id."_q));
 	auto membersProperties = QJsonObject();
+	membersProperties.insert("filter", StringProperty(
+		u"Which members to list: recent (default), admins, banned"
+		u" (removed and banned), restricted or bots. Banned and"
+		u" restricted need a supergroup or channel."_q));
 	membersProperties.insert("query", StringProperty(
 		u"Search members by name or username."_q));
 	membersProperties.insert("limit", IntProperty(
@@ -891,8 +1030,12 @@ std::vector<ToolEntry> Entries() {
 		RunGetPeerInfo);
 	push(
 		u"list_members"_q,
-		u"List members of this chat with names, usernames and roles."_q,
-		u"List members of the chat with names, usernames and roles."_q,
+		u"List members of this chat with names, usernames and roles."
+		u" Use the filter admins, banned, restricted or bots for those"
+		u" lists."_q,
+		u"List members of the chat with names, usernames and roles."
+		u" Use the filter admins, banned, restricted or bots for those"
+		u" lists."_q,
 		ToolSchema(std::move(membersProperties), QJsonArray()),
 		ChatParam::One,
 		RunListMembers);
