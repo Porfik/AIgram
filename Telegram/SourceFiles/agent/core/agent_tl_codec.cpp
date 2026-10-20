@@ -9,7 +9,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <QtCore/QJsonArray>
 
+#include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace Agent {
 namespace {
@@ -413,6 +415,305 @@ std::optional<QByteArray> EncodeTlCall(
 		return std::nullopt;
 	}
 	return out;
+}
+
+namespace {
+
+struct Decoder {
+	const TlSchema &schema;
+	const QByteArray &bytes;
+	const TlDecodeOptions &options;
+	std::vector<TlSpan> *spans;
+	QString &error;
+	int offset = 0;
+};
+
+[[nodiscard]] bool Take(Decoder &d, int size, const char **result) {
+	if (size < 0 || d.offset + size > d.bytes.size()) {
+		d.error = u"Truncated data."_q;
+		return false;
+	}
+	*result = d.bytes.constData() + d.offset;
+	d.offset += size;
+	return true;
+}
+
+[[nodiscard]] bool ReadUInt32(Decoder &d, uint32 &out) {
+	const char *p = nullptr;
+	if (!Take(d, 4, &p)) {
+		return false;
+	}
+	out = uint32(uchar(p[0]))
+		| (uint32(uchar(p[1])) << 8)
+		| (uint32(uchar(p[2])) << 16)
+		| (uint32(uchar(p[3])) << 24);
+	return true;
+}
+
+[[nodiscard]] bool ReadInt32(Decoder &d, uint32 &out) {
+	return ReadUInt32(d, out);
+}
+
+[[nodiscard]] bool ReadInt64(Decoder &d, int64 &out) {
+	const char *p = nullptr;
+	if (!Take(d, 8, &p)) {
+		return false;
+	}
+	out = int64();
+	for (auto i = 7; i >= 0; --i) {
+		out = (out << 8) | uchar(p[i]);
+	}
+	return true;
+}
+
+[[nodiscard]] bool ReadDouble(Decoder &d, double &out) {
+	const char *p = nullptr;
+	if (!Take(d, 8, &p)) {
+		return false;
+	}
+	memcpy(&out, p, sizeof(double));
+	return true;
+}
+
+[[nodiscard]] bool ReadByteString(Decoder &d, QByteArray &out) {
+	const char *p = nullptr;
+	if (!Take(d, 1, &p)) {
+		return false;
+	}
+	auto size = int(uchar(p[0]));
+	auto prefix = 1;
+	if (size == 0xfe) {
+		if (!Take(d, 3, &p)) {
+			return false;
+		}
+		size = uchar(p[0]) | (uchar(p[1]) << 8) | (uchar(p[2]) << 16);
+		prefix = 4;
+	}
+	const char *data = nullptr;
+	if (!Take(d, size, &data)) {
+		return false;
+	}
+	out = QByteArray(data, size);
+	return Take(d, (4 - ((prefix + size) % 4)) % 4, &data);
+}
+
+[[nodiscard]] bool HasSpan(
+		const TlDecodeOptions &options,
+		const QString &type) {
+	return std::find(
+		options.spanTypes.begin(),
+		options.spanTypes.end(),
+		type) != options.spanTypes.end();
+}
+
+bool DecodeValue(
+		Decoder &d,
+		const QString &type,
+		QJsonValue &out,
+		bool insideSpan);
+
+bool DecodeFields(
+		Decoder &d,
+		const TlCombinator &combinator,
+		QJsonObject &out,
+		bool insideSpan) {
+	auto flagValues = std::vector<uint32>(combinator.params.size(), 0);
+	for (auto i = 0, count = int(combinator.params.size()); i != count; ++i) {
+		const auto &param = combinator.params[i];
+		auto value = QJsonValue();
+		if (param.type == u"#") {
+			if (!ReadInt32(d, flagValues[i])) {
+				return false;
+			}
+			continue;
+		} else if (param.type == u"true") {
+			if (flagValues[param.flagParam] & (1U << param.flagBit)) {
+				out.insert(param.name, true);
+			}
+			continue;
+		} else if (param.flagParam >= 0) {
+			if (!(flagValues[param.flagParam] & (1U << param.flagBit))) {
+				continue;
+			}
+		}
+		if (!DecodeValue(d, param.type, value, insideSpan)) {
+			return false;
+		}
+		if (param.name != u"access_hash" && param.name != u"file_reference") {
+			out.insert(param.name, value);
+		}
+	}
+	return true;
+}
+
+bool DecodeValue(
+		Decoder &d,
+		const QString &type,
+		QJsonValue &out,
+		bool insideSpan) {
+	if (TlIsBuiltinType(type)) {
+		if (type == u"int") {
+			auto raw = uint32(0);
+			if (!ReadInt32(d, raw)) {
+				return false;
+			}
+			out = int32(raw);
+		} else if (type == u"long") {
+			auto raw = int64(0);
+			if (!ReadInt64(d, raw)) {
+				return false;
+			}
+			out = QString::number(raw);
+		} else if (type == u"double") {
+			auto raw = double(0);
+			if (!ReadDouble(d, raw)) {
+				return false;
+			}
+			out = raw;
+		} else if (type == u"string") {
+			auto raw = QByteArray();
+			if (!ReadByteString(d, raw)) {
+				return false;
+			}
+			out = QString::fromUtf8(raw);
+		} else if (type == u"bytes") {
+			auto raw = QByteArray();
+			if (!ReadByteString(d, raw)) {
+				return false;
+			}
+			out = (raw.size() > d.options.maxBytesShown)
+				? u"[%1 bytes]"_q.arg(raw.size())
+				: QString::fromLatin1(raw.toBase64());
+		} else if (type == u"Bool") {
+			auto id = uint32(0);
+			if (!ReadUInt32(d, id)) {
+				return false;
+			} else if (id == kBoolTrueId) {
+				out = true;
+			} else if (id == kBoolFalseId) {
+				out = false;
+			} else {
+				d.error = u"Constructor 0x%1 is not a Bool."_q.arg(
+					id,
+					8,
+					16,
+					QChar('0'));
+				return false;
+			}
+		} else if (type == u"true") {
+			out = true;
+		} else if (type == u"int128" || type == u"int256") {
+			auto raw = QByteArray();
+			const char *p = nullptr;
+			if (!Take(d, (type == u"int128") ? 16 : 32, &p)) {
+				return false;
+			}
+			raw = QByteArray(p, (type == u"int128") ? 16 : 32);
+			out = QString::fromLatin1(raw.toHex());
+		} else {
+			out = QJsonValue();
+		}
+		return true;
+	}
+	auto item = TlVectorItem(type);
+	if (item) {
+		if (type.startsWith(u"Vector<")) {
+			auto id = uint32(0);
+			if (!ReadUInt32(d, id)) {
+				return false;
+			} else if (id != kVectorId) {
+				d.error = u"Constructor 0x%1 is not of type %2."_q.arg(
+					QString::number(id, 16),
+					type);
+				return false;
+			}
+		}
+		auto count = uint32(0);
+		if (!ReadInt32(d, count)) {
+			return false;
+		}
+		auto array = QJsonArray();
+		for (auto i = 0; i < count; ++i) {
+			auto value = QJsonValue();
+			if (!DecodeValue(d, *item, value, insideSpan)) {
+				return false;
+			}
+			array.append(value);
+		}
+		out = array;
+		return true;
+	}
+	const auto boxed = !TlIsBareType(type);
+	auto begin = -1;
+	if (boxed) {
+		if (!insideSpan && HasSpan(d.options, type) && d.spans) {
+			begin = d.offset;
+			insideSpan = true;
+		}
+		auto id = uint32(0);
+		if (!ReadUInt32(d, id)) {
+			return false;
+			}
+		const auto combinator = d.schema.constructor(id);
+		if (!combinator) {
+			d.error = u"Unknown constructor 0x%1."_q.arg(
+				id,
+				8,
+				16,
+				QChar('0'));
+			return false;
+		} else if (combinator->result != type) {
+			d.error = u"Constructor 0x%1 is not of type %2."_q.arg(
+				id,
+				8,
+				16,
+				QChar('0')).arg(type);
+			return false;
+		}
+		auto object = QJsonObject();
+		object.insert(u"_"_q, combinator->name);
+		if (!DecodeFields(d, *combinator, object, insideSpan)) {
+			return false;
+		}
+		out = object;
+	} else {
+		const auto list = d.schema.constructorsOf(type);
+		if (list.size() != 1) {
+			d.error = u"Unknown bare type %1."_q.arg(type);
+			return false;
+		}
+		auto object = QJsonObject();
+		object.insert(u"_"_q, list.front()->name);
+		if (!DecodeFields(d, *list.front(), object, insideSpan)) {
+			return false;
+		}
+		out = object;
+	}
+	if (begin >= 0 && d.spans) {
+		d.spans->push_back({ type, begin, d.offset });
+	}
+	return true;
+}
+
+} // namespace
+
+std::optional<QJsonValue> DecodeTl(
+		const TlSchema &schema,
+		const QString &type,
+		const QByteArray &bytes,
+		QString &error,
+		const TlDecodeOptions &options,
+		std::vector<TlSpan> *spans) {
+	auto decoder = Decoder{ schema, bytes, options, spans, error, 0 };
+	auto value = QJsonValue();
+	if (!DecodeValue(decoder, type, value, false)) {
+		return std::nullopt;
+	} else if (decoder.offset != bytes.size()) {
+		error = u"%1 bytes remain after the value."_q.arg(
+			bytes.size() - decoder.offset);
+		return std::nullopt;
+	}
+	return value;
 }
 
 } // namespace Agent

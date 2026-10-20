@@ -33,6 +33,13 @@ struct Parsed {
 		"obj.empty#11111111 = Obj;\n"
 		"obj.pair#22222222 x:int y:string = Obj;\n"
 		"only.one#aaaaaa01 z:int = Only;\n"
+		"obj.flagged#77777777 flags:# t:flags.0?true x:flags.1?int"
+			" y:string = Obj;\n"
+		"obj.secret#88888888 access_hash:long x:int"
+			" file_reference:bytes = Obj;\n"
+		"msg.small#44444444 x:int = Msg;\n"
+		"msg.big#55555555 m:Msg y:int = Msg;\n"
+		"wrap.it#66666666 m:Msg = Wrap;\n"
 		"inputPeerEmpty#7f3b18ea = InputPeer;\n"
 		"inputPeerSelf#7da07ec9 = InputPeer;\n"
 		"inputUserEmpty#b98886cf = InputUser;\n"
@@ -93,6 +100,36 @@ struct Parsed {
 }
 
 } // namespace
+
+[[nodiscard]] QString DecodeOk(
+		const TlSchema &schema,
+		const QString &type,
+		const QByteArray &bytes,
+		const QJsonValue &expected,
+		const TlDecodeOptions &options = TlDecodeOptions()) {
+	auto error = QString();
+	const auto result = DecodeTl(schema, type, bytes, error, options);
+	if (!result) {
+		return error;
+	} else if (*result != expected) {
+		return u"unexpected decoded value"_q;
+	}
+	return QString();
+}
+
+[[nodiscard]] QString DecodeFail(
+		const TlSchema &schema,
+		const QString &type,
+		const QByteArray &bytes,
+		const QString &expected) {
+	auto error = QString();
+	if (DecodeTl(schema, type, bytes, error)) {
+		return u"must fail with: "_q + expected;
+	} else if (!error.contains(expected)) {
+		return u"unexpected error: "_q + error;
+	}
+	return QString();
+}
 
 std::vector<Check> TlChecks() {
 	return {
@@ -752,6 +789,251 @@ std::vector<Check> TlChecks() {
 					"00000000" "00000000" "00000000"
 					"0a000000" "00000000" "00000000"
 					"0000000000000000"));
+		} },
+		{ u"tl_decode_roundtrip"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			auto check = DecodeOk(schema, u"Obj"_q,
+				QByteArray::fromHex("22222222" "07000000" "03616263"),
+				QJsonObject{ { u"_"_q, u"obj.pair"_q },
+					{ u"x"_q, 7 }, { u"y"_q, u"abc"_q } });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Only"_q,
+				QByteArray::fromHex("01aaaaaa" "05000000"),
+				QJsonObject{ { u"_"_q, u"only.one"_q }, { u"z"_q, 5 } });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"long"_q,
+				QByteArray::fromHex("0000000000040000"),
+				QJsonValue(u"4398046511104"_q));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"int128"_q,
+				QByteArray::fromHex("00112233445566778899aabbccddeeff"),
+				QJsonValue(u"00112233445566778899aabbccddeeff"_q));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Bool"_q,
+				QByteArray::fromHex("b5757299"), QJsonValue(true));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Bool"_q,
+				QByteArray::fromHex("379779bc"), QJsonValue(false));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Vector<int>"_q,
+				QByteArray::fromHex("15c4b51c" "02000000"
+					"01000000" "02000000"),
+				QJsonArray{ 1, 2 });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"vector<int>"_q,
+				QByteArray::fromHex("02000000" "01000000" "02000000"),
+				QJsonArray{ 1, 2 });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeOk(schema, u"Vector<Obj>"_q,
+				QByteArray::fromHex("15c4b51c" "01000000" "22222222"
+					"01000000" "03616263"),
+				QJsonArray{ QJsonObject{ { u"_"_q, u"obj.pair"_q },
+					{ u"x"_q, 1 }, { u"y"_q, u"abc"_q } } });
+		} },
+		{ u"tl_decode_strings_and_bytes"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			const auto values = {
+				QString(),
+				u"xyz"_q,
+				QString(253, 'x'),
+				QString(254, 'x'),
+				QString(300, 'x'),
+			};
+			for (const auto &value : values) {
+				auto error = QString();
+				auto encoded = EncodeTlCall(
+					schema,
+					u"test.str"_q,
+					QJsonObject{ { u"s"_q, value } },
+					TlRefs(),
+					error);
+				if (!encoded) {
+					return error;
+				}
+				const auto decoded = DecodeTl(
+					schema,
+					u"string"_q,
+					auto(encoded->mid(4)),
+					error);
+				if (!decoded || decoded->toString() != value) {
+					return u"a string of %1 bytes must round-trip"_q.arg(
+						value.size());
+				}
+			}
+			auto check = DecodeOk(schema, u"bytes"_q,
+				QByteArray::fromHex("0568656c6c6f0000"),
+				QJsonValue(u"aGVsbG8="_q));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			const auto big = QByteArray(300, '\x01');
+			const auto framed = QByteArray::fromHex("fe2c0100") + big;
+			check = DecodeOk(schema, u"bytes"_q,
+				framed,
+				QJsonValue(u"[300 bytes]"_q));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeOk(schema, u"bytes"_q,
+				framed,
+				QJsonValue(QString::fromLatin1(big.toBase64())),
+				TlDecodeOptions{ .spanTypes = {}, .maxBytesShown = 1000 });
+		} },
+		{ u"tl_decode_flags_and_secrets"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			auto check = DecodeOk(schema, u"Obj"_q,
+				QByteArray::fromHex("77777777" "03000000" "05000000"
+					"02686900"),
+				QJsonObject{ { u"_"_q, u"obj.flagged"_q },
+					{ u"t"_q, true }, { u"x"_q, 5 }, { u"y"_q, u"hi"_q } });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Obj"_q,
+				QByteArray::fromHex("77777777" "02000000" "05000000"
+					"02686900"),
+				QJsonObject{ { u"_"_q, u"obj.flagged"_q },
+					{ u"x"_q, 5 }, { u"y"_q, u"hi"_q } });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(schema, u"Obj"_q,
+				QByteArray::fromHex("77777777" "00000000" "02686900"),
+				QJsonObject{ { u"_"_q, u"obj.flagged"_q },
+					{ u"y"_q, u"hi"_q } });
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeOk(schema, u"Obj"_q,
+				QByteArray::fromHex("88888888" "ffffffffffffffff"
+					"2a000000" "02010500"),
+				QJsonObject{ { u"_"_q, u"obj.secret"_q }, { u"x"_q, 42 } });
+		} },
+		{ u"tl_decode_errors"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			auto check = DecodeFail(schema, u"Obj"_q,
+				QByteArray::fromHex("22222222" "07000000"),
+				u"Truncated data."_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeFail(schema, u"Obj"_q,
+				QByteArray::fromHex("22222222" "07000000" "03616263"
+					"00000000"),
+				u"bytes remain after the value"_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeFail(schema, u"Obj"_q,
+				QByteArray::fromHex("efbeadde" "00000000"),
+				u"Unknown constructor 0xdeadbeef."_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeFail(schema, u"Obj"_q,
+				QByteArray::fromHex("01aaaaaa" "05000000"),
+				u"Constructor 0xaaaaaa01 is not of type Obj."_q);
+		} },
+		{ u"tl_decode_spans"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			const auto options = TlDecodeOptions{
+				.spanTypes = { u"Msg"_q, u"Wrap"_q } };
+			auto spans = std::vector<TlSpan>();
+			auto error = QString();
+			auto result = DecodeTl(
+				schema,
+				u"Wrap"_q,
+				QByteArray::fromHex("66666666" "55555555" "44444444"
+					"01000000" "02000000"),
+				error,
+				options,
+				&spans);
+			if (!result) {
+				return error;
+			} else if (spans.size() != 1
+				|| spans[0].type != u"Wrap"_q
+				|| spans[0].begin != 0
+				|| spans[0].end != 20) {
+				return u"the outermost span only must be recorded"_q;
+			}
+			spans.clear();
+			result = DecodeTl(
+				schema,
+				u"Msg"_q,
+				QByteArray::fromHex("55555555" "44444444"
+					"01000000" "02000000"),
+				error,
+				options,
+				&spans);
+			if (!result) {
+				return error;
+			} else if (spans.size() != 1
+				|| spans[0].type != u"Msg"_q
+				|| spans[0].begin != 0
+				|| spans[0].end != 16) {
+				return u"the top Msg span must be recorded"_q;
+			}
+			spans.clear();
+			result = DecodeTl(
+				schema,
+				u"Msg"_q,
+				QByteArray::fromHex("44444444" "01000000"),
+				error,
+				options,
+				&spans);
+			if (!result) {
+				return error;
+			} else if (spans.size() != 1 || spans[0].end != 8) {
+				return u"a small Msg span must be recorded"_q;
+			}
+			spans.clear();
+			result = DecodeTl(
+				schema,
+				u"Obj"_q,
+				QByteArray::fromHex("22222222" "07000000" "03616263"),
+				error,
+				options,
+				&spans);
+			if (!result || !spans.empty()) {
+				return u"a type outside spanTypes must not be recorded"_q;
+			}
+			return QString();
 		} },
 	};
 }
