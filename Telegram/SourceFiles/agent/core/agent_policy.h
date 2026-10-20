@@ -30,6 +30,7 @@ struct ToolPolicy {
 	bool outbound = false;
 	bool background = true;
 	bool interactive = true;
+	bool chatTask = false;
 };
 
 struct ActionRequest {

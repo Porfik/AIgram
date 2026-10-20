@@ -253,7 +253,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   whether a tool exists in normal sessions and in background task runs.
   A gate made with a `GateFrame` is a task run's gate: `background()` is
   true and `available()` needs `background`, otherwise `interactive`,
-  besides the scope flag.
+  besides the scope flag. In a run of a chat task `chatTask` stands in for
+  `chat`: `send_message` and `send_files` have it, so a task made from a
+  chat panel can write to its own chat (the scope check keeps every other
+  chat out).
 - With a frame, `check()` keeps the first four steps (not available,
   forbidden, excluded, out of scope) and then decides by the frame
   instead of allowances and taint: the peers are in the frame when

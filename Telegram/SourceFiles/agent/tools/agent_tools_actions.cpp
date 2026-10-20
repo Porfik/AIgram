@@ -616,6 +616,11 @@ void RunPinMessage(not_null<PendingCall*> call) {
 	};
 }
 
+[[nodiscard]] ToolPolicy ChatTaskPolicy(ToolPolicy policy) {
+	policy.chatTask = true;
+	return policy;
+}
+
 std::vector<ToolEntry> BuildEntries() {
 	auto result = std::vector<ToolEntry>();
 	const auto push = [&](ToolEntry entry) {
@@ -634,7 +639,7 @@ std::vector<ToolEntry> BuildEntries() {
 		.inputSchema = ToolSchema(
 			std::move(send),
 			QJsonArray{ QJsonValue(u"text"_q) }),
-		.policy = VisiblePolicy(true, false, true),
+		.policy = ChatTaskPolicy(VisiblePolicy(true, false, true)),
 		.chatParam = ChatParam::Many,
 		.run = RunSendMessage,
 	});

@@ -608,6 +608,7 @@ std::vector<ToolEntry> Entries() {
 			.general = true,
 			.chat = false,
 			.outbound = true,
+			.chatTask = true,
 		},
 		.chatParam = ChatParam::Many,
 		.group = kFilesGroup,

@@ -503,6 +503,33 @@ std::vector<Check> PolicyChecks() {
 			}
 			return QString();
 		} },
+		{ u"policy_frame_chat_task_tools"_q, [] {
+			auto policy = Policy(Risk::Visible, true, false, true);
+			policy.chatTask = true;
+			const auto run = FrameGate(Scope::Chat(5), { u"send"_q }, { 5 });
+			if (!run.available(policy)) {
+				return u"a chat task run must get chatTask tools"_q;
+			}
+			const auto chat = PolicyGate(Scope::Chat(5));
+			if (chat.available(policy)) {
+				return u"chatTask must not open tools to the chat agent"_q;
+			}
+			policy.chatTask = false;
+			if (run.available(policy)) {
+				return u"general-only tools must stay out of chat runs"_q;
+			}
+			policy.chatTask = true;
+			if (const auto error = ExpectDecision(
+					run.check(Request(u"send"_q, policy, { 6 })),
+					Verdict::Deny,
+					DenyReason::OutOfScope);
+				!error.isEmpty()) {
+				return error;
+			}
+			return ExpectDecision(
+				run.check(Request(u"send"_q, policy, { 5 })),
+				Verdict::Allow);
+		} },
 		{ u"policy_frame_read"_q, [] {
 			const auto gate = FrameGate(Scope::Account(), {}, { 5 });
 			if (const auto error = ExpectDecision(

@@ -139,8 +139,10 @@ bool PolicyGate::tainted() const {
 
 bool PolicyGate::available(const ToolPolicy &policy) const {
 	const auto mode = _frame ? policy.background : policy.interactive;
-	return mode
-		&& ((_scope.kind == ScopeKind::Account) ? policy.general : policy.chat);
+	const auto scope = (_scope.kind == ScopeKind::Account)
+		? policy.general
+		: (policy.chat || (_frame && policy.chatTask));
+	return mode && scope;
 }
 
 bool PolicyGate::visible(PeerKey peer) const {
