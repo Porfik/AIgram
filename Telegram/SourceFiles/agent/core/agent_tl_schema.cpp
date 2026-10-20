@@ -11,7 +11,7 @@ namespace Agent {
 namespace {
 
 [[nodiscard]] bool IsHexId(const QString &text) {
-	if (text.size() != 8) {
+	if (text.isEmpty() || text.size() > 8) {
 		return false;
 	}
 	for (const auto &ch : text) {
