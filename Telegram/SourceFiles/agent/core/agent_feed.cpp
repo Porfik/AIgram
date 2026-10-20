@@ -142,13 +142,17 @@ std::vector<FeedItem> BuildFeed(
 		const auto &message = messages[index];
 		const auto user = (message.role == Role::User);
 		auto text = QString();
+		auto attachments = std::vector<MediaBlock>();
 		const auto flush = [&] {
-			if (text.isEmpty()) {
+			if (text.isEmpty() && attachments.empty()) {
 				return;
 			}
 			flushRun();
 			if (user) {
-				result.push_back(FeedUser{ index, base::take(text) });
+				result.push_back(FeedUser{
+					index,
+					base::take(text),
+					base::take(attachments) });
 			} else {
 				result.push_back(FeedAssistant{ index, base::take(text) });
 			}
@@ -164,6 +168,9 @@ std::vector<FeedItem> BuildFeed(
 						text += value.text;
 					}
 				} else if constexpr (std::is_same_v<T, MediaBlock>) {
+					if (user) {
+						attachments.push_back(value);
+					}
 				} else if constexpr (std::is_same_v<T, ThinkingBlock>) {
 					if (!user) {
 						flush();

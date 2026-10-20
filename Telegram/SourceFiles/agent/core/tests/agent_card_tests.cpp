@@ -283,6 +283,101 @@ std::vector<Check> CardChecks() {
 			}
 			return QString();
 		} },
+		{ u"card_new_kinds_flags"_q, [] {
+			if (!CardTextEditable(CardKind::SendFiles)) {
+				return u"SendFiles must be editable"_q;
+			} else if (CardTextEditable(CardKind::Transcribe)
+				|| CardTextEditable(CardKind::Download)) {
+				return u"Transcribe and Download must not be editable"_q;
+			}
+			for (const auto kind : {
+				CardKind::Draft, CardKind::Transcribe,
+				CardKind::Download,
+			}) {
+				if (!CardAlwaysAsks(kind)) {
+					return u"expected always asks: "_q
+						+ QString::number(int(kind));
+				}
+			}
+			if (CardAlwaysAsks(CardKind::Send)
+				|| CardAlwaysAsks(CardKind::SendFiles)) {
+				return u"unexpected always asks"_q;
+			}
+			return QString();
+		} },
+		{ u"card_decision_new_kinds"_q, [] {
+			auto transcribe = SampleCard();
+			transcribe.kind = CardKind::Transcribe;
+			transcribe.targets = {
+				CardTarget{ 111, 12, u"Voice"_q, QString(), true, QString() },
+			};
+			const auto decidedTranscribe = ApplyDecision(
+				transcribe,
+				CardDecision{ CardAction::Execute, { true }, QString(), false, false });
+			if (decidedTranscribe.status != CardStatus::Running
+				|| decidedTranscribe.decided != CardAction::Execute) {
+				return u"transcribe execute state wrong"_q;
+			}
+			auto sendFiles = SampleCard();
+			sendFiles.kind = CardKind::SendFiles;
+			sendFiles.text = u"caption"_q;
+			sendFiles.proposedText = u"caption"_q;
+			sendFiles.optionAvailable = false;
+			const auto decidedSendFiles = ApplyDecision(
+				sendFiles,
+				CardDecision{
+					CardAction::Execute,
+					{ true, true },
+					u"new"_q,
+					true,
+					false,
+				});
+			if (decidedSendFiles.text != u"new"_q
+				|| decidedSendFiles.option) {
+				return u"sendfiles text/option wrong"_q;
+			}
+			return QString();
+		} },
+		{ u"card_result_text_new_kinds"_q, [] {
+			auto card = SampleCard();
+			card.kind = CardKind::Transcribe;
+			card.status = CardStatus::Declined;
+			if (CardResultText(card)
+				!= u"The user declined to spend a trial transcription."_q) {
+				return u"transcribe declined: "_q + CardResultText(card);
+			}
+			card.kind = CardKind::Download;
+			card.status = CardStatus::Declined;
+			if (CardResultText(card)
+				!= u"The user declined the download."_q) {
+				return u"download declined: "_q + CardResultText(card);
+			}
+			card.status = CardStatus::Done;
+			card.detail = QString();
+			if (CardResultText(card) != u"The files were downloaded."_q) {
+				return u"download read: "_q + CardResultText(card);
+			}
+			card.detail = u"/agent/folder"_q;
+			card.files = {
+				CardFile{ u"ref1"_q, u"a.txt"_q, u"text/plain"_q, 100 },
+				CardFile{ u"ref2"_q, u"b.jpg"_q, u"image/jpeg"_q, 200 },
+			};
+			if (CardResultText(card)
+				!= u"The files were saved to /agent/folder.\n"
+				u"Saved files: a.txt, b.jpg."_q) {
+				return u"download saved: "_q + CardResultText(card);
+			}
+			card.kind = CardKind::SendFiles;
+			card.files.clear();
+			if (CardResultText(card) != u"The files were sent."_q) {
+				return u"sendfiles done: "_q + CardResultText(card);
+			}
+			card.kind = CardKind::Transcribe;
+			if (CardResultText(card) != u"The message was transcribed."_q) {
+				return u"transcribe done: "_q + CardResultText(card);
+			}
+			return QString();
+		} },
 		{ u"card_result_text_handoff"_q, [] {
 			auto card = SampleCard();
 			card.kind = CardKind::Handoff;

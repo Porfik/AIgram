@@ -63,24 +63,67 @@ constexpr auto kErrorBodyLimit = 500;
 	return result;
 }
 
-[[nodiscard]] QString ImageDataUrl(const MediaBlock &image) {
+[[nodiscard]] QString MediaDataUrl(const MediaBlock &media) {
 	return u"data:%1;base64,%2"_q.arg(
-		image.mimeType,
-		QString::fromLatin1(image.bytes.toBase64()));
+		media.mimeType,
+		QString::fromLatin1(media.bytes.toBase64()));
 }
 
-[[nodiscard]] QJsonValue SerializeUserContent(
+[[nodiscard]] QString AudioFormat(const QString &mimeType) {
+	if (mimeType == u"audio/wav"_q) {
+		return u"wav"_q;
+	} else if (mimeType == u"audio/mpeg"_q) {
+		return u"mp3"_q;
+	}
+	const auto slash = mimeType.indexOf('/');
+	return (slash >= 0) ? mimeType.mid(slash + 1) : mimeType;
+}
+
+[[nodiscard]] std::optional<QJsonObject> SerializeMediaPart(
+		const MediaBlock &media) {
+	if (media.bytes.isEmpty()) {
+		return std::nullopt;
+	}
+	auto part = QJsonObject();
+	switch (media.kind) {
+	case MediaKind::Image: {
+		auto imageObject = QJsonObject();
+		imageObject.insert(u"url"_q, MediaDataUrl(media));
+		part.insert(u"type"_q, u"image_url"_q);
+		part.insert(u"image_url"_q, imageObject);
+		break;
+	}
+	case MediaKind::Audio: {
+		auto audioObject = QJsonObject();
+		audioObject.insert(
+			u"data"_q,
+			QString::fromLatin1(media.bytes.toBase64()));
+		audioObject.insert(u"format"_q, AudioFormat(media.mimeType));
+		part.insert(u"type"_q, u"input_audio"_q);
+		part.insert(u"input_audio"_q, audioObject);
+		break;
+	}
+	case MediaKind::Video: {
+		auto videoObject = QJsonObject();
+		videoObject.insert(u"url"_q, MediaDataUrl(media));
+		part.insert(u"type"_q, u"video_url"_q);
+		part.insert(u"video_url"_q, videoObject);
+		break;
+	}
+	case MediaKind::File: {
+		auto fileObject = QJsonObject();
+		fileObject.insert(u"filename"_q, media.name);
+		fileObject.insert(u"file_data"_q, MediaDataUrl(media));
+		part.insert(u"type"_q, u"file"_q);
+		part.insert(u"file"_q, fileObject);
+		break;
+	}
+	}
+	return part;
+}
+
+[[nodiscard]] QJsonArray SerializeUserParts(
 		const std::vector<Block> &blocks) {
-	auto hasImage = false;
-	for (const auto &block : blocks) {
-		if (std::get_if<MediaBlock>(&block)) {
-			hasImage = true;
-			break;
-		}
-	}
-	if (!hasImage) {
-		return JoinTextBlocks(blocks);
-	}
 	auto parts = QJsonArray();
 	for (const auto &block : blocks) {
 		if (const auto *text = std::get_if<TextBlock>(&block)) {
@@ -88,16 +131,30 @@ constexpr auto kErrorBodyLimit = 500;
 			part.insert(u"type"_q, u"text"_q);
 			part.insert(u"text"_q, text->text);
 			parts.append(part);
-		} else if (const auto *image = std::get_if<MediaBlock>(&block)) {
-			auto imageObject = QJsonObject();
-			imageObject.insert(u"url"_q, ImageDataUrl(*image));
-			auto part = QJsonObject();
-			part.insert(u"type"_q, u"image_url"_q);
-			part.insert(u"image_url"_q, imageObject);
-			parts.append(part);
+		} else if (const auto *media = std::get_if<MediaBlock>(&block)) {
+			if (auto part = SerializeMediaPart(*media)) {
+				parts.append(*part);
+			}
 		}
 	}
 	return parts;
+}
+
+[[nodiscard]] QJsonValue SerializeUserContent(
+		const std::vector<Block> &blocks) {
+	auto hasMedia = false;
+	for (const auto &block : blocks) {
+		if (const auto *media = std::get_if<MediaBlock>(&block)) {
+			if (!media->bytes.isEmpty()) {
+				hasMedia = true;
+				break;
+			}
+		}
+	}
+	if (!hasMedia) {
+		return JoinTextBlocks(blocks);
+	}
+	return SerializeUserParts(blocks);
 }
 
 [[nodiscard]] QString ArgumentsJson(const ToolUseBlock &use) {
@@ -111,6 +168,9 @@ constexpr auto kErrorBodyLimit = 500;
 	auto result = QJsonArray();
 	for (const auto &message : request.messages) {
 		auto other = std::vector<Block>();
+		auto toolMedia = std::vector<std::pair<
+			QString,
+			std::vector<MediaBlock>>>();
 		for (const auto &block : message.blocks) {
 			if (const auto *resultBlock
 				= std::get_if<ToolResultBlock>(&block)) {
@@ -119,15 +179,56 @@ constexpr auto kErrorBodyLimit = 500;
 				tool.insert(u"tool_call_id"_q, resultBlock->toolUseId);
 				tool.insert(u"content"_q, resultBlock->content);
 				result.append(tool);
+				if (!resultBlock->media.empty()) {
+					toolMedia.emplace_back(
+						resultBlock->toolUseId,
+						resultBlock->media);
+				}
 			} else {
 				other.push_back(block);
 			}
 		}
 		if (message.role == Role::User) {
-			if (!other.empty()) {
+			auto content = QJsonValue();
+			auto hasContent = false;
+			if (!toolMedia.empty()) {
+				auto parts = QJsonArray();
+				for (const auto &entry : toolMedia) {
+					auto entryParts = QJsonArray();
+					for (const auto &media : entry.second) {
+						if (auto part = SerializeMediaPart(media)) {
+							entryParts.append(*part);
+						}
+					}
+					if (!entryParts.isEmpty()) {
+						auto header = QJsonObject();
+						header.insert(u"type"_q, u"text"_q);
+						header.insert(
+							u"text"_q,
+							u"Media returned by tool call %1:"_q.arg(
+								entry.first));
+						parts.append(header);
+						for (const auto &part : entryParts) {
+							parts.append(part);
+						}
+					}
+				}
+				auto otherParts = SerializeUserParts(other);
+				for (const auto &part : otherParts) {
+					parts.append(part);
+				}
+				if (!parts.isEmpty()) {
+					content = parts;
+					hasContent = true;
+				}
+			} else if (!other.empty()) {
+				content = SerializeUserContent(other);
+				hasContent = true;
+			}
+			if (hasContent) {
 				auto user = QJsonObject();
 				user.insert(u"role"_q, u"user"_q);
-				user.insert(u"content"_q, SerializeUserContent(other));
+				user.insert(u"content"_q, content);
 				result.append(user);
 			}
 		} else {
@@ -491,6 +592,16 @@ QByteArray SerializeRequest(const Request &request) {
 		}
 		root.insert(u"tools"_q, tools);
 	}
+	if (!request.pdfEngine.isEmpty()) {
+		auto plugins = QJsonArray();
+		auto plugin = QJsonObject();
+		plugin.insert(u"id"_q, u"file-parser"_q);
+		auto pdf = QJsonObject();
+		pdf.insert(u"engine"_q, request.pdfEngine);
+		plugin.insert(u"pdf"_q, pdf);
+		plugins.append(plugin);
+		root.insert(u"plugins"_q, plugins);
+	}
 	return QJsonDocument(root).toJson(QJsonDocument::Compact);
 }
 
@@ -528,14 +639,26 @@ std::vector<ModelInfo> ParseModels(const QByteArray &json) {
 		const auto modalities = object.value(u"architecture"_q).toObject()
 			.value(u"input_modalities"_q);
 		if (modalities.isArray()) {
-			auto has = false;
+			auto hasImage = false;
+			auto hasAudio = false;
+			auto hasVideo = false;
+			auto hasFile = false;
 			for (const auto &modality : modalities.toArray()) {
-				if (modality.toString() == u"image") {
-					has = true;
-					break;
+				const auto value = modality.toString();
+				if (value == u"image"_q) {
+					hasImage = true;
+				} else if (value == u"audio"_q) {
+					hasAudio = true;
+				} else if (value == u"video"_q) {
+					hasVideo = true;
+				} else if (value == u"file"_q) {
+					hasFile = true;
 				}
 			}
-			info.vision = has;
+			info.vision = hasImage;
+			info.audio = hasAudio;
+			info.video = hasVideo;
+			info.files = hasFile;
 		}
 		result.push_back(std::move(info));
 	}

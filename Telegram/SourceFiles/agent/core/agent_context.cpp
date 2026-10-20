@@ -7,8 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/core/agent_context.h"
 
+#include "agent/core/agent_media.h"
+
 #include <QtCore/QJsonDocument>
 
+#include <algorithm>
 #include <utility>
 
 namespace Agent {
@@ -33,7 +36,8 @@ constexpr auto kTitleMaxOutputTokens = 256;
 		return false;
 	}
 	for (const auto &block : message.blocks) {
-		if (std::get_if<TextBlock>(&block)) {
+		if (std::get_if<TextBlock>(&block)
+			|| std::get_if<MediaBlock>(&block)) {
 			return true;
 		}
 	}
@@ -99,6 +103,9 @@ constexpr auto kTitleMaxOutputTokens = 256;
 					use->inputError.isEmpty()
 						? CompactJson(use->input)
 						: QString::fromUtf8(use->rawInput)));
+			} else if (const auto media = std::get_if<MediaBlock>(&block)) {
+				flush();
+				line(MediaPlaceholder(*media));
 			} else if (const auto tool = std::get_if<ToolResultBlock>(&block)) {
 				flush();
 				line((tool->error
@@ -106,6 +113,9 @@ constexpr auto kTitleMaxOutputTokens = 256;
 					: u"Tool result: %1"_q).arg(CapToolResult(
 						tool->content,
 						kTranscriptToolResultMaxChars)));
+				for (const auto &media : tool->media) {
+					line(MediaPlaceholder(media));
+				}
 			}
 		}
 		flush();
@@ -119,13 +129,32 @@ int EstimateTokens(const QString &text) {
 	return (text.size() + 2) / 3;
 }
 
+static int EstimateTokens(const MediaBlock &media) {
+	if (media.bytes.isEmpty()) {
+		return EstimateTokens(MediaPlaceholder(media));
+	}
+	switch (media.kind) {
+	case MediaKind::Image:
+		return 1000;
+	case MediaKind::Audio:
+		return (media.duration > 0
+			? media.duration
+			: int(media.bytes.size() / 32000)) * 32;
+	case MediaKind::Video:
+		return media.duration > 0 ? media.duration * 300 : 1000;
+	case MediaKind::File:
+		return std::max(1000, int(media.bytes.size() / 100));
+	}
+	return 0;
+}
+
 int EstimateTokens(const Message &message) {
 	auto result = 4;
 	for (const auto &block : message.blocks) {
 		if (const auto text = std::get_if<TextBlock>(&block)) {
 			result += EstimateTokens(text->text);
-		} else if (std::get_if<MediaBlock>(&block)) {
-			result += 1000;
+		} else if (const auto media = std::get_if<MediaBlock>(&block)) {
+			result += EstimateTokens(*media);
 		} else if (const auto thinking = std::get_if<ThinkingBlock>(&block)) {
 			result += EstimateTokens(thinking->text);
 		} else if (const auto use = std::get_if<ToolUseBlock>(&block)) {
@@ -135,6 +164,9 @@ int EstimateTokens(const Message &message) {
 				: QString::fromUtf8(use->rawInput));
 		} else if (const auto tool = std::get_if<ToolResultBlock>(&block)) {
 			result += EstimateTokens(tool->content);
+			for (const auto &media : tool->media) {
+				result += EstimateTokens(media);
+			}
 		}
 	}
 	return result;
@@ -169,13 +201,74 @@ QString CapToolResult(QString content, int maxChars) {
 }
 
 bool DropMediaBytes(SessionRecord &record) {
-	return false;
+	auto changed = false;
+	for (auto &message : record.messages) {
+		for (auto &block : message.blocks) {
+			if (auto media = std::get_if<MediaBlock>(&block)) {
+				if (!media->bytes.isEmpty()) {
+					media->bytes = QByteArray();
+					changed = true;
+				}
+			} else if (auto tool = std::get_if<ToolResultBlock>(&block)) {
+				for (auto &media : tool->media) {
+					if (!media.bytes.isEmpty()) {
+						media.bytes = QByteArray();
+						changed = true;
+					}
+				}
+			}
+		}
+	}
+	return changed;
 }
 
 std::vector<Message> ContextMessages(const SessionRecord &record) {
 	auto result = std::vector<Message>(
 		record.messages.begin() + record.summaryUntil,
 		record.messages.end());
+	auto turnStart = int(result.size());
+	for (auto i = int(result.size()) - 1; i >= 0; --i) {
+		if (result[i].role == Role::User && IsTurnStart(result[i])) {
+			turnStart = i;
+			break;
+		}
+	}
+	for (auto i = 0, count = int(result.size()); i != count; ++i) {
+		auto &message = result[i];
+		auto blocks = std::vector<Block>();
+		blocks.reserve(message.blocks.size());
+		const auto inside = (i >= turnStart);
+		for (const auto &block : message.blocks) {
+			if (const auto media = std::get_if<MediaBlock>(&block)) {
+				if (inside && !media->bytes.isEmpty()) {
+					blocks.push_back(TextBlock{ MediaLabel(*media), true });
+					blocks.push_back(*media);
+				} else {
+					blocks.push_back(TextBlock{
+						MediaPlaceholder(*media),
+						true });
+				}
+			} else if (const auto tool = std::get_if<ToolResultBlock>(&block)) {
+				auto copy = ToolResultBlock{ *tool };
+				auto kept = std::vector<MediaBlock>();
+				for (auto &media : copy.media) {
+					if (inside && !media.bytes.isEmpty()) {
+						kept.push_back(std::move(media));
+						continue;
+					}
+					if (!copy.content.isEmpty()) {
+						copy.content += '\n';
+					}
+					copy.content += MediaPlaceholder(media);
+				}
+				copy.media = std::move(kept);
+				blocks.push_back(std::move(copy));
+			} else {
+				blocks.push_back(block);
+			}
+		}
+		message.blocks = std::move(blocks);
+	}
 	if (record.summaryUntil <= 0 || record.summary.isEmpty()) {
 		return result;
 	}

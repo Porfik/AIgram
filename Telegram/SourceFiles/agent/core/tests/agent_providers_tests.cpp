@@ -311,6 +311,100 @@ std::vector<Check> ProvidersChecks() {
 			}
 			return QString();
 		} },
+		{ u"providers_v5_round_trip"_q, [] {
+			auto state = SampleState();
+			state.list[0].audio = true;
+			state.list[0].video = true;
+			state.list[0].files = false;
+			state.list[1].audio = false;
+			state.list[1].video = false;
+			state.list[1].files = true;
+			state.mediaId = u"openai"_q;
+			const auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v5 failed to deserialize"_q;
+			}
+			const auto &first = restored->list[0];
+			const auto &second = restored->list[1];
+			if (!first.audio || !first.video || first.files) {
+				return u"provider 1 flags differ"_q;
+			} else if (second.audio || second.video || !second.files) {
+				return u"provider 2 flags differ"_q;
+			} else if (restored->mediaId != state.mediaId) {
+				return u"mediaId differs"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v4_loads"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(4)
+					<< qint32(1)
+					<< u"old"_q
+					<< qint32(0)
+					<< u"Название"_q
+					<< u"https://example.com/v1"_q
+					<< u"key"_q
+					<< u"model"_q
+					<< qint32(8192)
+					<< qint32(1)
+					<< 0.1
+					<< 0.2
+					<< 0.3
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0);
+			});
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"version 4 failed to deserialize"_q;
+			}
+			const auto &provider = restored->list[0];
+			if (provider.audio || provider.video || provider.files) {
+				return u"version 4 must load default media flags"_q;
+			} else if (!restored->mediaId.isEmpty()) {
+				return u"version 4 must load empty mediaId"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_media_provider"_q, [] {
+			auto state = SampleState();
+			state.mediaId = u"openai"_q;
+			const auto media = MediaProvider(state);
+			if (!media || media->id != u"openai"_q) {
+				return u"media provider must be found"_q;
+			}
+			state.mediaId = u"missing"_q;
+			if (MediaProvider(state)) {
+				return u"unknown mediaId must yield nullptr"_q;
+			}
+			state.mediaId = QString();
+			if (MediaProvider(state)) {
+				return u"empty mediaId must yield nullptr"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_is_open_router"_q, [] {
+			const auto openRouter = [](const QString &baseUrl) {
+				auto settings = ProviderSettings();
+				settings.baseUrl = baseUrl;
+				return IsOpenRouter(settings);
+			};
+			if (!openRouter(u"https://openrouter.ai/api/v1"_q)) {
+				return u"openrouter.ai must be true"_q;
+			} else if (!openRouter(u"https://sub.openrouter.ai/api/v1"_q)) {
+				return u"subdomains of openrouter.ai must be true"_q;
+			} else if (openRouter(u"https://api.openai.com/v1"_q)) {
+				return u"api.openai.com must be false"_q;
+			} else if (openRouter(
+					u"https://openrouter.ai.evil.com/api/v1"_q)) {
+				return u"openrouter.ai.evil.com must be false"_q;
+			}
+			return QString();
+		} },
 		{ u"providers_create_adapter"_q, [] {
 			auto settings = ProviderSettings();
 			settings.kind = ProviderKind::OpenAiCompatible;

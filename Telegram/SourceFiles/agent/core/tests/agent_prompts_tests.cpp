@@ -110,6 +110,25 @@ std::vector<Check> PromptsChecks() {
 			}
 			return QString();
 		} },
+		{ u"prompts_media_paragraph"_q, [] {
+			for (const auto scope : { Scope::Chat(7), Scope::Account() }) {
+				const auto prompt = SystemPrompt(PromptContext{
+					.scope = scope,
+				});
+				for (const auto tool : {
+					u"view_media"_q,
+					u"listen_audio"_q,
+					u"transcribe_voice"_q,
+					u"read_file"_q,
+					u"[Attachment aN"_q,
+				}) {
+					if (!prompt.contains(tool)) {
+						return u"prompt misses %1"_q.arg(tool);
+					}
+				}
+			}
+			return QString();
+		} },
 		{ u"prompts_memory_block_after_paragraph"_q, [] {
 			const auto prompt = SystemPrompt(PromptContext{
 				.scope = Scope::Chat(7),

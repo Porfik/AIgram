@@ -37,10 +37,29 @@ namespace {
 		Message{ Role::User, {
 			TextBlock{ u"Привет, мир"_q, false },
 			MediaBlock{
+				.kind = MediaKind::Image,
 				.bytes = QByteArray("png-bytes"),
 				.mimeType = u"image/png"_q,
+				.name = u"shot.png"_q,
+				.attachment = u"a1"_q,
+				.peer = 456,
+				.messageId = 789,
+				.size = 1024,
 			},
-			ToolResultBlock{ u"call_0"_q, u"результат"_q, true },
+			ToolResultBlock{
+				u"call_0"_q,
+				u"результат"_q,
+				true,
+				{ MediaBlock{
+					.kind = MediaKind::Audio,
+					.mimeType = u"audio/wav"_q,
+					.name = u"voice.wav"_q,
+					.peer = 111,
+					.messageId = 222,
+					.size = 2048,
+					.duration = 42,
+				} },
+			},
 		} },
 		Message{ Role::Assistant, {
 			TextBlock{ u"скрытая подсказка"_q, true },
@@ -57,8 +76,20 @@ namespace {
 	record.summaryUntil = 1;
 	record.summary = u"Краткое содержание"_q;
 	record.info.usage = Usage{ 100, 200, 30 };
+	record.info.attachments = 5;
 	record.tainted = true;
 	return record;
+}
+
+[[nodiscard]] bool MediaBlocksEqual(const MediaBlock &a, const MediaBlock &b) {
+	return a.kind == b.kind
+		&& a.mimeType == b.mimeType
+		&& a.name == b.name
+		&& a.attachment == b.attachment
+		&& a.peer == b.peer
+		&& a.messageId == b.messageId
+		&& a.size == b.size
+		&& a.duration == b.duration;
 }
 
 [[nodiscard]] bool BlocksEqual(const Block &a, const Block &b) {
@@ -72,9 +103,7 @@ namespace {
 				&& other->hidden == value.hidden;
 		} else if constexpr (std::is_same_v<T, MediaBlock>) {
 			const auto other = std::get_if<MediaBlock>(&b);
-			result = other
-				&& other->bytes == value.bytes
-				&& other->mimeType == value.mimeType;
+			result = other && MediaBlocksEqual(*other, value);
 		} else if constexpr (std::is_same_v<T, ThinkingBlock>) {
 			const auto other = std::get_if<ThinkingBlock>(&b);
 			result = other
@@ -93,7 +122,16 @@ namespace {
 			result = other
 				&& other->toolUseId == value.toolUseId
 				&& other->content == value.content
-				&& other->error == value.error;
+				&& other->error == value.error
+				&& other->media.size() == value.media.size();
+			if (result) {
+				for (auto i = 0; i != int(value.media.size()); ++i) {
+					if (!MediaBlocksEqual(value.media[i], other->media[i])) {
+						result = false;
+						break;
+					}
+				}
+			}
 		}
 	}, a);
 	return result;
@@ -114,6 +152,8 @@ namespace {
 		return u"created differs"_q;
 	} else if (a.info.updated != b.info.updated) {
 		return u"updated differs"_q;
+	} else if (a.info.attachments != b.info.attachments) {
+		return u"attachments differ"_q;
 	} else if (a.info.touched != b.info.touched) {
 		return u"touched differs"_q;
 	} else if (a.summaryUntil != b.summaryUntil) {
@@ -166,7 +206,8 @@ namespace {
 		|| a.usage.cost != b.usage.cost
 		|| a.usage.hasCost != b.usage.hasCost
 		|| a.preview != b.preview
-		|| a.previewOutgoing != b.previewOutgoing) {
+		|| a.previewOutgoing != b.previewOutgoing
+		|| a.attachments != b.attachments) {
 		return u"info differs"_q;
 	}
 	return QString();
@@ -218,6 +259,16 @@ void WriteHandTextBlock(QDataStream &stream) {
 	card.canAllowForTurn = true;
 	card.allowedForTurn = true;
 	card.autoApproved = true;
+	card.files = {
+		CardFile{ u"a1"_q, u"shot.png"_q, u"image/png"_q, 1024 },
+		CardFile{
+			u"report.pdf"_q,
+			u"report.pdf"_q,
+			u"application/pdf"_q,
+			4096 },
+	};
+	card.amount = 5120;
+	card.quota = 10;
 	return card;
 }
 
@@ -266,6 +317,20 @@ void WriteHandTextBlock(QDataStream &stream) {
 		return u"allowedForTurn differs"_q;
 	} else if (a.autoApproved != b.autoApproved) {
 		return u"autoApproved differs"_q;
+	} else if (a.files.size() != b.files.size()) {
+		return u"file count differs"_q;
+	} else if (a.amount != b.amount) {
+		return u"amount differs"_q;
+	} else if (a.quota != b.quota) {
+		return u"quota differs"_q;
+	}
+	for (auto i = 0; i != int(a.files.size()); ++i) {
+		const auto &x = a.files[i];
+		const auto &y = b.files[i];
+		if (x.ref != y.ref || x.name != y.name
+			|| x.mimeType != y.mimeType || x.size != y.size) {
+			return u"file "_q + QString::number(i) + u" differs"_q;
+		}
 	}
 	return QString();
 }
@@ -330,7 +395,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(4);
+				stream << qint32(5);
 				WriteHandInfo(stream);
 			});
 			if (DeserializeSession(bytes)) {
@@ -686,7 +751,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"index_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(4) << qint32(0);
+				stream << qint32(5) << qint32(0);
 			});
 			if (DeserializeIndex(bytes)) {
 				return u"expected nullopt for a future version"_q;
@@ -800,6 +865,82 @@ std::vector<Check> RecordChecks() {
 				return u"version 1 must have no undone"_q;
 			}
 			return QString();
+		} },
+		{ u"record_bytes_never_written"_q, [] {
+			auto record = SessionRecord();
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { MediaBlock{
+					.kind = MediaKind::Image,
+					.bytes = QByteArray("secret-bytes"),
+					.mimeType = u"image/png"_q,
+				} },
+			});
+			const auto bytes = SerializeSession(record);
+			if (bytes.contains(QByteArray("secret-bytes"))) {
+				return u"media bytes must never be written"_q;
+			}
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"deserialization failed"_q;
+			}
+			const auto media = std::get_if<MediaBlock>(
+				&restored->messages[0].blocks[0]);
+			if (!media || !media->bytes.isEmpty()) {
+				return u"media bytes must be dropped"_q;
+			}
+			if (media->mimeType != u"image/png"_q) {
+				return u"media mime type lost"_q;
+			}
+			return QString();
+		} },
+		{ u"record_loads_version3_with_image"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(3);
+				WriteHandInfo(stream);
+				stream << qint32(1);
+				stream << qint32(0) << qint32(2);
+				WriteHandTextBlock(stream);
+				stream << quint8(2) << QByteArray("png-bytes")
+					<< u"image/png"_q;
+				stream << qint32(0) << QString();
+				stream << qint32(0) << qint32(0) << qint32(0);
+				stream << double(0.) << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+			});
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 3 failed to load"_q;
+			}
+			const auto &message = restored->messages[0];
+			if (message.blocks.size() != 2) {
+				return u"version 3 blocks lost"_q;
+			}
+			const auto media = std::get_if<MediaBlock>(&message.blocks[1]);
+			if (!media
+				|| media->kind != MediaKind::Image
+				|| media->bytes != QByteArray("png-bytes")
+				|| media->mimeType != u"image/png"_q) {
+				return u"version 3 image lost"_q;
+			}
+			if (restored->info.attachments != 0) {
+				return u"version 3 must have no attachments"_q;
+			}
+			return QString();
+		} },
+		{ u"index_round_trip_with_attachments"_q, [] {
+			auto info = SessionInfo();
+			info.id = u"6666666666666666"_q;
+			info.attachments = 7;
+			const auto bytes = SerializeIndex({ info });
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"deserialization failed"_q;
+			}
+			return InfosEqual(info, (*restored)[0]);
 		} },
 		{ u"record_close_interrupted_turn_with_cards"_q, [] {
 			auto record = SessionRecord();

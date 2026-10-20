@@ -46,6 +46,11 @@ namespace {
 	case CardKind::Handoff:
 		return u"The user now sees a button to continue this "
 			u"conversation in the general agent."_q;
+	case CardKind::Transcribe: return u"The message was transcribed."_q;
+	case CardKind::Download: return card.detail.isEmpty()
+		? u"The files were downloaded."_q
+		: u"The files were saved to %1."_q.arg(card.detail);
+	case CardKind::SendFiles: return u"The files were sent."_q;
 	}
 	Unexpected("Card kind in CardResultText.");
 }
@@ -59,11 +64,14 @@ bool CardFinal(CardStatus status) {
 bool CardTextEditable(CardKind kind) {
 	return kind == CardKind::Send
 		|| kind == CardKind::Draft
-		|| kind == CardKind::Edit;
+		|| kind == CardKind::Edit
+		|| kind == CardKind::SendFiles;
 }
 
 bool CardAlwaysAsks(CardKind kind) {
-	return (kind == CardKind::Draft);
+	return kind == CardKind::Draft
+		|| kind == CardKind::Transcribe
+		|| kind == CardKind::Download;
 }
 
 bool CardHasAlternate(CardKind kind) {
@@ -120,9 +128,31 @@ int CheckedCount(const Card &card) {
 QString CardResultText(const Card &card) {
 	Expects(CardFinal(card.status));
 
+	if (card.status == CardStatus::Declined) {
+		if (card.kind == CardKind::Transcribe) {
+			return u"The user declined to spend a trial transcription."_q;
+		} else if (card.kind == CardKind::Download) {
+			return u"The user declined the download."_q;
+		}
+	}
 	auto lines = QStringList();
 	if (card.status == CardStatus::Done) {
 		lines.push_back(DoneLine(card));
+		if (card.kind == CardKind::Download && !card.detail.isEmpty()) {
+			auto names = QStringList();
+			for (auto i = 0; i != int(card.targets.size()); ++i) {
+				const auto &target = card.targets[i];
+				if (target.checked
+					&& target.error.isEmpty()
+					&& i < int(card.files.size())) {
+					names.push_back(card.files[i].name);
+				}
+			}
+			if (!names.isEmpty()) {
+				lines.push_back(u"Saved files: "_q + names.join(u", "_q)
+					+ u'.');
+			}
+		}
 	} else if (card.status == CardStatus::Drafted) {
 		lines.push_back(u"The message was saved to the draft."_q);
 	} else if (card.status == CardStatus::Declined) {

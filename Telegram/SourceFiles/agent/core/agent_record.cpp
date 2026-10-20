@@ -17,8 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(3);
-constexpr auto kIndexVersion = qint32(3);
+constexpr auto kSessionVersion = qint32(4);
+constexpr auto kIndexVersion = qint32(4);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
@@ -35,17 +35,28 @@ enum class BlockTag : quint8 {
 	Thinking = 3,
 	ToolUse = 4,
 	ToolResult = 5,
+	Media = 6,
 };
+
+void WriteMediaFields(QDataStream &stream, const MediaBlock &block) {
+	stream
+		<< qint32(block.kind)
+		<< block.mimeType
+		<< block.name
+		<< block.attachment
+		<< quint64(block.peer)
+		<< qint64(block.messageId)
+		<< qint64(block.size)
+		<< qint32(block.duration);
+}
 
 void WriteBlock(QDataStream &stream, const TextBlock &block) {
 	stream << quint8(BlockTag::Text) << block.text << qint32(block.hidden);
 }
 
 void WriteBlock(QDataStream &stream, const MediaBlock &block) {
-	stream
-		<< quint8(BlockTag::Image)
-		<< block.bytes
-		<< block.mimeType;
+	stream << quint8(BlockTag::Media);
+	WriteMediaFields(stream, block);
 }
 
 void WriteBlock(QDataStream &stream, const ThinkingBlock &block) {
@@ -67,7 +78,11 @@ void WriteBlock(QDataStream &stream, const ToolResultBlock &block) {
 		<< quint8(BlockTag::ToolResult)
 		<< block.toolUseId
 		<< block.content
-		<< qint32(block.error ? 1 : 0);
+		<< qint32(block.error ? 1 : 0)
+		<< qint32(block.media.size());
+	for (const auto &media : block.media) {
+		WriteMediaFields(stream, media);
+	}
 }
 
 void WriteMessage(QDataStream &stream, const Message &message) {
@@ -79,7 +94,43 @@ void WriteMessage(QDataStream &stream, const Message &message) {
 	}
 }
 
-std::optional<Block> ReadBlock(QDataStream &stream) {
+std::optional<MediaBlock> ReadMediaFields(QDataStream &stream) {
+	auto kind = qint32(0);
+	auto mimeType = QString();
+	auto name = QString();
+	auto attachment = QString();
+	auto peer = quint64(0);
+	auto messageId = qint64(0);
+	auto size = qint64(0);
+	auto duration = qint32(0);
+	stream
+		>> kind
+		>> mimeType
+		>> name
+		>> attachment
+		>> peer
+		>> messageId
+		>> size
+		>> duration;
+	if (stream.status() != QDataStream::Ok
+		|| kind < 0
+		|| kind > int(MediaKind::File)
+		|| duration < 0) {
+		return std::nullopt;
+	}
+	return MediaBlock{
+		.kind = MediaKind(kind),
+		.mimeType = mimeType,
+		.name = name,
+		.attachment = attachment,
+		.peer = peer,
+		.messageId = messageId,
+		.size = size,
+		.duration = duration,
+	};
+}
+
+std::optional<Block> ReadBlock(QDataStream &stream, qint32 version) {
 	auto tag = quint8(0);
 	stream >> tag;
 	if (stream.status() != QDataStream::Ok) {
@@ -132,6 +183,13 @@ std::optional<Block> ReadBlock(QDataStream &stream) {
 		block.input = document.object();
 		return block;
 	}
+	case BlockTag::Media: {
+		auto media = ReadMediaFields(stream);
+		if (!media) {
+			return std::nullopt;
+		}
+		return *media;
+	}
 	case BlockTag::ToolResult: {
 		auto toolUseId = QString();
 		auto content = QString();
@@ -140,13 +198,31 @@ std::optional<Block> ReadBlock(QDataStream &stream) {
 		if (stream.status() != QDataStream::Ok || error < 0 || error > 1) {
 			return std::nullopt;
 		}
-		return ToolResultBlock{ toolUseId, content, (error != 0) };
+		auto result = ToolResultBlock{ toolUseId, content, (error != 0) };
+		if (version >= 4) {
+			auto count = qint32(0);
+			stream >> count;
+			if (stream.status() != QDataStream::Ok
+				|| count < 0
+				|| count > kMaxBlocks) {
+				return std::nullopt;
+			}
+			result.media.reserve(count);
+			for (auto i = 0; i != count; ++i) {
+				auto media = ReadMediaFields(stream);
+				if (!media) {
+					return std::nullopt;
+				}
+				result.media.push_back(std::move(*media));
+			}
+		}
+		return result;
 	}
 	}
 	return std::nullopt;
 }
 
-std::optional<Message> ReadMessage(QDataStream &stream) {
+std::optional<Message> ReadMessage(QDataStream &stream, qint32 version) {
 	auto role = qint32(0);
 	auto count = qint32(0);
 	stream >> role >> count;
@@ -160,7 +236,7 @@ std::optional<Message> ReadMessage(QDataStream &stream) {
 	auto message = Message{ Role(role), {} };
 	message.blocks.reserve(count);
 	for (auto i = 0; i != count; ++i) {
-		auto block = ReadBlock(stream);
+		auto block = ReadBlock(stream, version);
 		if (!block) {
 			return std::nullopt;
 		}
@@ -256,6 +332,13 @@ std::optional<Usage> ReadUsage(QDataStream &stream, bool withCost) {
 	return usage;
 }
 
+void WriteCardFiles(QDataStream &stream, const Card &card) {
+	stream << qint32(card.files.size());
+	for (const auto &file : card.files) {
+		stream << file.ref << file.name << file.mimeType << qint64(file.size);
+	}
+}
+
 void WriteCard(QDataStream &stream, const Card &card) {
 	stream
 		<< card.toolUseId
@@ -281,6 +364,8 @@ void WriteCard(QDataStream &stream, const Card &card) {
 		<< qint32(card.canAllowForTurn ? 1 : 0)
 		<< qint32(card.allowedForTurn ? 1 : 0)
 		<< qint32(card.autoApproved ? 1 : 0);
+	WriteCardFiles(stream, card);
+	stream << qint64(card.amount) << qint64(card.quota);
 }
 
 [[nodiscard]] bool ReadFlags(
@@ -312,7 +397,7 @@ void WriteCard(QDataStream &stream, const Card &card) {
 	return true;
 }
 
-std::optional<Card> ReadCard(QDataStream &stream) {
+std::optional<Card> ReadCard(QDataStream &stream, qint32 version) {
 	auto toolUseId = QString();
 	auto kind = qint32(0);
 	auto status = qint32(0);
@@ -321,7 +406,7 @@ std::optional<Card> ReadCard(QDataStream &stream) {
 	stream >> toolUseId >> kind >> status >> decided >> targetCount;
 	if (stream.status() != QDataStream::Ok
 		|| kind < 0
-		|| kind > int(CardKind::Handoff)
+		|| kind > int(CardKind::SendFiles)
 		|| status < 0
 		|| status > int(CardStatus::NotDone)
 		|| decided < 0
@@ -366,6 +451,30 @@ std::optional<Card> ReadCard(QDataStream &stream) {
 		card.allowedForTurn,
 		card.autoApproved)) {
 		return std::nullopt;
+	}
+	if (version >= 4) {
+		auto fileCount = qint32(0);
+		stream >> fileCount;
+		if (stream.status() != QDataStream::Ok
+			|| fileCount < 0
+			|| fileCount > kMaxTargets) {
+			return std::nullopt;
+		}
+		card.files.reserve(fileCount);
+		for (auto i = 0; i != fileCount; ++i) {
+			auto file = CardFile();
+			auto size = qint64(0);
+			stream >> file.ref >> file.name >> file.mimeType >> size;
+			if (stream.status() != QDataStream::Ok) {
+				return std::nullopt;
+			}
+			file.size = size;
+			card.files.push_back(std::move(file));
+		}
+		stream >> card.amount >> card.quota;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
 	}
 	return card;
 }
@@ -433,6 +542,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	}
 	WriteStringList(stream, record.loadedGroups);
 	WriteStringList(stream, record.undone);
+	stream << qint32(record.info.attachments);
 	return result;
 }
 
@@ -460,7 +570,7 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 	auto record = SessionRecord{ .info = std::move(*info) };
 	record.messages.reserve(count);
 	for (auto i = 0; i != count; ++i) {
-		auto message = ReadMessage(stream);
+		auto message = ReadMessage(stream, version);
 		if (!message) {
 			return std::nullopt;
 		}
@@ -497,7 +607,7 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 		}
 		record.cards.reserve(cardCount);
 		for (auto i = 0; i != cardCount; ++i) {
-			auto card = ReadCard(stream);
+			auto card = ReadCard(stream, version);
 			if (!card) {
 				return std::nullopt;
 			}
@@ -510,6 +620,14 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 		}
 		record.loadedGroups = std::move(*loadedGroups);
 		record.undone = std::move(*undone);
+	}
+	if (version >= 4) {
+		auto attachments = qint32(0);
+		stream >> attachments;
+		if (stream.status() != QDataStream::Ok || attachments < 0) {
+			return std::nullopt;
+		}
+		record.info.attachments = attachments;
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
@@ -525,7 +643,10 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 	for (const auto &info : list) {
 		WriteInfo(stream, info);
 		WriteUsage(stream, info.usage);
-		stream << info.preview << qint32(info.previewOutgoing ? 1 : 0);
+		stream
+			<< info.preview
+			<< qint32(info.previewOutgoing ? 1 : 0)
+			<< qint32(info.attachments);
 	}
 	return result;
 }
@@ -571,6 +692,14 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 				return std::nullopt;
 			}
 			info->previewOutgoing = (outgoing != 0);
+		}
+		if (version >= 4) {
+			auto attachments = qint32(0);
+			stream >> attachments;
+			if (stream.status() != QDataStream::Ok || attachments < 0) {
+				return std::nullopt;
+			}
+			info->attachments = attachments;
 		}
 		list.push_back(std::move(*info));
 	}

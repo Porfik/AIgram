@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/tests/agent_tests.h"
 
 #include "agent/core/agent_context.h"
+#include "agent/core/agent_media.h"
 
 namespace Agent::Tests {
 namespace {
@@ -89,6 +90,271 @@ std::vector<Check> ContextChecks() {
 			});
 			if (tool != 104) {
 				return u"tool result message: %1"_q.arg(tool);
+			}
+			return QString();
+		} },
+		{ u"context_estimate_media_tokens"_q, [] {
+			const auto estimate = [](const MediaBlock &block) {
+				return EstimateTokens(
+					Message{ Role::User, { block } }) - 4;
+			};
+			auto media = MediaBlock{
+				.kind = MediaKind::Audio,
+				.bytes = QByteArray(32000 * 10, 'a'),
+				.duration = 0,
+			};
+			if (estimate(media) != 320) {
+				return u"audio bytes: %1"_q.arg(estimate(media));
+			}
+			media.duration = 20;
+			if (estimate(media) != 640) {
+				return u"audio duration: %1"_q.arg(estimate(media));
+			}
+			auto video = MediaBlock{
+				.kind = MediaKind::Video,
+				.bytes = QByteArray(1000, 'a'),
+				.duration = 0,
+			};
+			if (estimate(video) != 1000) {
+				return u"video no duration: %1"_q.arg(estimate(video));
+			}
+			video.duration = 10;
+			if (estimate(video) != 3000) {
+				return u"video duration: %1"_q.arg(estimate(video));
+			}
+			auto file = MediaBlock{
+				.kind = MediaKind::File,
+				.bytes = QByteArray(100, 'a'),
+			};
+			if (estimate(file) != 1000) {
+				return u"file small: %1"_q.arg(estimate(file));
+			}
+			file.bytes = QByteArray(500000, 'a');
+			if (estimate(file) != 5000) {
+				return u"file large: %1"_q.arg(estimate(file));
+			}
+			auto empty = MediaBlock{
+				.kind = MediaKind::Image,
+				.mimeType = u"image/png"_q,
+			};
+			if (estimate(empty)
+					!= EstimateTokens(MediaPlaceholder(empty))) {
+				return u"placeholder estimate differs"_q;
+			}
+			return QString();
+		} },
+		{ u"context_estimate_tool_media_tokens"_q, [] {
+			auto message = Message{
+				.role = Role::User,
+				.blocks = { ToolResultBlock{
+					u"t1"_q,
+					QString(),
+					false,
+					{ MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("bytes"),
+						.mimeType = u"image/png"_q,
+					} },
+				} },
+			};
+			if (EstimateTokens(message) != 1004) {
+				return u"tool media: %1"_q.arg(EstimateTokens(message));
+			}
+			return QString();
+		} },
+		{ u"context_drop_media_bytes"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { MediaBlock{
+					.kind = MediaKind::Image,
+					.bytes = QByteArray("bytes"),
+					.mimeType = u"image/png"_q,
+				} } },
+				Message{ Role::User, { ToolResultBlock{
+					u"t1"_q,
+					QString(),
+					false,
+					{ MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("bytes"),
+						.mimeType = u"image/png"_q,
+					} },
+				} } },
+			};
+			if (!DropMediaBytes(record)) {
+				return u"nothing dropped"_q;
+			}
+			if (DropMediaBytes(record)) {
+				return u"dropped twice"_q;
+			}
+			const auto media = std::get_if<MediaBlock>(
+				&record.messages[0].blocks[0]);
+			const auto tool = std::get_if<ToolResultBlock>(
+				&record.messages[1].blocks[0]);
+			if (!media
+				|| !media->bytes.isEmpty()
+				|| media->mimeType != u"image/png"_q
+				|| !tool
+				|| tool->media.size() != 1
+				|| !tool->media[0].bytes.isEmpty()) {
+				return u"bytes not dropped"_q;
+			}
+			return QString();
+		} },
+		{ u"context_media_before_turn_start"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, {
+					MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("bytes"),
+						.mimeType = u"image/png"_q,
+					},
+					TextBlock{ u"first"_q, false },
+				} },
+				Message{ Role::Assistant, { TextBlock{ u"reply"_q, false } } },
+				Message{ Role::User, { TextBlock{ u"next"_q, false } } },
+			};
+			const auto messages = ContextMessages(record);
+			if (messages.size() != 3) {
+				return u"message count differs"_q;
+			}
+			if (messages[0].blocks.size() != 2) {
+				return u"block count differs"_q;
+			}
+			const auto placeholder = std::get_if<TextBlock>(
+				&messages[0].blocks[0]);
+			const auto text = std::get_if<TextBlock>(&messages[0].blocks[1]);
+			if (!placeholder
+				|| !placeholder->hidden
+				|| placeholder->text != MediaPlaceholder(MediaBlock{
+					.kind = MediaKind::Image,
+					.mimeType = u"image/png"_q,
+				})
+				|| !text
+				|| text->hidden
+				|| text->text != u"first"_q) {
+				return u"placeholder wrong"_q;
+			}
+			return QString();
+		} },
+		{ u"context_tool_media_dropped"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { TextBlock{ u"first"_q, false } } },
+				Message{ Role::Assistant, { ToolUseBlock{ u"t1"_q, u"look"_q } } },
+				Message{ Role::User, { ToolResultBlock{
+					u"t1"_q,
+					u"content"_q,
+					false,
+					{ MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("bytes"),
+						.mimeType = u"image/png"_q,
+					} },
+				} } },
+				Message{ Role::User, { TextBlock{ u"next"_q, false } } },
+			};
+			const auto messages = ContextMessages(record);
+			if (messages.size() != 4) {
+				return u"message count differs"_q;
+			}
+			const auto tool = std::get_if<ToolResultBlock>(
+				&messages[2].blocks[0]);
+			if (!tool || !tool->media.empty()) {
+				return u"tool media not dropped"_q;
+			}
+			const auto expected = u"content\n"_q + MediaPlaceholder(MediaBlock{
+				.kind = MediaKind::Image,
+				.mimeType = u"image/png"_q,
+			});
+			if (tool->content != expected) {
+				return u"tool content: %1"_q.arg(tool->content);
+			}
+			return QString();
+		} },
+		{ u"context_tool_media_in_turn"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { TextBlock{ u"look"_q, false } } },
+				Message{ Role::Assistant, { ToolUseBlock{ u"t1"_q, u"v"_q } } },
+				Message{ Role::User, { ToolResultBlock{
+					u"t1"_q,
+					u"content"_q,
+					false,
+					{
+						MediaBlock{
+							.kind = MediaKind::Image,
+							.bytes = QByteArray("bytes"),
+							.mimeType = u"image/jpeg"_q,
+						},
+						MediaBlock{
+							.kind = MediaKind::Audio,
+							.mimeType = u"audio/wav"_q,
+						},
+					},
+				} } },
+			};
+			const auto messages = ContextMessages(record);
+			const auto tool = std::get_if<ToolResultBlock>(
+				&messages[2].blocks[0]);
+			if (!tool || tool->media.size() != 1
+				|| tool->media[0].kind != MediaKind::Image) {
+				return u"only the media with bytes must stay"_q;
+			}
+			const auto expected = u"content\n"_q + MediaPlaceholder(
+				MediaBlock{
+					.kind = MediaKind::Audio,
+					.mimeType = u"audio/wav"_q,
+				});
+			if (tool->content != expected) {
+				return u"tool content: %1"_q.arg(tool->content);
+			}
+			return QString();
+		} },
+		{ u"context_media_after_turn_start"_q, [] {
+			auto record = SessionRecord();
+			record.messages = {
+				Message{ Role::User, { TextBlock{ u"first"_q, false } } },
+				Message{ Role::Assistant, { TextBlock{ u"reply"_q, false } } },
+				Message{ Role::User, {
+					MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("bytes"),
+						.mimeType = u"image/png"_q,
+					},
+					MediaBlock{
+						.kind = MediaKind::Audio,
+						.mimeType = u"audio/wav"_q,
+					},
+				} },
+			};
+			const auto messages = ContextMessages(record);
+			if (messages.size() != 3) {
+				return u"message count differs"_q;
+			}
+			const auto &blocks = messages[2].blocks;
+			if (blocks.size() != 3) {
+				return u"block count differs: %1"_q.arg(blocks.size());
+			}
+			const auto label = std::get_if<TextBlock>(&blocks[0]);
+			const auto media = std::get_if<MediaBlock>(&blocks[1]);
+			const auto placeholder = std::get_if<TextBlock>(&blocks[2]);
+			if (!label
+				|| !label->hidden
+				|| label->text != MediaLabel(MediaBlock{
+					.kind = MediaKind::Image,
+					.mimeType = u"image/png"_q,
+				})
+				|| !media
+				|| media->bytes != QByteArray("bytes")
+				|| !placeholder
+				|| !placeholder->hidden
+				|| placeholder->text != MediaPlaceholder(MediaBlock{
+					.kind = MediaKind::Audio,
+					.mimeType = u"audio/wav"_q,
+				})) {
+				return u"after turn start wrong"_q;
 			}
 			return QString();
 		} },

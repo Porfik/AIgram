@@ -636,6 +636,32 @@ namespace {
 			}
 			return QString();
 		} },
+		{ u"openai_parse_models_modalities"_q, [] {
+			const auto json = QByteArray(R"({"data":[
+				{"id":"a","supported_parameters":["tools"],
+					"architecture":{"input_modalities":[
+						"text","audio","video","file"]}},
+				{"id":"b","supported_parameters":["tools"],
+					"architecture":{"input_modalities":["text"]}}
+			]})");
+			const auto models = OpenAi::ParseModels(json);
+			if (models.size() != 2) {
+				return u"models: got %1, expected 2"_q.arg(models.size());
+			}
+			const auto &full = models[0];
+			const auto &text = models[1];
+			if (!full.audio.value_or(false)
+				|| !full.video.value_or(false)
+				|| !full.files.value_or(false)) {
+				return u"audio, video and files must be set"_q;
+			}
+			if (text.audio.value_or(true)
+				|| text.video.value_or(true)
+				|| text.files.value_or(true)) {
+				return u"modalities must be false"_q;
+			}
+			return QString();
+		} },
 	};
 }
 
@@ -804,6 +830,154 @@ namespace {
 				return u"url: got %1, expected %2"_q.arg(prepared.url, url);
 			} else if (HasHeader(prepared, "Authorization")) {
 				return u"empty key must omit Authorization"_q;
+			}
+			return QString();
+		} },
+		{ u"openai_serialize_request_media_kinds"_q, [] {
+			auto request = Request();
+			request.model = u"m"_q;
+			request.messages.push_back(Message{
+				Role::User,
+				{
+					TextBlock{ u"see"_q },
+					MediaBlock{
+						.kind = MediaKind::Image,
+						.bytes = QByteArray("img"),
+						.mimeType = u"image/png"_q,
+					},
+					MediaBlock{
+						.kind = MediaKind::Audio,
+						.bytes = QByteArray("snd"),
+						.mimeType = u"audio/wav"_q,
+					},
+					MediaBlock{
+						.kind = MediaKind::Video,
+						.bytes = QByteArray("vid"),
+						.mimeType = u"video/mp4"_q,
+					},
+					MediaBlock{
+						.kind = MediaKind::File,
+						.bytes = QByteArray("doc"),
+						.mimeType = u"application/pdf"_q,
+						.name = u"doc.pdf"_q,
+					},
+				},
+			});
+			const auto document = QJsonDocument::fromJson(
+				OpenAi::SerializeRequest(request));
+			const auto content = document.object().value("messages")
+				.toArray()[0].toObject().value("content").toArray();
+			if (content.size() != 5) {
+				return u"expected 5 parts, got %1"_q.arg(content.size());
+			}
+			if (content[0].toObject().value("type") != u"text"_q) {
+				return u"first part must be text"_q;
+			}
+			const auto kinds = std::vector<QString>{
+				u"image_url"_q,
+				u"input_audio"_q,
+				u"video_url"_q,
+				u"file"_q,
+			};
+			for (auto i = 0; i != int(kinds.size()); ++i) {
+				const auto part = content[i + 1].toObject();
+				if (part.value("type") != kinds[i]) {
+					return u"part %1 kind: got %2, expected %3"_q
+						.arg(i)
+						.arg(part.value("type").toString(), kinds[i]);
+				}
+			}
+			const auto audio = content[2].toObject().value("input_audio")
+				.toObject();
+			if (audio.value("format") != u"wav"_q) {
+				return u"audio format must be wav"_q;
+			}
+			const auto file = content[4].toObject().value("file").toObject();
+			if (file.value("filename") != u"doc.pdf"_q) {
+				return u"file name must be kept"_q;
+			}
+			return QString();
+		} },
+		{ u"openai_serialize_request_tool_media_order"_q, [] {
+			auto request = Request();
+			request.model = u"m"_q;
+			auto media = MediaBlock{
+				.kind = MediaKind::Image,
+				.bytes = QByteArray("img"),
+				.mimeType = u"image/png"_q,
+			};
+			request.messages.push_back(Message{
+				Role::User,
+				{
+					ToolResultBlock{ u"t1"_q, u"result"_q, false, { media } },
+					ToolResultBlock{ u"t2"_q, u"plain"_q, false },
+					TextBlock{ u"after"_q },
+				},
+			});
+			const auto document = QJsonDocument::fromJson(
+				OpenAi::SerializeRequest(request));
+			const auto messages = document.object().value("messages")
+				.toArray();
+			if (messages.size() != 3) {
+				return u"expected 3 messages, got %1"_q.arg(messages.size());
+			}
+			const auto first = messages[0].toObject();
+			if (first.value("role") != u"tool"_q
+				|| first.value("tool_call_id") != u"t1"_q) {
+				return u"first message must be tool t1"_q;
+			}
+			const auto second = messages[1].toObject();
+			if (second.value("role") != u"tool"_q
+				|| second.value("tool_call_id") != u"t2"_q) {
+				return u"second message must be tool t2"_q;
+			}
+			const auto third = messages[2].toObject();
+			if (third.value("role") != u"user"_q) {
+				return u"third message must be user"_q;
+			}
+			const auto parts = third.value("content").toArray();
+			if (parts.size() != 3) {
+				return u"expected 3 parts, got %1"_q.arg(parts.size());
+			}
+			if (parts[0].toObject().value("type") != u"text"_q
+				|| !parts[0].toObject().value("text").toString().contains(
+					u"t1"_q)) {
+				return u"tool media must get a label part"_q;
+			}
+			if (parts[1].toObject().value("type") != u"image_url"_q) {
+				return u"tool media part must follow its label"_q;
+			}
+			if (parts[2].toObject().value("type") != u"text"_q
+				|| parts[2].toObject().value("text") != u"after"_q) {
+				return u"the message blocks must follow the tool media"_q;
+			}
+			return QString();
+		} },
+		{ u"openai_serialize_request_pdf_engine"_q, [] {
+			auto request = Request();
+			request.model = u"m"_q;
+			request.pdfEngine = u"pdf-text"_q;
+			const auto document = QJsonDocument::fromJson(
+				OpenAi::SerializeRequest(request));
+			const auto object = document.object();
+			const auto plugins = object.value("plugins").toArray();
+			if (plugins.size() != 1) {
+				return u"expected one plugin, got %1"_q.arg(plugins.size());
+			}
+			const auto plugin = plugins[0].toObject();
+			if (plugin.value("id") != u"file-parser"_q) {
+				return u"plugin id must be file-parser"_q;
+			}
+			const auto pdf = plugin.value("pdf").toObject();
+			if (pdf.value("engine") != u"pdf-text"_q) {
+				return u"pdf engine must be pdf-text"_q;
+			}
+			auto plain = request;
+			plain.pdfEngine = QString();
+			const auto other = QJsonDocument::fromJson(
+				OpenAi::SerializeRequest(plain)).object();
+			if (other.contains("plugins")) {
+				return u"no plugins without pdfEngine"_q;
 			}
 			return QString();
 		} },

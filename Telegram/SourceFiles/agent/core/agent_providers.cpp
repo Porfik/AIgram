@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(4);
+constexpr auto kFormatVersion = qint32(5);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 
@@ -40,12 +40,16 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 			<< qint32(provider.vision ? 1 : 0)
 			<< provider.priceInput
 			<< provider.priceOutput
-			<< provider.priceCached;
+			<< provider.priceCached
+			<< qint32(provider.audio ? 1 : 0)
+			<< qint32(provider.video ? 1 : 0)
+			<< qint32(provider.files ? 1 : 0);
 	}
 	stream << state.activeId << state.instructions;
 	stream << qint32(state.showEntryPoints ? 1 : 0);
 	stream << qint32(state.showSpending ? 1 : 0);
 	stream << qint32(state.rowPreview);
+	stream << state.mediaId;
 	return result;
 }
 
@@ -99,6 +103,21 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 				return std::nullopt;
 			}
 		}
+		if (version >= 5) {
+			auto audio = qint32(0);
+			auto video = qint32(0);
+			auto files = qint32(0);
+			stream >> audio >> video >> files;
+			if (stream.status() != QDataStream::Ok
+				|| audio < 0 || audio > 1
+				|| video < 0 || video > 1
+				|| files < 0 || files > 1) {
+				return std::nullopt;
+			}
+			provider.audio = (audio != 0);
+			provider.video = (video != 0);
+			provider.files = (files != 0);
+		}
 		state.list.push_back(std::move(provider));
 	}
 	stream >> state.activeId >> state.instructions;
@@ -133,6 +152,12 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		}
 		state.rowPreview = RowPreview(rowPreview);
 	}
+	if (version >= 5) {
+		stream >> state.mediaId;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
 	}
@@ -149,11 +174,21 @@ const ProviderSettings *ActiveProvider(const ProvidersState &state) {
 }
 
 const ProviderSettings *MediaProvider(const ProvidersState &state) {
+	if (state.mediaId.isEmpty()) {
+		return nullptr;
+	}
+	for (const auto &provider : state.list) {
+		if (provider.id == state.mediaId) {
+			return &provider;
+		}
+	}
 	return nullptr;
 }
 
 bool IsOpenRouter(const ProviderSettings &settings) {
-	return false;
+	const auto host = QUrl(settings.baseUrl).host();
+	return host == u"openrouter.ai"_q
+		|| host.endsWith(u".openrouter.ai"_q);
 }
 
 std::unique_ptr<Adapter> CreateAdapter(const ProviderSettings &settings) {
