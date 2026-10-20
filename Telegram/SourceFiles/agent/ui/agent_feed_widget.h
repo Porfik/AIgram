@@ -55,6 +55,7 @@ private:
 		const FeedItem &item);
 
 	object_ptr<ScrollArea> _scroll;
+	not_null<RpWidget*> _content;
 	not_null<VerticalLayout*> _list;
 	object_ptr<FeedStatusWidget> _status;
 	object_ptr<Ui::FlatLabel> _spending;

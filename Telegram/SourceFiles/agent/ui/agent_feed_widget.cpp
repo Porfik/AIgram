@@ -50,7 +50,8 @@ namespace {
 FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 : RpWidget(parent)
 , _scroll(this, st::defaultScrollArea)
-, _list(_scroll->setOwnedWidget(object_ptr<VerticalLayout>(_scroll.data())))
+, _content(_scroll->setOwnedWidget(object_ptr<RpWidget>(_scroll.data())))
+, _list(Ui::CreateChild<VerticalLayout>(_content.get()))
 , _status(this)
 , _spending(this, QString(), st::agentFeedSpendingLabel)
 , _context(std::move(context))
@@ -68,8 +69,10 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 	) | rpl::on_next([=] {
 		updateStick();
 	}, lifetime());
+	_list->show();
 	_list->heightValue(
-	) | rpl::on_next([=] {
+	) | rpl::on_next([=](int height) {
+		_content->resize(_content->width(), height);
 		applyStick();
 	}, lifetime());
 	rpl::combine(
@@ -381,6 +384,7 @@ void FeedWidget::relayout() {
 	_status->moveToLeft(left, height() - statusHeight, width);
 	_scroll->setGeometry(0, 0, width, height() - statusHeight - footerHeight);
 	_list->resizeToWidth(inner);
+	_content->resize(width, _list->height());
 	_list->moveToLeft(left, 0, width);
 	applyStick();
 }
