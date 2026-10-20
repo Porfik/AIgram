@@ -57,6 +57,7 @@ namespace {
 		return u"The user approved the changes to the task."_q;
 	case CardKind::Action:
 	case CardKind::Change: return u"The action was performed."_q;
+	case CardKind::Method: return u"The call was made."_q;
 	}
 	Unexpected("Card kind in CardResultText.");
 }

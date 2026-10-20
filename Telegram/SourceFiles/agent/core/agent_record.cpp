@@ -407,7 +407,7 @@ std::optional<Card> ReadCard(QDataStream &stream, qint32 version) {
 	stream >> toolUseId >> kind >> status >> decided >> targetCount;
 	if (stream.status() != QDataStream::Ok
 		|| kind < 0
-		|| kind > int(CardKind::Change)
+		|| kind > int(CardKind::Method)
 		|| status < 0
 		|| status > int(CardStatus::Expired)
 		|| decided < 0

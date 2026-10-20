@@ -33,6 +33,7 @@ enum class CardKind : uchar {
 	UpdateTask,
 	Action,
 	Change,
+	Method,
 };
 
 enum class CardStatus : uchar {

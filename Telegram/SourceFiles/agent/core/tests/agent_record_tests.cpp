@@ -793,7 +793,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_cards_round_trip"_q, [] {
 			auto record = SessionRecord();
-			for (auto kind = 0; kind <= int(CardKind::Change); ++kind) {
+			for (auto kind = 0; kind <= int(CardKind::Method); ++kind) {
 				for (auto status = 0; status <= int(CardStatus::Expired); ++status) {
 					for (auto decided = 0; decided <= int(CardAction::Decline); ++decided) {
 						auto card = SampleCard();

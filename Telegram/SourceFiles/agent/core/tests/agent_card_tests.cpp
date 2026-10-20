@@ -452,6 +452,35 @@ std::vector<Check> CardChecks() {
 			}
 			return QString();
 		} },
+		{ u"card_method_kind"_q, [] {
+			if (CardTextEditable(CardKind::Method)
+				|| CardHasAlternate(CardKind::Method)
+				|| CardAlwaysAsks(CardKind::Method)) {
+				return u"method flags"_q;
+			}
+			auto card = Card();
+			card.kind = CardKind::Method;
+			card.text = u"Turn on slow mode"_q;
+			card.detail = u"messages.toggleNoForwards"_q;
+			card.proposedText = u"{}"_q;
+			const auto decided = ApplyDecision(card, CardDecision{
+				.action = CardAction::Execute,
+				.text = u"other"_q,
+			});
+			if (decided.text != card.text
+				|| decided.status != CardStatus::Running) {
+				return u"method description must stay"_q;
+			}
+			card.status = CardStatus::Done;
+			if (!CardResultText(card).contains(u"The call was made."_q)) {
+				return u"method done: "_q + CardResultText(card);
+			}
+			card.status = CardStatus::Declined;
+			if (!CardResultText(card).contains(u"declined"_q)) {
+				return u"method declined: "_q + CardResultText(card);
+			}
+			return QString();
+		} },
 		{ u"card_targets_status"_q, [] {
 			auto card = Card();
 			if (TargetsStatus(card) != CardStatus::Done) {
