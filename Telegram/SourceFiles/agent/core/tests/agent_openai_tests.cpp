@@ -525,6 +525,24 @@ namespace {
 					return CheckCost(response, 0.00007);
 				});
 		} },
+		{ u"openrouter_claude_cache_write_usage"_q, [] {
+			return CheckFixtureResponse(u"openrouter-claude-usage.sse"_q,
+				[](const Response &response) {
+					auto failure = CheckNoError(response);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					failure = CheckUsage(response, 10339, 60, 10318);
+					if (!failure.isEmpty()) {
+						return failure;
+					}
+					if (response.usage.cacheWriteTokens != 21) {
+						return u"cache writes: got %1, expected 21"_q.arg(
+							response.usage.cacheWriteTokens);
+					}
+					return CheckCost(response, 0.0012);
+				});
+		} },
 	};
 }
 
@@ -801,6 +819,67 @@ namespace {
 
 [[nodiscard]] std::vector<Check> OpenAiRequestChecks() {
 	return {
+		{ u"openai_prepare_claude_cache_marks"_q, [] {
+			auto request = Request();
+			request.system = u"You are helpful."_q;
+			request.messages.push_back(
+				Message{ Role::User, { TextBlock{ u"Hello"_q } } });
+			auto settings = ProviderSettings();
+			settings.baseUrl = OpenRouterBaseUrl();
+			settings.model = u"anthropic/claude-sonnet-4.5"_q;
+			const auto object = QJsonDocument::fromJson(
+				OpenAi::Adapter(settings).prepare(request).body).object();
+			const auto control = object.value(u"cache_control"_q).toObject();
+			if (control.value(u"type"_q) != u"ephemeral"_q) {
+				return u"top-level cache_control: got %1"_q.arg(
+					QString::fromUtf8(
+						QJsonDocument(control).toJson(
+							QJsonDocument::Compact)));
+			}
+			const auto system = object.value(u"messages"_q)
+				.toArray()[0].toObject();
+			if (system.value(u"role"_q) != u"system"_q) {
+				return u"the first message must be the system one"_q;
+			}
+			const auto parts = system.value(u"content"_q).toArray();
+			if (parts.size() != 1) {
+				return u"system content: got %1 parts, expected 1"_q.arg(
+					parts.size());
+			}
+			const auto part = parts[0].toObject();
+			if (part.value(u"type"_q) != u"text"_q
+				|| part.value(u"text"_q) != u"You are helpful."_q
+				|| part.value(u"cache_control"_q).toObject()
+					.value(u"type"_q) != u"ephemeral"_q) {
+				return u"the system part must carry cache_control"_q;
+			}
+			return QString();
+		} },
+		{ u"openai_prepare_no_cache_marks_elsewhere"_q, [] {
+			auto request = Request();
+			request.system = u"You are helpful."_q;
+			auto settings = ProviderSettings();
+			settings.baseUrl = OpenRouterBaseUrl();
+			settings.model = u"z-ai/glm-5.3-flash"_q;
+			const auto router = QJsonDocument::fromJson(
+				OpenAi::Adapter(settings).prepare(request).body).object();
+			if (router.contains(u"cache_control"_q)) {
+				return u"a non-Claude OpenRouter model must get no marks"_q;
+			} else if (!router.value(u"messages"_q).toArray()[0]
+				.toObject().value(u"content"_q).isString()) {
+				return u"the system content must stay a string"_q;
+			}
+			settings.model = u"anthropic/claude-sonnet-4.5"_q;
+			settings.baseUrl = u"https://example.com/v1"_q;
+			const auto other = QJsonDocument::fromJson(
+				OpenAi::Adapter(settings).prepare(request).body).object();
+			if (other.contains(u"cache_control"_q)
+				|| !other.value(u"messages"_q).toArray()[0]
+					.toObject().value(u"content"_q).isString()) {
+				return u"another host must get no marks"_q;
+			}
+			return QString();
+		} },
 		{ u"openai_serialize_request_golden"_q, [] {
 			const auto serialized = OpenAi::SerializeRequest(GoldenRequest());
 			const auto document = QJsonDocument::fromJson(serialized);

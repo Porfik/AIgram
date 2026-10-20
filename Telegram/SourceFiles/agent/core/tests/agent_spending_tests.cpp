@@ -31,6 +31,16 @@ namespace {
 	return provider;
 }
 
+[[nodiscard]] ProviderSettings WritePriced(
+		double input,
+		double output,
+		double cached,
+		double write) {
+	auto provider = Priced(input, output, cached);
+	provider.priceCacheWrite = write;
+	return provider;
+}
+
 [[nodiscard]] QString TotalsEqual(
 		const SpendingTotals &a,
 		const SpendingTotals &b) {
@@ -40,6 +50,8 @@ namespace {
 		return u"outputTokens differ"_q;
 	} else if (a.cachedInputTokens != b.cachedInputTokens) {
 		return u"cachedInputTokens differ"_q;
+	} else if (a.cacheWriteTokens != b.cacheWriteTokens) {
+		return u"cacheWriteTokens differ"_q;
 	} else if (a.cost != b.cost) {
 		return u"cost differs"_q;
 	} else if (a.hasCost != b.hasCost) {
@@ -75,14 +87,19 @@ std::vector<Check> SpendingChecks() {
 				return u"unexpected totals with cost"_q;
 			}
 			auto other = SpendingTotals();
-			other.add(Usage{ 5, 5, 5, 1.5, true });
+			totals.add(Usage{ 3, 4, 0, 0., false, 7 });
+			if (totals.cacheWriteTokens != 7) {
+				return u"cache write tokens must be summed"_q;
+			}
+			other.add(Usage{ 5, 5, 5, 1.5, true, 2 });
 			totals.add(other);
-			if (totals.requests != 3
-				|| totals.inputTokens != 16
-				|| totals.outputTokens != 27
+			if (totals.requests != 4
+				|| totals.inputTokens != 19
+				|| totals.outputTokens != 31
 				|| totals.cachedInputTokens != 9
+				|| totals.cacheWriteTokens != 9
 				|| totals.cost != 2.
-				|| totals.tokens() != 43) {
+				|| totals.tokens() != 50) {
 				return u"unexpected merged totals"_q;
 			}
 			auto empty = SpendingTotals();
@@ -145,7 +162,61 @@ std::vector<Check> SpendingChecks() {
 			}
 			return QString();
 		} },
-		{ u"spending_price_usage_without_prices"_q, [] {
+		{ u"spending_price_usage_cache_writes"_q, [] {
+		const auto usage = Usage{ 1'000'000, 500'000, 300'000, 0., false, 200'000 };
+		const auto withWritePrice = PriceUsage(
+			usage,
+			WritePriced(1., 2., 0.5, 4.));
+		const auto expectedWrite = (500'000 * 1. + 300'000 * 0.5
+			+ 200'000 * 4. + 500'000 * 2.) / 1'000'000.;
+		if (!withWritePrice.hasCost
+			|| withWritePrice.cost != expectedWrite) {
+			return u"write price: got %1, expected %2"_q
+				.arg(withWritePrice.cost).arg(expectedWrite);
+		}
+		const auto withoutWritePrice = PriceUsage(usage, Priced(1., 2., 0.5));
+		const auto expectedFallback = (500'000 * 1. + 300'000 * 0.5
+			+ 200'000 * 1. + 500'000 * 2.) / 1'000'000.;
+		if (!withoutWritePrice.hasCost
+			|| withoutWritePrice.cost != expectedFallback) {
+			return u"write fallback: got %1, expected %2"_q
+				.arg(withoutWritePrice.cost).arg(expectedFallback);
+		}
+		const auto clamped = PriceUsage(
+			Usage{ 100'000, 0, 90'000, 0., false, 50'000 },
+			Priced(1., 2., 0.));
+		const auto expectedClamped = (90'000 + 50'000) * 1. / 1'000'000.;
+		if (!clamped.hasCost || clamped.cost != expectedClamped) {
+			return u"clamped: got %1, expected %2"_q
+				.arg(clamped.cost).arg(expectedClamped);
+		}
+		return QString();
+	} },
+	{ u"spending_cached_percent"_q, [] {
+		auto totals = SpendingTotals();
+		if (CachedPercent(totals) != 0) {
+			return u"no input must give zero"_q;
+		}
+		totals.inputTokens = 100;
+		if (CachedPercent(totals) != 0) {
+			return u"no cached must give zero"_q;
+		}
+		totals.cachedInputTokens = 50;
+		if (CachedPercent(totals) != 50) {
+			return u"half must give 50"_q;
+		}
+		totals.cachedInputTokens = 2;
+		totals.inputTokens = 3;
+		if (CachedPercent(totals) != 67) {
+			return u"two of three must round to 67"_q;
+		}
+		totals.cachedInputTokens = 1;
+		if (CachedPercent(totals) != 33) {
+			return u"one of three must round to 33"_q;
+		}
+		return QString();
+	} },
+	{ u"spending_price_usage_without_prices"_q, [] {
 			auto usage = Usage{ 100, 200, 50 };
 			const auto priced = PriceUsage(usage, ProviderSettings());
 			if (priced.hasCost || priced.cost != 0.) {
@@ -231,9 +302,9 @@ std::vector<Check> SpendingChecks() {
 		} },
 		{ u"spending_round_trip"_q, [] {
 			auto stats = SpendingStats();
-			AddSpending(stats, 10, Usage{ 10, 20, 5, 0.25, true });
-			AddSpending(stats, 20, Usage{ 30, 40 });
-			stats.older.add(Usage{ 50, 60, 0, 1.5, true });
+			AddSpending(stats, 10, Usage{ 10, 20, 5, 0.25, true, 7 });
+			AddSpending(stats, 20, Usage{ 30, 40, 0, 0., false, 3 });
+			stats.older.add(Usage{ 50, 60, 0, 1.5, true, 9 });
 			const auto bytes = SerializeSpending(stats);
 			if (bytes.isEmpty()) {
 				return u"serialization is empty"_q;
@@ -246,6 +317,10 @@ std::vector<Check> SpendingChecks() {
 				|| restored->days[0].day != 10
 				|| restored->days[1].day != 20) {
 				return u"unexpected restored days"_q;
+			} else if (restored->days[0].totals.cacheWriteTokens != 7
+				|| restored->days[1].totals.cacheWriteTokens != 3
+				|| restored->older.cacheWriteTokens != 9) {
+				return u"cache write tokens lost"_q;
 			}
 			const auto dayDiff = TotalsEqual(
 				restored->days[0].totals,
@@ -272,6 +347,20 @@ std::vector<Check> SpendingChecks() {
 				good + QByteArray("x"),
 				Written([](QDataStream &stream) {
 					stream << quint32(2) << qint32(0);
+				}),
+				Written([](QDataStream &stream) {
+					stream << quint32(3);
+				}),
+				Written([](QDataStream &stream) {
+					stream
+						<< quint32(2)
+						<< qint64(0)
+						<< qint64(0)
+						<< qint64(0)
+						<< 0.
+						<< qint32(0)
+						<< qint32(0)
+						<< qint64(-1);
 				}),
 				Written([](QDataStream &stream) {
 					stream << quint32(1) << qint32(0) << qint32(-1);
@@ -310,6 +399,41 @@ std::vector<Check> SpendingChecks() {
 				if (DeserializeSpending(bytes)) {
 					return u"expected nullopt for: "_q + bytes.toBase64();
 				}
+			}
+			return QString();
+		} },
+		{ u"spending_loads_version1"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << quint32(1);
+				stream
+					<< qint64(5)
+					<< qint64(6)
+					<< qint64(0)
+					<< 1.5
+					<< qint32(1)
+					<< qint32(1);
+				stream << qint32(1) << qint32(90);
+				stream
+					<< qint64(10)
+					<< qint64(20)
+					<< qint64(5)
+					<< 0.25
+					<< qint32(1)
+					<< qint32(1);
+			});
+			const auto restored = DeserializeSpending(bytes);
+			if (!restored) {
+				return u"version 1 failed to load"_q;
+			}
+			if (restored->older.inputTokens != 5
+				|| restored->older.cost != 1.5
+				|| restored->days.size() != 1
+				|| restored->days[0].day != 90
+				|| restored->days[0].totals.inputTokens != 10) {
+				return u"version 1 totals lost"_q;
+			} else if (restored->older.cacheWriteTokens != 0
+				|| restored->days[0].totals.cacheWriteTokens != 0) {
+				return u"version 1 must load zero cache writes"_q;
 			}
 			return QString();
 		} },

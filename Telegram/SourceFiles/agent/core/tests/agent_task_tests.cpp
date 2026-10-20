@@ -91,6 +91,7 @@ Task SampleTask() {
 		.cost = 0.03,
 		.hasCost = true,
 		.requests = 2,
+		.cacheWriteTokens = 5,
 	};
 	return task;
 }
@@ -108,7 +109,14 @@ TaskRun SampleRun(int index) {
 	run.finished = 1'700'000'500 + index;
 	run.outcome = RunOutcome(index % 5);
 	run.actions = 3 + index;
-	run.usage = Usage{ 10 + index, 20 + index, 2, 0.01 * index, index > 0 };
+	run.usage = Usage{
+		10 + index,
+		20 + index,
+		2,
+		0.01 * index,
+		index > 0,
+		7 + index,
+	};
 	run.error = index ? u"boom"_q : QString();
 	return run;
 }
@@ -117,6 +125,7 @@ QString TotalsDiffers(const SpendingTotals &a, const SpendingTotals &b) {
 	if (a.inputTokens != b.inputTokens
 		|| a.outputTokens != b.outputTokens
 		|| a.cachedInputTokens != b.cachedInputTokens
+		|| a.cacheWriteTokens != b.cacheWriteTokens
 		|| a.cost != b.cost
 		|| a.hasCost != b.hasCost
 		|| a.requests != b.requests) {
@@ -177,6 +186,7 @@ QString RunDiffers(const TaskRun &a, const TaskRun &b) {
 		|| a.usage.inputTokens != b.usage.inputTokens
 		|| a.usage.outputTokens != b.usage.outputTokens
 		|| a.usage.cachedInputTokens != b.usage.cachedInputTokens
+		|| a.usage.cacheWriteTokens != b.usage.cacheWriteTokens
 		|| a.usage.cost != b.usage.cost
 		|| a.usage.hasCost != b.usage.hasCost
 		|| a.error != b.error) {
@@ -601,6 +611,49 @@ std::vector<Check> SerializeChecks() {
 			const auto runBytes = SerializeRuns({ SampleRun(0) });
 			if (DeserializeRuns(runBytes.left(runBytes.size() - 1))) {
 				return u"truncated runs must not deserialize"_q;
+			}
+			return QString();
+		} },
+		{ u"task_serialize_loads_version1"_q, [] {
+			auto taskBytes = SerializeTask(SampleTask());
+			taskBytes.chop(8);
+			{
+				QDataStream stream(&taskBytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << quint32(1);
+			}
+			const auto task = DeserializeTask(taskBytes);
+			if (!task) {
+				return u"version 1 task failed to load"_q;
+			} else if (task->spentToday.cacheWriteTokens != 0) {
+				return u"version 1 task must load zero cache writes"_q;
+			}
+			const auto tasks = std::vector<Task>{ SampleTask() };
+			auto listBytes = SerializeTasks(tasks);
+			listBytes.chop(8);
+			{
+				QDataStream stream(&listBytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << quint32(1);
+			}
+			const auto list = DeserializeTasks(listBytes);
+			if (!list || list->size() != 1) {
+				return u"version 1 tasks failed to load"_q;
+			} else if ((*list)[0].spentToday.cacheWriteTokens != 0) {
+				return u"version 1 tasks must load zero cache writes"_q;
+			}
+			auto runBytes = SerializeRuns({ SampleRun(0) });
+			runBytes.chop(4);
+			{
+				QDataStream stream(&runBytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << quint32(1);
+			}
+			const auto runs = DeserializeRuns(runBytes);
+			if (!runs || runs->size() != 1) {
+				return u"version 1 runs failed to load"_q;
+			} else if ((*runs)[0].usage.cacheWriteTokens != 0) {
+				return u"version 1 runs must load zero cache writes"_q;
 			}
 			return QString();
 		} },

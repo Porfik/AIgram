@@ -64,6 +64,7 @@ namespace {
 		Message{ Role::Assistant, {
 			TextBlock{ u"скрытая подсказка"_q, true },
 			ThinkingBlock{ u"thinking text"_q, QByteArray("signature") },
+			ThinkingBlock{ QString(), QByteArray("redacted-data"), true },
 			TextBlock{ u"Answer text"_q, false },
 			ToolUseBlock{
 				u"call_1"_q,
@@ -75,7 +76,7 @@ namespace {
 	};
 	record.summaryUntil = 1;
 	record.summary = u"Краткое содержание"_q;
-	record.info.usage = Usage{ 100, 200, 30 };
+	record.info.usage = Usage{ 100, 200, 30, 0., false, 25 };
 	record.info.attachments = 5;
 	record.info.profileId = u"profile-openrouter"_q;
 	record.tainted = true;
@@ -109,7 +110,8 @@ namespace {
 			const auto other = std::get_if<ThinkingBlock>(&b);
 			result = other
 				&& other->text == value.text
-				&& other->signature == value.signature;
+				&& other->signature == value.signature
+				&& other->redacted == value.redacted;
 		} else if constexpr (std::is_same_v<T, ToolUseBlock>) {
 			const auto other = std::get_if<ToolUseBlock>(&b);
 			result = other
@@ -168,6 +170,9 @@ namespace {
 		|| a.info.usage.cachedInputTokens
 			!= b.info.usage.cachedInputTokens) {
 		return u"usage differs"_q;
+	} else if (a.info.usage.cacheWriteTokens
+			!= b.info.usage.cacheWriteTokens) {
+		return u"usage cache writes differ"_q;
 	} else if (a.info.usage.cost != b.info.usage.cost) {
 		return u"usage cost differs"_q;
 	} else if (a.info.usage.hasCost != b.info.usage.hasCost) {
@@ -206,6 +211,7 @@ namespace {
 		|| a.usage.inputTokens != b.usage.inputTokens
 		|| a.usage.outputTokens != b.usage.outputTokens
 		|| a.usage.cachedInputTokens != b.usage.cachedInputTokens
+		|| a.usage.cacheWriteTokens != b.usage.cacheWriteTokens
 		|| a.usage.cost != b.usage.cost
 		|| a.usage.hasCost != b.usage.hasCost
 		|| a.preview != b.preview
@@ -412,7 +418,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(8);
+				stream << qint32(9);
 				WriteHandInfo(stream);
 			});
 			if (DeserializeSession(bytes)) {
@@ -611,7 +617,7 @@ std::vector<Check> RecordChecks() {
 			info.id = u"4444444444444444"_q;
 			info.scope = Scope::Account();
 			info.title = u"With usage"_q;
-			info.usage = Usage{ 10, 20, 5, 0.5, true };
+			info.usage = Usage{ 10, 20, 5, 0.5, true, 40 };
 			const auto bytes = SerializeIndex({ info });
 			const auto restored = DeserializeIndex(bytes);
 			if (!restored || restored->size() != 1) {
@@ -768,7 +774,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"index_reject_future_version"_q, [] {
 			const auto bytes = Written([](QDataStream &stream) {
-				stream << qint32(6) << qint32(0);
+				stream << qint32(7) << qint32(0);
 			});
 			if (DeserializeIndex(bytes)) {
 				return u"expected nullopt for a future version"_q;
@@ -1016,7 +1022,7 @@ std::vector<Check> RecordChecks() {
 			record.info.id = u"aaaaaaaaaaaaaaaa"_q;
 			record.cards.push_back(SampleCard());
 			auto bytes = SerializeSession(record);
-			bytes.chop(8);
+			bytes.chop(12);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1038,7 +1044,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(8);
+			bytes.chop(12);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1099,7 +1105,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(4);
+			bytes.chop(8);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1120,7 +1126,7 @@ std::vector<Check> RecordChecks() {
 			info.id = u"eeeeeeeeeeeeeeee"_q;
 			info.attachments = 3;
 			auto bytes = SerializeIndex({ info });
-			bytes.chop(4);
+			bytes.chop(8);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1133,6 +1139,63 @@ std::vector<Check> RecordChecks() {
 				return u"index version 4 must load an empty profileId"_q;
 			} else if ((*restored)[0].attachments != 3) {
 				return u"index version 4 attachments lost"_q;
+			}
+			return QString();
+		} },
+		{ u"record_loads_version7_without_cache"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream << qint32(7);
+				WriteHandInfo(stream);
+				stream << qint32(1);
+				stream << qint32(1) << qint32(1);
+				stream << quint8(3) << u"thinking"_q << QByteArray("sig");
+				stream << qint32(0) << QString();
+				stream << qint32(10) << qint32(20) << qint32(5);
+				stream << double(0.) << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << QString();
+				stream << QString();
+			});
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 7 failed to load"_q;
+			}
+			const auto thinking = std::get_if<ThinkingBlock>(
+				&restored->messages[0].blocks[0]);
+			if (!thinking
+				|| thinking->text != u"thinking"_q
+				|| thinking->signature != QByteArray("sig")
+				|| thinking->redacted) {
+				return u"version 7 thinking must not be redacted"_q;
+			}
+			if (restored->info.usage.cacheWriteTokens != 0) {
+				return u"version 7 must load zero cache writes"_q;
+			}
+			return QString();
+		} },
+		{ u"index_loads_version5_without_cache"_q, [] {
+			auto info = SessionInfo();
+			info.id = u"ffff000000000000"_q;
+			info.profileId = u"profile-x"_q;
+			info.usage.cacheWriteTokens = 11;
+			auto bytes = SerializeIndex({ info });
+			bytes.chop(4);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(5);
+			}
+			const auto restored = DeserializeIndex(bytes);
+			if (!restored || restored->size() != 1) {
+				return u"index version 5 failed to load"_q;
+			} else if ((*restored)[0].usage.cacheWriteTokens != 0) {
+				return u"index version 5 must load zero cache writes"_q;
+			} else if ((*restored)[0].profileId != u"profile-x"_q) {
+				return u"index version 5 profileId lost"_q;
 			}
 			return QString();
 		} },
