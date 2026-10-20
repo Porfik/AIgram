@@ -106,6 +106,10 @@ namespace {
 		return u"rowPreview differs"_q;
 	} else if (a.claudePath != b.claudePath) {
 		return u"claudePath differs"_q;
+	} else if (a.agentName != b.agentName) {
+		return u"agentName differs"_q;
+	} else if (a.agentPhoto != b.agentPhoto) {
+		return u"agentPhoto differs"_q;
 	}
 	return QString();
 }
@@ -535,6 +539,28 @@ std::vector<Check> ProvidersChecks() {
 			return (SerializeProviders(*restored) == bytes)
 				? QString()
 				: u"re-serialization is not byte-identical"_q;
+		} },
+		{ u"providers_v9_round_trip"_q, [] {
+			auto state = SampleState();
+			state.agentName = u"Ассистент"_q;
+			state.agentPhoto = QByteArray("\xff\xd8jpeg\0bytes", 12);
+			const auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v9 failed to deserialize"_q;
+			}
+			const auto diff = ProvidersEqual(state, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			}
+			auto empty = SampleState();
+			const auto plain = DeserializeProviders(SerializeProviders(empty));
+			if (!plain
+				|| !plain->agentName.isEmpty()
+				|| !plain->agentPhoto.isEmpty()) {
+				return u"an unset agent name and photo must stay empty"_q;
+			}
+			return QString();
 		} },
 		{ u"providers_is_claude_on_open_router"_q, [] {
 			auto settings = ProviderSettings();

@@ -72,6 +72,8 @@ struct ProvidersState {
 	double backgroundDailyCost = 1.;
 	qint64 backgroundDailyTokens = 1'000'000;
 	QString claudePath;
+	QString agentName;
+	QByteArray agentPhoto;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);

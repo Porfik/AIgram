@@ -34,6 +34,8 @@ namespace {
 	append(MemoryChecks());
 	append(SpendingChecks());
 	append(ExclusionChecks());
+	append(ChatStateChecks());
+	append(ChatMessagesChecks());
 	append(MediaChecks());
 	append(DocumentsChecks());
 	append(TaskChecks());

@@ -53,6 +53,8 @@ struct Check {
 [[nodiscard]] std::vector<Check> MemoryChecks();
 [[nodiscard]] std::vector<Check> SpendingChecks();
 [[nodiscard]] std::vector<Check> ExclusionChecks();
+[[nodiscard]] std::vector<Check> ChatStateChecks();
+[[nodiscard]] std::vector<Check> ChatMessagesChecks();
 [[nodiscard]] std::vector<Check> MediaChecks();
 [[nodiscard]] std::vector<Check> DocumentsChecks();
 [[nodiscard]] std::vector<Check> TaskChecks();

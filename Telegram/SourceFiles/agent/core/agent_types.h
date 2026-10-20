@@ -81,6 +81,7 @@ using Block = std::variant<
 struct Message {
 	Role role = Role::User;
 	std::vector<Block> blocks;
+	qint64 date = 0;
 };
 
 struct ToolSpec {

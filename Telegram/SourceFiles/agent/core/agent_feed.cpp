@@ -118,9 +118,12 @@ std::vector<FeedItem> BuildFeed(
 		if (run->steps.empty()) {
 			run->stepsIndex = index;
 		}
+		const auto tool = std::holds_alternative<FeedTool>(step);
 		run->steps.push_back(std::move(step));
-		pending.push_back(
-			{ -1, int(run->steps.size()) - 1, true, false });
+		if (tool) {
+			pending.push_back(
+				{ -1, int(run->steps.size()) - 1, true, false });
+		}
 	};
 	const auto addAction = [&](int index, ToolUseBlock call) {
 		if (!run) {

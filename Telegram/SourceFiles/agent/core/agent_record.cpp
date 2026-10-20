@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(8);
+constexpr auto kSessionVersion = qint32(9);
 constexpr auto kIndexVersion = qint32(6);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
@@ -574,6 +574,9 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	}
 	stream << record.info.profileId;
 	stream << qint32(record.info.usage.cacheWriteTokens);
+	for (const auto &message : record.messages) {
+		stream << message.date;
+	}
 	return result;
 }
 
@@ -699,6 +702,14 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 			return std::nullopt;
 		}
 		record.info.usage.cacheWriteTokens = cacheWrites;
+	}
+	if (version >= 9) {
+		for (auto &message : record.messages) {
+			stream >> message.date;
+		}
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;

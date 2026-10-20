@@ -187,6 +187,8 @@ namespace {
 		const auto &y = b.messages[i];
 		if (x.role != y.role) {
 			return u"message role differs"_q;
+		} else if (x.date != y.date) {
+			return u"message date differs"_q;
 		} else if (x.blocks.size() != y.blocks.size()) {
 			return u"block count differs"_q;
 		}
@@ -362,6 +364,22 @@ void WriteHandTextBlock(QDataStream &stream) {
 
 std::vector<Check> RecordChecks() {
 	return {
+		{ u"record_v9_message_dates"_q, [] {
+			auto record = SampleRecord();
+			for (auto i = 0; i != int(record.messages.size()); ++i) {
+				record.messages[i].date = 1760000000 + i * 60;
+			}
+			const auto restored = DeserializeSession(SerializeSession(record));
+			if (!restored) {
+				return u"failed to deserialize"_q;
+			}
+			for (auto i = 0; i != int(record.messages.size()); ++i) {
+				if (restored->messages[i].date != record.messages[i].date) {
+					return u"message dates must round-trip"_q;
+				}
+			}
+			return QString();
+		} },
 		{ u"record_round_trip"_q, [] {
 			const auto record = SampleRecord();
 			const auto bytes = SerializeSession(record);
@@ -1044,7 +1062,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(12);
+			bytes.chop(20);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1105,7 +1123,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(8);
+			bytes.chop(16);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
