@@ -30,6 +30,7 @@ using namespace ::Ui;
 
 class MemoryList;
 class SessionsList;
+class TasksView;
 
 enum class HistoryTab : uchar {
 	Sessions,
@@ -66,6 +67,8 @@ private:
 	PlainShadow *_shadow = nullptr;
 	ScrollArea *_sessionsScroll = nullptr;
 	SessionsList *_sessions = nullptr;
+	ScrollArea *_tasksScroll = nullptr;
+	TasksView *_tasks = nullptr;
 	ScrollArea *_memoryScroll = nullptr;
 	MemoryList *_memory = nullptr;
 	rpl::event_stream<QString> _openSessionRequests;

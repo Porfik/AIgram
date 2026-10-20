@@ -40,6 +40,9 @@ namespace Agent::Ui {
 	not_null<Main::Session*> session,
 	const TaskRun &run);
 [[nodiscard]] QString FormatTaskRunOutcome(const TaskRun &run);
+[[nodiscard]] bool TaskCostKnown(
+	not_null<Manager*> manager,
+	const Task &task);
 [[nodiscard]] QString FormatTaskTool(const QString &tool);
 
 } // namespace Agent::Ui

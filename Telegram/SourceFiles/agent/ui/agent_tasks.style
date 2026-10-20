@@ -10,3 +10,43 @@ using "ui/widgets/widgets.style";
 using "agent/ui/agent.style";
 
 agentTasksRowPadding: margins(16px, 10px, 16px, 10px);
+
+agentTasksEmpty: FlatLabel(defaultFlatLabel) {
+	minWidth: 40px;
+	textFg: windowSubTextFg;
+	align: align(top);
+}
+agentTasksEmptyMargins: margins(22px, 16px, 22px, 4px);
+agentTasksBackMargins: margins(22px, 8px, 22px, 0px);
+agentTasksTitle: FlatLabel(defaultFlatLabel) {
+	style: TextStyle(defaultTextStyle) {
+		font: font(16px semibold);
+	}
+	minWidth: 20px;
+}
+agentTasksTitleMargins: margins(22px, 4px, 22px, 8px);
+agentTasksLabel: FlatLabel(defaultFlatLabel) {
+	style: TextStyle(defaultTextStyle) {
+		font: font(14px semibold);
+	}
+	minWidth: 20px;
+}
+agentTasksValue: FlatLabel(defaultFlatLabel) {
+	minWidth: 20px;
+}
+agentTasksValueGray: FlatLabel(agentTasksValue) {
+	textFg: windowSubTextFg;
+}
+agentTasksRowValueGap: 4px;
+agentTasksRowMargins: margins(22px, 10px, 22px, 12px);
+agentTasksRowRight: 14px;
+agentTasksListRowHeight: 60px;
+agentTasksListRowPadding: margins(22px, 11px, 22px, 11px);
+agentTasksListTitleStyle: TextStyle(defaultTextStyle) {
+	font: font(14px semibold);
+}
+agentTasksListInfoStyle: TextStyle(defaultTextStyle) {
+	font: font(12px);
+}
+agentTasksNoteMargins: margins(22px, 8px, 22px, 0px);
+agentTasksRunsSkip: 4px;

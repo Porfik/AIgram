@@ -290,6 +290,10 @@ GeneralAgentSection::Inner::Inner(
 	) | rpl::on_next([=](const QString &id) {
 		showSession(_manager->open(id));
 	}, lifetime());
+	_historyView->openRunRequests(
+	) | rpl::on_next([=](const QString &id) {
+		showSession(_manager->open(id));
+	}, lifetime());
 	_sessionView->sessionChanges(
 	) | rpl::on_next([=](Session *session) {
 		trackSession(session);

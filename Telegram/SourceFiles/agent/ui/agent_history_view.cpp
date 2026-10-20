@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/ui/agent_memory_list.h"
 #include "agent/ui/agent_sessions_list.h"
+#include "agent/ui/agent_tasks_view.h"
 #include "lang/lang_keys.h"
 #include "ui/widgets/discrete_sliders.h"
 #include "ui/widgets/scroll_area.h"
@@ -31,6 +32,7 @@ HistoryView::HistoryView(
 , _scope(scope) {
 	_tabs = CreateChild<SettingsSlider>(this, st::defaultTabsSlider);
 	_tabs->addSection(tr::lng_agent_sessions_tab(tr::now));
+	_tabs->addSection(tr::lng_agent_tasks_tab(tr::now));
 	_tabs->addSection(tr::lng_agent_memory_tab(tr::now));
 	_tabs->setActiveSectionFast(0);
 	_tabs->show();
@@ -63,9 +65,23 @@ HistoryView::HistoryView(
 		_memory->resizeToWidth(width);
 	}, lifetime());
 
+	_tasksScroll = CreateChild<ScrollArea>(this);
+	_tasks = _tasksScroll->setOwnedWidget(
+		object_ptr<TasksView>(
+			_tasksScroll,
+			_controller,
+			_manager,
+			_scope));
+	_tasksScroll->widthValue(
+	) | rpl::on_next([=](int width) {
+		_tasks->resizeToWidth(width);
+	}, lifetime());
+	_tasks->openRunRequests(
+	) | rpl::start_to_stream(_openRunRequests, lifetime());
+
 	_tabs->sectionActivated(
 	) | rpl::on_next([=](int section) {
-		showTab(section ? HistoryTab::Memory : HistoryTab::Sessions);
+		showTab(HistoryTab(section));
 	}, lifetime());
 	showTab(HistoryTab::Sessions);
 }
@@ -81,17 +97,16 @@ rpl::producer<QString> HistoryView::openRunRequests() const {
 void HistoryView::showTab(HistoryTab tab) {
 	const auto focused = InFocusChain(this);
 	_tab = tab;
-	const auto memory = (tab == HistoryTab::Memory);
-	if (_tabs->activeSection() != (memory ? 1 : 0)) {
-		_tabs->setActiveSectionFast(memory ? 1 : 0);
+	const auto index = int(tab);
+	if (_tabs->activeSection() != index) {
+		_tabs->setActiveSectionFast(index);
 	}
-	const auto showing = memory ? _memoryScroll : _sessionsScroll;
-	const auto hiding = memory ? _sessionsScroll : _memoryScroll;
-	showing->show();
+	_sessionsScroll->setVisible(tab == HistoryTab::Sessions);
+	_tasksScroll->setVisible(tab == HistoryTab::Tasks);
+	_memoryScroll->setVisible(tab == HistoryTab::Memory);
 	if (focused) {
 		setInnerFocus();
 	}
-	hiding->hide();
 }
 
 HistoryTab HistoryView::tab() const {
@@ -101,7 +116,7 @@ HistoryTab HistoryView::tab() const {
 void HistoryView::setInnerFocus() {
 	if (_tab == HistoryTab::Memory) {
 		_memory->setFocus();
-	} else {
+	} else if (_tab == HistoryTab::Sessions) {
 		_sessions->setFocus();
 	}
 }
@@ -122,6 +137,7 @@ void HistoryView::updateControlsGeometry() {
 		width(),
 		std::max(height() - top - st::lineWidth, 0));
 	_sessionsScroll->setGeometry(content);
+	_tasksScroll->setGeometry(content);
 	_memoryScroll->setGeometry(content);
 }
 
