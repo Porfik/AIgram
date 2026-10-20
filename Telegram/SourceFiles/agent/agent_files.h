@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "base/weak_ptr.h"
+#include "data/data_file_origin.h"
 
 #include <rpl/lifetime.h>
 
@@ -17,6 +18,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <vector>
 
 class HistoryItem;
+
+namespace Data {
+class PhotoMedia;
+class DocumentMedia;
+} // namespace Data
 
 namespace Main {
 class Session;
@@ -49,8 +55,15 @@ public:
 	~MediaSaver();
 
 private:
+	void check();
+	void finish(QString error);
+
 	QString _path;
+	Data::FileOrigin _origin;
 	Fn<void(QString error)> _done;
+	std::shared_ptr<Data::PhotoMedia> _photoMedia;
+	std::shared_ptr<Data::DocumentMedia> _documentMedia;
+	bool _started = false;
 	bool _finished = false;
 	rpl::lifetime _lifetime;
 

@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_types.h"
 #include "base/weak_ptr.h"
+#include "data/data_file_origin.h"
 
 #include <rpl/lifetime.h>
 
@@ -17,6 +18,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 class HistoryItem;
 class PhotoData;
 class DocumentData;
+
+namespace Data {
+class PhotoMedia;
+class DocumentMedia;
+} // namespace Data
 
 namespace Agent {
 
@@ -59,7 +65,20 @@ public:
 	~MediaLoader();
 
 private:
+	void startPhoto(not_null<PhotoData*> photo);
+	void startDocument(not_null<DocumentData*> document);
+	void check();
+	void checkPhoto();
+	void checkDocument();
+	void finish(QByteArray bytes, QString error);
+
+	const MediaPart _part;
+	Data::FileOrigin _origin;
 	Fn<void(QByteArray bytes, QString error)> _done;
+	std::shared_ptr<Data::PhotoMedia> _photoMedia;
+	std::shared_ptr<Data::DocumentMedia> _documentMedia;
+	QString _tempPath;
+	bool _finished = false;
 	rpl::lifetime _lifetime;
 
 };
