@@ -51,6 +51,7 @@ struct ToolEntry {
 	QString description;
 	QString generalDescription;
 	QJsonObject inputSchema;
+	QJsonObject generalSchema;
 	ToolPolicy policy;
 	ChatParam chatParam = ChatParam::None;
 	QString group;

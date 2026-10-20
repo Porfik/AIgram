@@ -270,7 +270,11 @@ std::vector<ToolSpec> ToolRegistry::tools() const {
 				? entry.generalDescription
 				: entry.description,
 			.inputSchema = account
-				? WithChatParam(entry.chatParam, entry.inputSchema)
+				? WithChatParam(
+					entry.chatParam,
+					(entry.generalSchema.isEmpty()
+						? entry.inputSchema
+						: entry.generalSchema))
 				: entry.inputSchema,
 		});
 	};

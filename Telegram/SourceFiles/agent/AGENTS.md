@@ -21,8 +21,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `agent/ui/agent_panel.style`, `agent/ui/agent_general.style`,
   `agent/ui/agent_attach.style` and `agent/ui/agent_media.style`). It may
   include `agent/core`, never the other way round.
-- Tools: `agent_tool_table.h` holds `ToolEntry`, `PendingCall` and the
-  schema helpers; each `agent_tools_<group>.cpp` returns its entries from
+- Tools: `agent_tool_table.h` holds `ToolEntry` (with `generalSchema`
+  replacing `inputSchema` in the account scope when it is set),
+  `PendingCall` and the schema helpers; each `agent_tools_<group>.cpp` returns its entries from
   `<Group>Tools::Entries()`: `chat` (reading one chat), `general` (chat
   list, settings navigation, handoff), `actions` (card actions),
   `chat_state` (mute, archive, pin, read), `folders`, `memory`, `media`
