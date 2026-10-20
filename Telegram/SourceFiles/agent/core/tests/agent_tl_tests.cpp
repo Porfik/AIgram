@@ -1035,6 +1035,67 @@ std::vector<Check> TlChecks() {
 			}
 			return QString();
 		} },
+		{ u"tl_scrub_excluded_peers"_q, [] {
+			const auto excluded = [](const QString &kind, int64 id) {
+				return (kind == u"channel" && id == 5)
+					|| (kind == u"chat" && id == 7);
+			};
+			const auto message = [&](int64 channel) {
+				return QJsonObject{ { u"_"_q, u"message"_q },
+					{ u"peer_id"_q, QJsonObject{
+						{ u"_"_q, u"peerChannel"_q },
+						{ u"channel_id"_q, double(channel) } } } };
+			};
+			auto scrubbed = ScrubExcludedPeers(
+				QJsonArray{ message(5), message(9) },
+				excluded);
+			auto list = scrubbed.toArray();
+			if (list.size() != 1 || list.first().toObject()
+				!= message(9)) {
+				return u"a message of an excluded chat must be dropped"_q;
+			}
+			scrubbed = ScrubExcludedPeers(
+				QJsonArray{ QJsonObject{ { u"_"_q, u"dialog"_q },
+					{ u"peer"_q, QJsonObject{ { u"_"_q, u"peerChat"_q },
+						{ u"chat_id"_q, 7 } } } } },
+				excluded);
+			if (!scrubbed.toArray().isEmpty()) {
+				return u"a dialog of an excluded chat must be dropped"_q;
+			}
+			scrubbed = ScrubExcludedPeers(
+				QJsonObject{ { u"_"_q, u"updateNewMessage"_q },
+					{ u"message"_q, message(5) }, { u"pts"_q, 1 } },
+				excluded);
+			if (scrubbed.toObject().value(u"message"_q)
+				!= QJsonValue(QJsonValue::Null)) {
+				return u"a removed field value must become null"_q;
+			} else if (scrubbed.toObject().value(u"pts"_q).toInt() != 1) {
+				return u"the other fields must stay"_q;
+			}
+			scrubbed = ScrubExcludedPeers(
+				QJsonArray{
+					QJsonObject{ { u"_"_q, u"chat"_q }, { u"id"_q, 7 } },
+					QJsonObject{ { u"_"_q, u"chatForbidden"_q }, { u"id"_q, 7 } },
+					QJsonObject{ { u"_"_q, u"channel"_q }, { u"id"_q, 5 } },
+					QJsonObject{ { u"_"_q, u"channelForbidden"_q },
+						{ u"id"_q, 5 } },
+					QJsonObject{ { u"_"_q, u"user"_q }, { u"id"_q, 7 } } },
+				excluded);
+			list = scrubbed.toArray();
+			if (list.size() != 1 || list.first().toObject().value(u"_"_q)
+				!= u"user"_q) {
+				return u"excluded chats must go and users must stay"_q;
+			}
+			scrubbed = ScrubExcludedPeers(message(5), excluded);
+			if (!scrubbed.isNull()) {
+				return u"the whole value must become null"_q;
+			}
+			scrubbed = ScrubExcludedPeers(message(9), excluded);
+			if (scrubbed.toObject().value(u"_"_q) != u"message"_q) {
+				return u"a visible peer must stay"_q;
+			}
+			return QString();
+		} },
 	};
 }
 } // namespace Agent::Tests

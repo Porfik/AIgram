@@ -716,4 +716,116 @@ std::optional<QJsonValue> DecodeTl(
 	return value;
 }
 
+namespace {
+
+struct PeerRef {
+	QString kind;
+	int64 id = 0;
+};
+
+[[nodiscard]] std::optional<int64> ParsePeerId(const QJsonValue &value) {
+	if (value.isDouble()) {
+		return int64(value.toDouble());
+	} else if (value.isString()) {
+		auto ok = false;
+		const auto result = value.toString().toLongLong(&ok);
+		return ok ? std::optional<int64>(result) : std::nullopt;
+	}
+	return std::nullopt;
+}
+
+[[nodiscard]] std::optional<PeerRef> PeerRefOf(const QJsonValue &value) {
+	if (!value.isObject()) {
+		return std::nullopt;
+	}
+	const auto object = value.toObject();
+	const auto type = object.value(u"_"_q).toString();
+	auto kind = QString();
+	auto field = QString();
+	if (type == u"peerUser") {
+		kind = u"user"_q;
+		field = u"user_id"_q;
+	} else if (type == u"peerChat") {
+		kind = u"chat"_q;
+		field = u"chat_id"_q;
+	} else if (type == u"peerChannel") {
+		kind = u"channel"_q;
+		field = u"channel_id"_q;
+	}
+	if (kind.isEmpty()) {
+		return std::nullopt;
+	}
+	const auto id = ParsePeerId(object.value(field));
+	if (!id) {
+		return std::nullopt;
+	}
+	return PeerRef{ kind, *id };
+}
+
+[[nodiscard]] bool ObjectRemoved(
+		const QJsonObject &object,
+		const Fn<bool(const QString &kind, int64 id)> &excluded) {
+	for (const auto field : { u"peer_id"_q, u"peer"_q, u"saved_peer_id"_q }) {
+		const auto ref = PeerRefOf(object.value(field));
+		if (ref && excluded(ref->kind, ref->id)) {
+			return true;
+		}
+	}
+	const auto type = object.value(u"_"_q).toString();
+	const auto kind = (type == u"chat" || type == u"chatForbidden")
+		? u"chat"_q
+		: (type == u"channel" || type == u"channelForbidden")
+		? u"channel"_q
+		: QString();
+	if (!kind.isEmpty()) {
+		const auto id = ParsePeerId(object.value(u"id"_q));
+		if (id && excluded(kind, *id)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+QJsonValue ScrubValue(
+		const QJsonValue &value,
+		const Fn<bool(const QString &kind, int64 id)> &excluded) {
+	if (value.isArray()) {
+		auto result = QJsonArray();
+		for (const auto &item : value.toArray()) {
+			auto scrubbed = ScrubValue(item, excluded);
+			if (!scrubbed.isUndefined()) {
+				result.append(std::move(scrubbed));
+			}
+		}
+		return result;
+	} else if (value.isObject()) {
+		const auto object = value.toObject();
+		if (ObjectRemoved(object, excluded)) {
+			return QJsonValue(QJsonValue::Undefined);
+		}
+		auto result = QJsonObject();
+		for (auto i = object.begin(); i != object.end(); ++i) {
+			auto scrubbed = ScrubValue(i.value(), excluded);
+			result.insert(
+				i.key(),
+				scrubbed.isUndefined() ? QJsonValue(QJsonValue::Null)
+					: std::move(scrubbed));
+		}
+		return result;
+	}
+	return value;
+}
+
+} // namespace
+
+QJsonValue ScrubExcludedPeers(
+		QJsonValue value,
+		Fn<bool(const QString &kind, int64 id)> excluded) {
+	auto result = ScrubValue(value, excluded);
+	if (result.isUndefined()) {
+		return QJsonValue(QJsonValue::Null);
+	}
+	return result;
+}
+
 } // namespace Agent
