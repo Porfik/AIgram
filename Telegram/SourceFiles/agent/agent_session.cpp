@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 
 #include "agent/agent_manager.h"
+#include "agent/agent_media_convert.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_memories.h"
 #include "agent/agent_spending_tracker.h"
@@ -75,6 +76,10 @@ Session::Session(not_null<Manager*> manager, SessionRecord record)
 		if (!ranges::contains(_record.info.touched, peer)) {
 			_record.info.touched.push_back(peer);
 		}
+	}, _lifetime);
+	_tools->helperUsage(
+	) | rpl::on_next([=](HelperUsage helper) {
+		accountUsage(helper.usage, helper.provider);
 	}, _lifetime);
 	_tools->cardUpdates(
 	) | rpl::on_next([=](Card card) {
@@ -283,6 +288,12 @@ void Session::dispatch(SendRequest request) {
 	if (!request.text.isEmpty()) {
 		message.blocks.push_back(TextBlock{ request.text });
 	}
+	for (const auto &input : request.attachments) {
+		message.blocks.push_back(_manager->attachments().add(
+			id(),
+			++_record.info.attachments,
+			input));
+	}
 	if (!request.untrusted.isEmpty()) {
 		message.blocks.push_back(
 			TextBlock{ WrapUntrusted(request.untrusted), true });
@@ -308,7 +319,8 @@ void Session::dispatch(SendRequest request) {
 		}
 	}
 	_gate->beginTurn(std::move(named));
-	if (!request.untrusted.isEmpty()) {
+	if (!request.untrusted.isEmpty()
+		|| !request.attachments.empty()) {
 		_gate->markTainted();
 	}
 	_overflowRetried = false;
@@ -448,6 +460,9 @@ void Session::runLoop(const ProviderSettings &provider) {
 	if (!applyState(SessionStatus::Working)) {
 		return;
 	}
+	auto messages = _manager->abilities(provider).images
+		? ContextMessages(withAttachedImages())
+		: ContextMessages(_record);
 	_loopLifetime.destroy();
 	_loop = nullptr;
 	_loop = std::make_unique<Loop>(
@@ -459,8 +474,12 @@ void Session::runLoop(const ProviderSettings &provider) {
 			.system = buildSystem(),
 			.maxOutputTokens = 0,
 			.maxSteps = 25,
+			.pdfEngine = (IsOpenRouter(provider)
+				&& !_manager->abilities(provider).files
+				? u"pdf-text"_q
+				: QString()),
 		},
-		ContextMessages(_record));
+		std::move(messages));
 	_loopContext = int(_loop->history().size());
 	_loopBase = int(_record.messages.size());
 	_loopProvider = provider;
@@ -469,6 +488,39 @@ void Session::runLoop(const ProviderSettings &provider) {
 		handleEvent(std::move(event));
 	}, _loopLifetime);
 	_loop->resume();
+}
+
+SessionRecord Session::withAttachedImages() const {
+	auto result = _record;
+	auto &messages = result.messages;
+	for (auto i = int(messages.size()); i > result.summaryUntil;) {
+		auto &message = messages[--i];
+		const auto start = (message.role == Role::User)
+			&& ranges::any_of(message.blocks, [](const Block &block) {
+				return std::holds_alternative<TextBlock>(block)
+					|| std::holds_alternative<MediaBlock>(block);
+			});
+		if (!start) {
+			continue;
+		}
+		for (auto &block : message.blocks) {
+			const auto media = std::get_if<MediaBlock>(&block);
+			if (!media
+				|| media->attachment.isEmpty()
+				|| media->kind != MediaKind::Image
+				|| !media->bytes.isEmpty()) {
+				continue;
+			}
+			if (const auto read = _manager->attachments().read(
+					id(),
+					media->attachment)) {
+				media->bytes = PrepareImageForModel(read->bytes);
+				media->mimeType = u"image/jpeg"_q;
+			}
+		}
+		break;
+	}
+	return result;
 }
 
 void Session::handleEvent(EngineEvent event) {
@@ -509,6 +561,7 @@ bool Session::handleTurnFinished(const TurnFinished &turn) {
 			turn.end)) {
 		return false;
 	}
+	DropMediaBytes(_record);
 	return publishRecord();
 }
 

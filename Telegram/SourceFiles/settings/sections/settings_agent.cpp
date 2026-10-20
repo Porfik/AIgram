@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_check.h"
 #include "agent/agent_exclusions.h"
+#include "agent/agent_files.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
@@ -40,6 +41,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <rpl/map.h>
 #include <rpl/then.h>
+
+#include <QtCore/QUrl>
+#include <QtGui/QDesktopServices>
 
 #include <memory>
 #include <optional>
@@ -488,6 +492,40 @@ void EditProviderBox(
 	container->add(
 		object_ptr<Ui::FlatLabel>(
 			container,
+			tr::lng_agent_provider_abilities(),
+			st::boxLabel),
+		st::boxRowPadding);
+	const auto abilitiesVision = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			tr::lng_agent_provider_images(),
+			provider.vision),
+		st::boxRowPadding);
+	const auto abilitiesAudio = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			tr::lng_agent_provider_audio(),
+			provider.audio),
+		st::boxRowPadding);
+	const auto abilitiesVideo = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			tr::lng_agent_provider_video(),
+			provider.video),
+		st::boxRowPadding);
+	const auto abilitiesFiles = container->add(
+		object_ptr<Ui::Checkbox>(
+			container,
+			tr::lng_agent_provider_files(),
+			provider.files),
+		st::boxRowPadding);
+	Ui::AddDividerText(
+		container,
+		tr::lng_agent_provider_abilities_about());
+	Ui::AddSkip(container);
+	container->add(
+		object_ptr<Ui::FlatLabel>(
+			container,
 			tr::lng_agent_provider_prices(),
 			st::boxLabel),
 		st::boxRowPadding);
@@ -560,6 +598,10 @@ void EditProviderBox(
 		provider.baseUrl = newUrl;
 		provider.apiKey = key->getLastText().trimmed();
 		provider.model = newModel;
+		provider.vision = abilitiesVision->checked();
+		provider.audio = abilitiesAudio->checked();
+		provider.video = abilitiesVideo->checked();
+		provider.files = abilitiesFiles->checked();
 		provider.priceInput = *newPriceInput;
 		provider.priceOutput = *newPriceOutput;
 		provider.priceCached = *newPriceCached;
@@ -752,6 +794,107 @@ void RowPreviewBox(
 	box->addButton(tr::lng_close(), [=] {
 		box->closeBox();
 	});
+}
+
+[[nodiscard]] QString MediaModelText(
+		const std::shared_ptr<AgentState> &state) {
+	const auto id = state->providers.mediaId;
+	if (!id.isEmpty()) {
+		for (const auto &provider : state->providers.list) {
+			if (provider.id == id) {
+				return ProviderRowTitle(provider);
+			}
+		}
+	}
+	return tr::lng_agent_media_model_none(tr::now);
+}
+
+void MediaModelBox(
+		not_null<Ui::GenericBox*> box,
+		std::shared_ptr<AgentState> state) {
+	box->setTitle(tr::lng_agent_media_model_title());
+	const auto choices = [&] {
+		auto result = std::vector<::Agent::ProviderSettings>{};
+		auto &none = result.emplace_back();
+		none.title = tr::lng_agent_media_model_none(tr::now);
+		for (const auto &provider : state->providers.list) {
+			if (provider.id != state->providers.activeId) {
+				result.push_back(provider);
+			}
+		}
+		return result;
+	}();
+	const auto group = std::make_shared<Ui::RadioenumGroup<int>>(-1);
+	auto current = -1;
+	for (auto i = 0; i < int(choices.size()); ++i) {
+		if (choices[i].id == state->providers.mediaId) {
+			current = i;
+			break;
+		}
+	}
+	group->setValue(current);
+	for (const auto &provider : choices) {
+		const auto index = &provider - choices.data();
+		box->addRow(
+			object_ptr<Ui::Radioenum<int>>(
+				box,
+				group,
+				index,
+				index ? ProviderRowTitle(provider) : provider.title,
+				st::defaultBoxCheckbox),
+			st::settingsSendTypePadding);
+	}
+	group->setChangedCallback([=](int index) {
+		state->providers.mediaId = choices[index].id;
+		SaveState(state.get());
+		box->closeBox();
+	});
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
+}
+
+void BuildMedia(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
+	builder.addSkip();
+	builder.addSubsectionTitle({
+		.id = u"agent/media"_q,
+		.title = tr::lng_agent_media_title(),
+		.keywords = { u"media"_q, u"model"_q },
+	});
+	builder.addButton({
+		.id = u"agent/media/model"_q,
+		.title = tr::lng_agent_media_model(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return MediaModelText(state);
+		}),
+		.onClick = [=] {
+			controller->show(Box(MediaModelBox, state));
+		},
+		.keywords = { u"media"_q, u"model"_q },
+	});
+	builder.addDividerText(tr::lng_agent_media_model_about());
+
+	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/folder"_q,
+		.title = tr::lng_agent_folder(),
+		.onClick = [=] {
+			const auto path = ::Agent::AgentFolderPath(
+				&controller->session());
+			if (!path.isEmpty()) {
+				QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+			}
+		},
+		.keywords = { u"folder"_q, u"path"_q },
+	});
+	builder.addDividerText(tr::lng_agent_folder_about(
+		lt_path,
+		rpl::single(::Agent::AgentFolderPath(&controller->session()))));
 }
 
 void BuildEntryPoints(
@@ -947,6 +1090,7 @@ void Agent::setupContent() {
 		BuildInstructions(builder, state);
 		BuildCheckButton(builder, state, controller);
 		BuildEntryPoints(builder, state, controller);
+		BuildMedia(builder, state, controller);
 		BuildSpending(builder, state, controller);
 		BuildHiddenChats(builder, state, controller);
 		BuildClearData(builder, state, controller);

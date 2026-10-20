@@ -86,6 +86,7 @@ public:
 private:
 	void refresh();
 	void updateEnabled();
+	void startModels(const ProviderSettings &provider);
 	void learnContextWindow();
 	void finishModels(
 		const QString &key,
@@ -111,6 +112,7 @@ private:
 	std::vector<SessionInfo> _index;
 	std::vector<std::unique_ptr<Session>> _sessions;
 	base::flat_map<QString, int> _learnedContext;
+	base::flat_map<QString, MediaAbilities> _learnedAbilities;
 	base::flat_set<QString> _learning;
 	rpl::event_stream<Scope> _listChanges;
 	mutable base::flat_map<

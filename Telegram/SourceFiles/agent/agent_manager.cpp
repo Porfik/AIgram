@@ -110,36 +110,43 @@ int Manager::contextWindow() const {
 }
 
 MediaAbilities Manager::abilities(const ProviderSettings &provider) const {
-	return MediaAbilities{
+	auto result = MediaAbilities{
 		.images = provider.vision,
 		.audio = provider.audio,
 		.video = provider.video,
 		.files = provider.files,
 	};
+	const auto i = _learnedAbilities.find(
+		ModelsKey(provider.baseUrl, provider.model));
+	if (i != _learnedAbilities.end()) {
+		result.images = result.images || i->second.images;
+		result.audio = result.audio || i->second.audio;
+		result.video = result.video || i->second.video;
+		result.files = result.files || i->second.files;
+	}
+	return result;
 }
 
 const ProviderSettings *Manager::mediaProvider() const {
-	return nullptr;
+	const auto result = MediaProvider(_providers);
+	return (result && CreateAdapter(*result)) ? result : nullptr;
 }
 
-void Manager::learnContextWindow() {
-	const auto provider = ActiveProvider(_providers);
-	if (!provider
-		|| provider->contextWindow > 0
-		|| provider->kind != ProviderKind::OpenAiCompatible
-		|| provider->baseUrl.isEmpty()
-		|| provider->model.isEmpty()) {
+void Manager::startModels(const ProviderSettings &provider) {
+	if (provider.kind != ProviderKind::OpenAiCompatible
+		|| provider.baseUrl.isEmpty()
+		|| provider.model.isEmpty()) {
 		return;
 	}
-	const auto key = ModelsKey(provider->baseUrl, provider->model);
-	if (_learnedContext.contains(key) || _learning.contains(key)) {
+	const auto key = ModelsKey(provider.baseUrl, provider.model);
+	if (_learnedAbilities.contains(key) || _learning.contains(key)) {
 		return;
 	}
 	_learning.insert(key);
 	const auto body = std::make_shared<QByteArray>();
-	const auto model = provider->model;
+	const auto model = provider.model;
 	_transport->start(
-		OpenAi::ModelsRequest(*provider),
+		OpenAi::ModelsRequest(provider),
 		TransportHandlers{
 			[](HttpHead) {},
 			crl::guard(this, [=](QByteArray chunk) {
@@ -151,6 +158,17 @@ void Manager::learnContextWindow() {
 		});
 }
 
+void Manager::learnContextWindow() {
+	const auto active = ActiveProvider(_providers);
+	if (active) {
+		startModels(*active);
+	}
+	const auto media = MediaProvider(_providers);
+	if (media && (!active || media->id != active->id)) {
+		startModels(*media);
+	}
+}
+
 void Manager::finishModels(
 		const QString &key,
 		const QString &model,
@@ -158,16 +176,30 @@ void Manager::finishModels(
 		const QString &error) {
 	_learning.remove(key);
 	if (!error.isEmpty()) {
-		LOG(("Agent Info: context window request failed."));
+		LOG(("Agent Info: models request failed."));
 		return;
 	}
 	for (const auto &entry : OpenAi::ParseModels(body)) {
-		if (entry.id == model && entry.contextWindow > 0) {
-			_learnedContext.emplace(key, entry.contextWindow);
-			return;
+		if (entry.id != model) {
+			continue;
 		}
+		if (entry.contextWindow > 0) {
+			_learnedContext.emplace(key, entry.contextWindow);
+		}
+		if (entry.vision.has_value()
+			|| entry.audio.has_value()
+			|| entry.video.has_value()
+			|| entry.files.has_value()) {
+			_learnedAbilities.emplace(key, MediaAbilities{
+				.images = entry.vision.value_or(false),
+				.audio = entry.audio.value_or(false),
+				.video = entry.video.value_or(false),
+				.files = entry.files.value_or(false),
+			});
+		}
+		return;
 	}
-	LOG(("Agent Info: context window of the model is unknown."));
+	LOG(("Agent Info: abilities of the model are unknown."));
 }
 
 std::vector<SessionInfo> Manager::list(const Scope &scope) const {
@@ -299,8 +331,10 @@ void Manager::rename(const QString &id, const QString &title) {
 void Manager::remove(const QString &id) {
 	auto scope = Scope::Account();
 	auto known = false;
+	auto attachments = 0;
 	if (const auto session = findOpen(id)) {
 		scope = session->scope();
+		attachments = session->record().info.attachments;
 		known = true;
 		session->stop();
 	}
@@ -315,6 +349,7 @@ void Manager::remove(const QString &id) {
 	for (const auto &entry : _index) {
 		if (entry.id == id) {
 			scope = entry.scope;
+			attachments = std::max(attachments, entry.attachments);
 			known = true;
 			break;
 		}
@@ -328,6 +363,9 @@ void Manager::remove(const QString &id) {
 		}
 	}
 	_store->writeIndex(_index);
+	if (attachments > 0) {
+		_attachments->remove(id, attachments);
+	}
 	if (known) {
 		_listChanges.fire_copy(scope);
 	}
@@ -354,11 +392,16 @@ void Manager::clearAllData() {
 			scopes.push_back(scope);
 		}
 	};
+	auto attachments = base::flat_map<QString, int>();
 	for (const auto &session : _sessions) {
 		addScope(session->scope());
+		attachments.emplace(
+			session->id(),
+			session->record().info.attachments);
 	}
 	for (const auto &entry : _index) {
 		addScope(entry.scope);
+		attachments.emplace(entry.id, entry.attachments);
 	}
 	auto sessions = base::take(_sessions);
 	for (const auto &session : sessions) {
@@ -366,6 +409,11 @@ void Manager::clearAllData() {
 	}
 	for (const auto &entry : _index) {
 		_store->removeSession(entry.id);
+	}
+	for (const auto &entry : attachments) {
+		if (entry.second > 0) {
+			_attachments->remove(entry.first, entry.second);
+		}
 	}
 	_index.clear();
 	_session->local().removeAgentValue(u"index"_q);

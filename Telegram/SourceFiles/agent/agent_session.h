@@ -88,6 +88,7 @@ private:
 	void failWithoutProvider();
 	void accountUsage(const Usage &usage, const ProviderSettings &provider);
 	[[nodiscard]] QString buildSystem() const;
+	[[nodiscard]] SessionRecord withAttachedImages() const;
 	[[nodiscard]] int planCompaction(
 		const ProviderSettings &provider,
 		bool force = false) const;
