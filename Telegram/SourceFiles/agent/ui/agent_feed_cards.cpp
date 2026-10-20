@@ -716,7 +716,11 @@ void FeedCardWidget::build() {
 		_inner->heightValue(
 		) | rpl::on_next([=](int height) {
 			if (width() > 0) {
-				resize(width(), height);
+				resize(
+					width(),
+					st::agentFeedCardPadding.top()
+						+ height
+						+ st::agentFeedCardPadding.bottom());
 			}
 		}, _inner->lifetime());
 		if (width() > 0) {
@@ -1125,7 +1129,11 @@ void FeedCardWidget::build() {
 	_inner->heightValue(
 	) | rpl::on_next([=](int height) {
 		if (width() > 0) {
-			resize(width(), height);
+			resize(
+				width(),
+				st::agentFeedCardPadding.top()
+					+ height
+					+ st::agentFeedCardPadding.bottom());
 		}
 	}, _inner->lifetime());
 	if (width() > 0) {
