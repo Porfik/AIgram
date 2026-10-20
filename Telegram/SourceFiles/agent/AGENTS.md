@@ -65,7 +65,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `Info::WrapWidget::setupTopBarMenuToggle()`, the ✦ button in the history
   top bar, the third column follow in
   `MainWidget::updateThirdColumnToCurrentChat()`,
-  `Shortcuts::Command::AgentPanel`, `Agent::Ui::SetupChatsListRow()` in
+  `Shortcuts::Command::AgentPanel`, `Shortcuts::Command::AgentPalette`
+  (handled in `Dialogs::InnerWidget::setupShortcuts()`),
+  `Agent::Ui::AddPassToAgentAction()` in both message context menus, the
+  "To agent" button of `HistoryView::TopBarWidget` in selection mode
+  (`agentSelectionRequest()`, handled by `HistoryWidget` and
+  `HistoryView::ChatWidget`), `Agent::Ui::SetupChatsListRow()` in
   `Dialogs::Widget`, `Agent::Ui::FillPeerMenu()` in the `Window::PeerMenu`
   filler, `Agent::Ui::FillFolderMenu()` in both folder menus,
   `Agent::Ui::PanelAvailabilityChanges()` in the history top bar and
@@ -1924,6 +1929,50 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `FormatTaskTool()` maps every action and visible tool of stage 3a to its
   `lng_agent_task_tool_<name>`; the three invite link tools share
   `lng_agent_task_tool_invite_links`.
+- `SessionView::setComposerOnTop()` puts the composer (and the passed
+  messages bar) right under the queue strip and the feed below it; the
+  composer then draws its shadow at the bottom and the welcome text is
+  hidden. `naturalHeightValue()` is the height the view needs at its
+  current width: the strip, the composer, the passed messages bar, the
+  run note and the feed's natural height (its items, status and
+  spending line).
+- `SessionView::setMentionsProvider()` adds peers to every request's
+  `mentions`, so they count as named for the taint rule.
+- `SessionView::passMessages()` shows the passed messages above the
+  composer in a bar drawn by the chat's own
+  `HistoryView::Controls::ForwardPanel` (the forward icon, the senders
+  and the text or "N forwarded messages") with a cancel button. The next
+  request carries them: `untrusted` gets "Messages the user passed to
+  you:" and `{"chat": {"id", "title"}, "messages": [...]}` with every
+  message as `ToolFormat::SerializeMessage()` gives it, the chat joins
+  `mentions`, and the bar empties.
+- The palette (`agent_palette.*`) is a `Ui::LayerWidget` over the main
+  window shown by `ShowPalette()` (false when `Manager::enabled()` is
+  false), `Ctrl+Shift+Space` by default. It is `agentPaletteWidth` wide
+  (less in a narrow window), `agentPaletteTop` from the top, and as high
+  as its header plus the view's natural height, at most down to
+  `agentPaletteMargin` from the bottom. The header shows the agent
+  userpic, the session title (or the agent name) and "new", "open in
+  the agent" (only with a session) and "close" buttons. It holds an
+  account scope `SessionView` with the composer on top; the first
+  request creates a session, the next ones continue it, "new" starts
+  over, and every opening of the palette starts without a session.
+  "Open in the agent" closes the palette and opens the session with
+  `ShowGeneralAgentSession()`. Escape, the close button and a click
+  outside close it; the session keeps working.
+- The palette knows the chat open in the window when it opened (unless
+  it is hidden from the agent): every request adds the hint `The user
+  has the chat "<title>" (id <id>) open; "this chat" and similar words
+  mean it.` and the chat to `mentions`.
+- `CanPassToAgent()` is true for regular non-service messages of one
+  chat that is not hidden from the agent, while `Manager::enabled()`.
+  `PassToAgent()` resolves the ids (a single id expands to its album),
+  sorts them by id and opens the palette with them.
+  `AddPassToAgentAction()` adds "Pass to agent" (one message) or "Pass
+  selected to agent" when the messages can be passed; the selected
+  variant clears the selection after passing. The selection bar shows
+  "To agent" next to "Forward" when forwarding is allowed and the chat
+  can be passed.
 - The settings page adds a "Background tasks" block after "Media":
   "Background model" with the chosen provider's title or "Main model",
   opening a single-choice box (the main model plus every provider) that
