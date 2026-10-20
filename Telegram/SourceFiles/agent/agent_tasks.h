@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_spending.h"
 #include "agent/core/agent_task.h"
 #include "base/flat_map.h"
+#include "base/timer.h"
 
 #include <rpl/event_stream.h>
 
@@ -47,6 +48,8 @@ public:
 
 private:
 	void load() const;
+	void loadRuns(const QString &taskId) const;
+	void saveRuns(const QString &taskId);
 	void save();
 
 	const not_null<Main::Session*> _session;
@@ -54,6 +57,9 @@ private:
 	mutable base::flat_map<QString, std::vector<TaskRun>> _runs;
 	mutable SpendingStats _background;
 	mutable bool _loaded = false;
+	base::Timer _saveTimer;
+	bool _tasksPending = false;
+	bool _backgroundPending = false;
 	rpl::event_stream<QString> _changes;
 	rpl::event_stream<QString> _runChanges;
 

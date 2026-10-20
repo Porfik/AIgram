@@ -21,6 +21,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_session.h"
 #include "data/data_thread.h"
 #include "lang/lang_keys.h"
+#include "lang/lang_tag.h"
 #include "main/main_session.h"
 #include "settings/sections/settings_main.h"
 #include "settings/settings_builder.h"
@@ -899,6 +900,165 @@ void BuildMedia(
 		rpl::single(::Agent::AgentFolderPath(&controller->session()))));
 }
 
+[[nodiscard]] QString BackgroundModelText(
+		const std::shared_ptr<AgentState> &state) {
+	const auto id = state->providers.backgroundId;
+	if (!id.isEmpty()) {
+		for (const auto &provider : state->providers.list) {
+			if (provider.id == id) {
+				return ProviderRowTitle(provider);
+			}
+		}
+	}
+	return tr::lng_agent_background_model_main(tr::now);
+}
+
+void BackgroundModelBox(
+		not_null<Ui::GenericBox*> box,
+		std::shared_ptr<AgentState> state) {
+	box->setTitle(tr::lng_agent_background_model_title());
+	const auto choices = [&] {
+		auto result = std::vector<::Agent::ProviderSettings>{};
+		auto &main = result.emplace_back();
+		main.title = tr::lng_agent_background_model_main(tr::now);
+		for (const auto &provider : state->providers.list) {
+			result.push_back(provider);
+		}
+		return result;
+	}();
+	const auto group = std::make_shared<Ui::RadioenumGroup<int>>(-1);
+	auto current = 0;
+	for (auto i = 0; i < int(choices.size()); ++i) {
+		if (choices[i].id == state->providers.backgroundId) {
+			current = i;
+			break;
+		}
+	}
+	group->setValue(current);
+	for (const auto &provider : choices) {
+		const auto index = &provider - choices.data();
+		box->addRow(
+			object_ptr<Ui::Radioenum<int>>(
+				box,
+				group,
+				index,
+				index ? ProviderRowTitle(provider) : provider.title,
+				st::defaultBoxCheckbox),
+			st::settingsSendTypePadding);
+	}
+	group->setChangedCallback([=](int index) {
+		state->providers.backgroundId = choices[index].id;
+		SaveState(state.get());
+		box->closeBox();
+	});
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
+}
+
+[[nodiscard]] QString DailyLimitText(
+		const std::shared_ptr<AgentState> &state) {
+	return tr::lng_agent_background_limit_value(
+		tr::now,
+		lt_cost,
+		u"$"_q + QString::number(
+			state->providers.backgroundDailyCost,
+			'f',
+			2),
+		lt_amount,
+		Lang::FormatCountDecimal(
+			state->providers.backgroundDailyTokens));
+}
+
+void DailyLimitBox(
+		not_null<Ui::GenericBox*> box,
+		std::shared_ptr<AgentState> state) {
+	box->setTitle(tr::lng_agent_background_limit_title());
+	const auto container = box->verticalLayout();
+	const auto cost = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			tr::lng_agent_background_limit_cost(),
+			QString::number(
+				state->providers.backgroundDailyCost,
+				'f',
+				2)),
+		st::boxRowPadding);
+	const auto tokens = container->add(
+		object_ptr<Ui::InputField>(
+			container,
+			st::defaultInputField,
+			tr::lng_agent_background_limit_tokens(),
+			QString::number(state->providers.backgroundDailyTokens)),
+		st::boxRowPadding);
+	const auto save = [=] {
+		auto changed = false;
+		if (const auto value = ParsePrice(cost->getLastText());
+				value && *value > 0.) {
+			state->providers.backgroundDailyCost = *value;
+			changed = true;
+		}
+		const auto tokensText = tokens->getLastText().trimmed();
+		auto ok = false;
+		const auto value = tokensText.toLongLong(&ok);
+		if (ok && value > 0) {
+			state->providers.backgroundDailyTokens = value;
+			changed = true;
+		}
+		if (changed) {
+			SaveState(state.get());
+		}
+		box->closeBox();
+	};
+	box->addButton(tr::lng_settings_save(), save);
+	box->addButton(tr::lng_cancel(), [=] {
+		box->closeBox();
+	});
+}
+
+void BuildBackground(
+		SectionBuilder &builder,
+		const std::shared_ptr<AgentState> &state,
+		not_null<Window::SessionController*> controller) {
+	builder.addSkip();
+	builder.addSubsectionTitle({
+		.id = u"agent/background"_q,
+		.title = tr::lng_agent_background_title(),
+		.keywords = { u"background"_q, u"tasks"_q, u"schedule"_q },
+	});
+	builder.addButton({
+		.id = u"agent/background/model"_q,
+		.title = tr::lng_agent_background_model(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return BackgroundModelText(state);
+		}),
+		.onClick = [=] {
+			controller->show(Box(BackgroundModelBox, state));
+		},
+		.keywords = { u"background"_q, u"model"_q },
+	});
+	builder.addDividerText(tr::lng_agent_background_model_about());
+
+	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/background/limit"_q,
+		.title = tr::lng_agent_background_limit(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return DailyLimitText(state);
+		}),
+		.onClick = [=] {
+			controller->show(Box(DailyLimitBox, state));
+		},
+		.keywords = { u"limit"_q, u"spending"_q, u"budget"_q },
+	});
+	builder.addDividerText(tr::lng_agent_background_limit_about());
+}
+
 void BuildEntryPoints(
 		SectionBuilder &builder,
 		const std::shared_ptr<AgentState> &state,
@@ -1093,6 +1253,7 @@ void Agent::setupContent() {
 		BuildCheckButton(builder, state, controller);
 		BuildEntryPoints(builder, state, controller);
 		BuildMedia(builder, state, controller);
+		BuildBackground(builder, state, controller);
 		BuildSpending(builder, state, controller);
 		BuildHiddenChats(builder, state, controller);
 		BuildClearData(builder, state, controller);
