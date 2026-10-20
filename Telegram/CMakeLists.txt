@@ -124,20 +124,27 @@ PRIVATE
 
     agent/tools/agent_tool_format.cpp
     agent/tools/agent_tool_format.h
+    agent/tools/agent_tool_rights.cpp
+    agent/tools/agent_tool_rights.h
     agent/tools/agent_tool_table.cpp
     agent/tools/agent_tool_table.h
     agent/tools/agent_tools.cpp
     agent/tools/agent_tools.h
     agent/tools/agent_tools_actions.cpp
+    agent/tools/agent_tools_admin_chat.cpp
+    agent/tools/agent_tools_admin_members.cpp
     agent/tools/agent_tools_chat.cpp
     agent/tools/agent_tools_chat.h
     agent/tools/agent_tools_chat_state.cpp
+    agent/tools/agent_tools_contacts.cpp
     agent/tools/agent_tools_files.cpp
     agent/tools/agent_tools_folders.cpp
     agent/tools/agent_tools_general.cpp
     agent/tools/agent_tools_media.cpp
     agent/tools/agent_tools_memory.cpp
+    agent/tools/agent_tools_profile.cpp
     agent/tools/agent_tools_tasks.cpp
+    agent/tools/agent_tools_telegram_ai.cpp
     agent/ui/agent_chats_row.cpp
     agent/ui/agent_chats_row.h
     agent/ui/agent_composer.cpp

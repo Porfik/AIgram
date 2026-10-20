@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/tools/agent_tools_chat.h"
 
 #include "agent/tools/agent_tool_format.h"
+#include "agent/tools/agent_tool_rights.h"
 #include "agent/tools/agent_tools.h"
 
 #include "api/api_chat_participants.h"
@@ -96,33 +97,12 @@ constexpr auto kDefaultMembersLimit = 50;
 	return peer->isSelf() ? 1 : 2;
 }
 
-[[nodiscard]] void AddAdminRightNames(
-		ChatAdminRights rights,
-		QStringList &to) {
-	const auto test = [&](ChatAdminRight right, const char *name) {
-		if (rights & right) {
-			to.push_back(name);
-		}
-	};
-	test(ChatAdminRight::ChangeInfo, "change_info");
-	test(ChatAdminRight::PostMessages, "post_messages");
-	test(ChatAdminRight::EditMessages, "edit_messages");
-	test(ChatAdminRight::DeleteMessages, "delete_messages");
-	test(ChatAdminRight::BanUsers, "ban_users");
-	test(ChatAdminRight::InviteByLinkOrAdd, "invite");
-	test(ChatAdminRight::PinMessages, "pin_messages");
-	test(ChatAdminRight::AddAdmins, "add_admins");
-	test(ChatAdminRight::Anonymous, "anonymous");
-	test(ChatAdminRight::ManageCall, "manage_call");
-	test(ChatAdminRight::ManageTopics, "manage_topics");
-}
-
 [[nodiscard]] QStringList PeerAdminRights(not_null<PeerData*> peer) {
 	auto result = QStringList();
 	if (const auto channel = peer->asChannel()) {
-		AddAdminRightNames(channel->adminRights(), result);
+		result = ToolRights::AdminRightNames(channel->adminRights());
 	} else if (const auto chat = peer->asChat()) {
-		AddAdminRightNames(chat->adminRights(), result);
+		result = ToolRights::AdminRightNames(chat->adminRights());
 	}
 	return result;
 }

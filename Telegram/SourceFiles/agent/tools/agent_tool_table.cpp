@@ -7,14 +7,67 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/tools/agent_tool_table.h"
 
+#include "base/call_delayed.h"
 #include "data/data_histories.h"
+#include "data/data_peer.h"
 #include "data/data_peer_id.h"
 #include "data/data_session.h"
+#include "data/data_user.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
+
+#include <QtCore/QDateTime>
 
 #include <limits>
 
 namespace Agent {
+namespace {
+
+constexpr auto kTargetGap = crl::time(300);
+
+void RunNextTarget(
+		base::weak_ptr<PendingCall> weak,
+		std::shared_ptr<Card> card,
+		int index,
+		Fn<void(const CardTarget &target, Fn<void(QString error)> done)> each,
+		Fn<void(Card card)> finished) {
+	const auto call = weak.get();
+	if (!call) {
+		return;
+	}
+	auto &targets = card->targets;
+	while (index < int(targets.size())
+		&& (!targets[index].checked || !targets[index].error.isEmpty())) {
+		++index;
+	}
+	if (index == int(targets.size())) {
+		card->status = TargetsStatus(*card);
+		finished(std::move(*card));
+		return;
+	}
+	each(targets[index], [=](QString error) {
+		if (!weak) {
+			return;
+		}
+		auto &targets = card->targets;
+		targets[index].error = error;
+		const auto stop = error.contains(u"FLOOD_WAIT"_q)
+			|| error.contains(u"PEER_FLOOD"_q);
+		if (stop) {
+			for (auto i = index + 1; i < int(targets.size()); ++i) {
+				if (targets[i].checked && targets[i].error.isEmpty()) {
+					targets[i].error = u"Not done: Telegram limited"
+						" this account for now. "_q + error;
+				}
+			}
+		}
+		base::call_delayed(kTargetGap, weak.get(), [=] {
+			RunNextTarget(weak, card, index + 1, each, finished);
+		});
+	});
+}
+
+} // namespace
 
 PendingCall::PendingCall(not_null<Main::Session*> session)
 : session(session)
@@ -72,6 +125,107 @@ PeerData *ResolveChatRef(
 	return session->data().peerByUsername(text);
 }
 
+std::vector<not_null<UserData*>> ResolveUserRefs(
+		not_null<Main::Session*> session,
+		const QJsonValue &value,
+		int max,
+		QString &error) {
+	if (!value.isArray()) {
+		error = u"users must be an array of user ids or @usernames."_q;
+		return {};
+	}
+	const auto list = value.toArray();
+	if (list.isEmpty() || list.size() > max) {
+		error = u"users must contain 1 to %1 entries."_q.arg(max);
+		return {};
+	}
+	auto result = std::vector<not_null<UserData*>>();
+	for (const auto &item : list) {
+		const auto peer = ResolveChatRef(session, item);
+		const auto user = peer ? peer->asUser() : nullptr;
+		if (!user) {
+			error = u"Unknown user: %1. Use a user id from an earlier"
+				" tool result (members, messages) or an @username."_q.arg(
+					item.isDouble()
+						? QString::number(qint64(item.toDouble()))
+						: item.toString().left(64));
+			return {};
+		} else if (!ranges::contains(result, not_null(user))) {
+			result.push_back(user);
+		}
+	}
+	return result;
+}
+
+QString PeerTitle(not_null<PeerData*> peer) {
+	return peer->isSelf() ? tr::lng_saved_messages(tr::now) : peer->name();
+}
+
+CardTarget PeerTarget(not_null<PeerData*> peer) {
+	const auto username = peer->username();
+	return CardTarget{
+		.peer = peer->id.value,
+		.title = PeerTitle(peer),
+		.preview = username.isEmpty() ? QString() : (u"@"_q + username),
+	};
+}
+
+std::optional<TimeId> ParseLocalTime(
+		const QJsonValue &value,
+		QString &error) {
+	const auto text = value.toString().trimmed();
+	const auto parsed = QDateTime::fromString(text, u"yyyy-MM-dd HH:mm"_q);
+	if (!parsed.isValid()) {
+		error = u"Expected a local date and time as YYYY-MM-DD HH:MM,"
+			" got: %1."_q.arg(text.left(64));
+		return std::nullopt;
+	}
+	return TimeId(parsed.toSecsSinceEpoch());
+}
+
+QString MtpErrorText(const MTP::Error &error) {
+	const auto type = error.type();
+	if (type.startsWith(u"FLOOD_WAIT_"_q)) {
+		return u"Telegram asks to wait %1 seconds before trying again"
+			" (%2)."_q.arg(type.mid(11), type);
+	} else if (type == u"PEER_FLOOD"_q) {
+		return u"Telegram limits this account for such actions right now"
+			" (PEER_FLOOD)."_q;
+	} else if (type == u"CHAT_ADMIN_REQUIRED"_q) {
+		return u"You don't have the admin right needed for this"
+			" (CHAT_ADMIN_REQUIRED)."_q;
+	} else if (type == u"RIGHT_FORBIDDEN"_q) {
+		return u"You can't give or change these rights"
+			" (RIGHT_FORBIDDEN)."_q;
+	} else if (type == u"USER_PRIVACY_RESTRICTED"_q) {
+		return u"The user's privacy settings don't allow this"
+			" (USER_PRIVACY_RESTRICTED)."_q;
+	} else if (type == u"USER_NOT_MUTUAL_CONTACT"_q) {
+		return u"The user can only be added by a mutual contact"
+			" (USER_NOT_MUTUAL_CONTACT)."_q;
+	} else if (type == u"USER_NOT_PARTICIPANT"_q) {
+		return u"The user is not a member of this chat"
+			" (USER_NOT_PARTICIPANT)."_q;
+	} else if (type == u"PREMIUM_ACCOUNT_REQUIRED"_q) {
+		return u"This needs Telegram Premium"
+			" (PREMIUM_ACCOUNT_REQUIRED)."_q;
+	}
+	return type;
+}
+
+void ForEachTarget(
+		not_null<PendingCall*> call,
+		Card card,
+		Fn<void(const CardTarget &target, Fn<void(QString error)> done)> each,
+		Fn<void(Card card)> finished) {
+	RunNextTarget(
+		base::make_weak(call.get()),
+		std::make_shared<Card>(std::move(card)),
+		0,
+		std::move(each),
+		std::move(finished));
+}
+
 QJsonObject ToolSchema(QJsonObject properties, QJsonArray required) {
 	auto result = QJsonObject();
 	result.insert("type", QJsonValue(u"object"_q));
@@ -118,6 +272,17 @@ QJsonObject MessageIdsProperty(QString description) {
 	result.insert("items", MessageIdProperty(u"Message id."_q));
 	result.insert("minItems", QJsonValue(1));
 	result.insert("maxItems", QJsonValue(100));
+	return result;
+}
+
+QJsonObject UsersProperty(int max, QString description) {
+	auto result = QJsonObject();
+	result.insert("type", QJsonValue(u"array"_q));
+	result.insert("description", description);
+	result.insert("items", StringProperty(
+		u"A user id from an earlier tool result or an @username."_q));
+	result.insert("minItems", QJsonValue(1));
+	result.insert("maxItems", QJsonValue(max));
 	return result;
 }
 

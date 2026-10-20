@@ -428,6 +428,48 @@ std::vector<Check> CardChecks() {
 			}
 			return QString();
 		} },
+		{ u"card_change_kind"_q, [] {
+			if (CardTextEditable(CardKind::Change)
+				|| CardHasAlternate(CardKind::Change)
+				|| CardAlwaysAsks(CardKind::Change)) {
+				return u"change flags"_q;
+			}
+			auto card = SampleCard();
+			card.kind = CardKind::Change;
+			card.text = u"Ban members"_q;
+			const auto decided = ApplyDecision(card, CardDecision{
+				.action = CardAction::Execute,
+				.checked = { true, true },
+				.text = u"other"_q,
+			});
+			if (decided.text != card.text) {
+				return u"change title must stay"_q;
+			}
+			card.status = CardStatus::Done;
+			const auto done = CardResultText(card);
+			if (!done.contains(u"The action was performed."_q)) {
+				return u"change done: "_q + done;
+			}
+			return QString();
+		} },
+		{ u"card_targets_status"_q, [] {
+			auto card = Card();
+			if (TargetsStatus(card) != CardStatus::Done) {
+				return u"no targets must be done"_q;
+			}
+			card.targets = {
+				CardTarget{ .peer = 1, .checked = true, .error = u"e"_q },
+				CardTarget{ .peer = 2, .checked = false },
+			};
+			if (TargetsStatus(card) != CardStatus::Failed) {
+				return u"all checked failed must fail"_q;
+			}
+			card.targets.push_back(CardTarget{ .peer = 3, .checked = true });
+			if (TargetsStatus(card) != CardStatus::Done) {
+				return u"one success must be done"_q;
+			}
+			return QString();
+		} },
 		{ u"card_result_text_expired"_q, [] {
 			auto card = SampleCard();
 			card.status = CardStatus::Expired;

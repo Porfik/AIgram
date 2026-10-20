@@ -27,9 +27,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `<Group>Tools::Entries()`: `chat` (reading one chat), `general` (chat
   list, settings navigation, handoff), `actions` (card actions),
   `chat_state` (mute, archive, pin, read), `folders`, `memory`, `media`
-  (looking at, listening to and reading message media and attachments)
-  and `files` (saving and sending files). `agent_tools.cpp` is the
-  `ToolRegistry` and `load_tools`.
+  (looking at, listening to and reading message media and attachments),
+  `files` (saving and sending files), `admin_members` and `admin_chat`
+  (the `admin` group), `contacts`, `profile` and `telegram_ai`.
+  `agent_tools.cpp` is the `ToolRegistry` and `load_tools`;
+  `agent_tool_rights.*` maps admin rights and member restrictions to the
+  names tools use.
 - Account data next to the sessions: `Memories` (`agent_memories.*`),
   `Exclusions` (`agent_exclusions.*`) and `SpendingTracker`
   (`agent_spending_tracker.*`), owned by `Manager`; their pure parts are
@@ -301,6 +304,16 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   frame; no targets, `detail` is the tool name and `text` the summary
   (the tool's title and the chats), not editable. Done, it ends with the
   tool's own result.
+- `Change`: a visible change of the `admin`, `contacts` and `profile`
+  groups. `text` is the card title the tool made (a localized
+  `lng_agent_card_title_*`), not editable; `detail` the tool name;
+  `rows` the label and value lines the tool made (localized, `previous`
+  the old value or empty); `targets` the users, messages or links acted
+  on (a link target has the chat as `peer` and the link as `title`), or
+  none; `files` an image to preview (`ref` an attachment id or an agent
+  folder file name). Done, it usually ends with the tool's own result.
+- `TargetsStatus()` is `Done` without targets or when a checked target
+  has no error, otherwise `Failed`.
 - `Expired` is a final status: a background task's card nobody answered
   for `kTaskCardExpireSeconds`; nothing was done.
 - `CardTextEditable()` is true for `Send`, `Draft`, `Edit`, `SendFiles`,
@@ -370,6 +383,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   for normal sessions), `Card::task`, `previousTask` and the `Expired`
   status; older records load an empty task. The index stays version 4:
   runs never enter it.
+- Version 6 appends, after `info.task`, the `rows` of every card in card
+  order (a count, then label, value and previous of each row); older
+  records load cards without rows. The index stays version 4.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -1084,7 +1100,17 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   live in memory with the registry, so nothing is undoable after a
   restart.
 - `load_tools` (account and chat scope) takes a `group`: `folders`,
-  `files` or `tasks`. Loading an already loaded group is a no-op success.
+  `files`, `tasks`, `admin`, `contacts`, `profile` or `telegram_ai`. Its
+  description names each group with the tools the scope may use; a group
+  with none of them in the scope (for the chat scope also by `forPeer`)
+  fails to load. Loading an already loaded group is a no-op success.
+- `ToolEntry::forPeer`, when set, says which chats the tool works with.
+  In the chat scope an entry whose `forPeer` is false for the scope peer
+  (or that peer is not loaded) is not listed and is not loaded by
+  `load_tools`; in both scopes a call whose resolved `peer` or `peers`
+  include a chat `forPeer` rejects fails with `forPeerError`.
+- When a `Change` card is allowed for the turn, the allowance covers the
+  call's chats (the gate's peers of the call), not the card targets.
 - In a background run (`PolicyGate::background()`, set up with
   `setBackground()`) `tools()` lists every entry the gate makes available,
   group entries included, without `load_tools`; media abilities are those
@@ -1219,6 +1245,194 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   characters, required) and calls `PendingCall::notify`; it returns
   `{"notified": true}` and fails without a `notify` callback.
 
+- Shared helpers (`agent_tool_table.h`): `ResolveUserRefs()` resolves
+  a `users` array (1 to `max` ids or @usernames, `ResolveChatRef()` of
+  each, users only, duplicates dropped) or sets an English error; members
+  are never gate-checked, only the chat is. `PeerTitle()` is the name, or
+  "Saved Messages" for the user's own chat. `PeerTarget()` is a card
+  target with the peer, its title and `@username` as `preview`.
+  `ParseLocalTime()` reads `YYYY-MM-DD HH:MM` local time. `MtpErrorText()`
+  is an English explanation of common MTP errors with the error type in
+  parentheses, else the type. `ForEachTarget()` runs `each` for every
+  checked target without an error, in order, one at a time, 300 ms
+  apart; `done(error)` stores the target's error (empty on success); an
+  error with `FLOOD_WAIT` or `PEER_FLOOD` stops the run and marks the
+  remaining checked targets failed; then it sets `TargetsStatus()` and
+  calls `finished`. Nothing runs after the call is destroyed.
+- `ToolRights` names: admin rights `change_info`, `post_messages`,
+  `edit_messages`, `delete_messages`, `ban_users`, `invite_users`,
+  `pin_messages`, `add_admins`, `anonymous`, `manage_call`,
+  `manage_topics`, `post_stories`, `edit_stories`, `delete_stories`,
+  `manage_direct_messages`; member restrictions `view_messages`,
+  `send_text`, `send_photos`, `send_videos`, `send_round_videos`,
+  `send_audios`, `send_voices`, `send_docs`, `send_stickers`,
+  `send_gifs`, `send_games`, `send_inline`, `embed_links`, `send_polls`,
+  `send_reactions`, `change_info`, `invite_users`, `pin_messages`,
+  `manage_topics`. Parsing takes a JSON array of names (any case) and
+  fails on an unknown one, listing the valid names.
+
+- Groups `admin`, `contacts` and `profile` (stage 3a): reads run at once.
+  Every visible change asks a `Change` card first (title, rows, targets
+  as described in "Cards"), then runs: per-target work through
+  `ForEachTarget()` with `MtpErrorText()` errors, finished with
+  `finishCard` of the decided card, or with `done` of the tool's own
+  result where a tool below says so. MTP results are applied to the
+  client like the client's own requests do: `ApiWrap::applyUpdates()`
+  for `Updates`, `Data::Session::processUsers()` / `processChats()` for
+  users and chats. In the chat scope the tools act on the scope chat and
+  have no chat parameter. Every tool of these groups runs in background
+  runs too (actions outside the frame wait in the queue as usual).
+- `admin` tools have `forPeer` true for basic groups, supergroups and
+  channels ("This tool works only in groups and channels."). A missing
+  admin right fails with the right's name. Basic groups support only
+  what Telegram allows there: adding, removing, making and dismissing
+  admins (all rights, no title), title, photo, permissions, links and
+  requests; banning, restricting, member history and slow mode need a
+  supergroup and fail with that explanation.
+- `list_members` (chat tools) takes `filter`: `recent` (default),
+  `admins`, `banned` (removed and banned), `restricted` or `bots`
+  (`banned` and `restricted` in supergroups and channels only). Admin
+  entries add `rank` (the custom title) and `rights`; banned and
+  restricted entries add `denied` (restriction names, `view_messages`
+  for a ban) and `until` (local `YYYY-MM-DD HH:MM`, absent for
+  forever). `get_peer_info` of a group adds `member_permissions`, the
+  restriction names members don't have by default.
+- `add_members` takes `users` (1–50). Card targets: the users; rows: the
+  chat. Supergroups and channels `channels.inviteToChannel`, basic
+  groups `messages.addChatUser` (100 messages of history), one request
+  per user; a user in `missing_invitees` fails with the privacy text.
+- `remove_members` takes `users`, `ban` (default false) and `until`
+  (local time, only with `ban`). Title `_ban_members` with `ban`, else
+  `_remove_members`; rows: the chat and, with `ban`, `_until`
+  (`_value_forever` without `until`). Supergroups and channels
+  `channels.editBanned` with `view_messages` until `until`, followed for
+  a removal without ban by `editBanned` with no restrictions; basic
+  groups `messages.deleteChatUser`.
+- `unban_members` takes `users`: `channels.editBanned` with no
+  restrictions; it lifts bans and restrictions.
+- `restrict_members` takes `users`, `denied` (restriction names, not
+  empty and without `view_messages`) and `until`; rows: the chat,
+  `_denied` and `_until`. Supergroups only, `channels.editBanned`.
+- `promote_admins` takes `users`, `rights` (admin right names, not
+  empty) and `title` (at most 16 characters); rows: the chat, `_rights`
+  and `_admin_title`. Supergroups and channels `channels.editAdmin` with
+  the rights plus the implicit "manage chat" right (`Other`), basic
+  groups `messages.editChatAdmin` (all rights; the result says rights
+  and the title don't apply there). `demote_admins` takes `users` and
+  removes all admin rights the same way.
+- `delete_chat_messages` takes `message_ids` (1–100) of anyone in the
+  chat; each message must exist and `canDelete()`; title
+  `lng_agent_card_title_delete`, targets the messages (sender name as
+  `title`, text preview); deleted for everyone
+  (`Histories::deleteMessages(ids, true)`).
+- `delete_member_history` takes `users`: `ApiWrap::deleteAllFromParticipant()`
+  per user, supergroups only.
+- `list_join_requests` takes `query` and `limit` (1–100, default 50):
+  `messages.getChatInviteImporters` with `requested`; result
+  `{"requests": [{"id", "name", "username", "date", "about", "link"}],
+  "total"}`. `answer_join_requests` takes `users` and `approve`
+  (required): title `_approve_requests` or `_decline_requests`,
+  `messages.hideChatJoinRequest` per user.
+- `list_invite_links` takes `revoked` (default false): the user's own
+  links of the chat (`Api::InviteLinks`); result `{"links": [{"link",
+  "name", "permanent", "revoked", "expires", "usage", "usage_limit",
+  "requested", "request_approval"}]}` (times local, absent when unset).
+- `create_invite_link` takes `name` (at most 32 characters),
+  `expire_at` (local time), `usage_limit` (1–99999) and
+  `request_approval`; rows for the given values. It finishes with `done`
+  of `{"link": {...}}` in the `list_invite_links` shape.
+  `edit_invite_link` takes `link` (required) and the same fields, rows
+  with the previous values; `done` of the edited link.
+  `revoke_invite_links` takes `links` (1–20), targets the links; a
+  permanent link is replaced by a new one (`revokePermanent()`).
+- `edit_chat_info` takes `title` (1–128) and `description` (0–255), at
+  least one; rows with the previous values.
+- `set_chat_photo` takes `attachment`, `file` (an agent folder file
+  name) or `remove: true`, exactly one; the image goes into the card's
+  `files`; it uploads through `Api::PeerPhoto::upload()`; removal sends
+  an empty photo. Title `_chat_photo` or `_remove_chat_photo`.
+- `set_chat_permissions` takes `denied` (restriction names; empty allows
+  everything) and `slow_mode_seconds` (0, 10, 30, 60, 300, 900 or
+  3600; supergroups), at least one; rows `_denied` and `_slow_mode`
+  with the previous values (`_value_nothing`, `_value_off`).
+- `create_chat` (account scope, no chat parameter) takes `type`
+  (`group` or `channel`), `title`, `description` and `users` (optional,
+  up to 50). A group is a supergroup: `channels.createChannel` with
+  `megagroup` or `broadcast`, then `channels.inviteToChannel`. Rows: the
+  title, description and members; it finishes with `done` of `{"chat":
+  {"id", "title"}, "invited": [ids], "failed": [{"id", "error"}]}`.
+- `join_chat` (account scope, no chat parameter) takes `link`: an
+  invite link (`t.me/+…`, `t.me/joinchat/…`) checked with
+  `messages.checkChatInvite`, or a public `@username` / `t.me/` link
+  resolved first. Already a member fails with the chat id. Rows: the
+  chat title, members count, description; `messages.importChatInvite`
+  or `channels.joinChannel`, then `done` of `{"chat": {"id", "title"},
+  "joined": true}` (or `"requested": true` when admins must approve).
+- `leave_chat` leaves a group or channel (`ApiWrap::leaveChannel()`,
+  `messages.deleteChatUser` of self for basic groups); rows: the chat.
+
+- `contacts` tools have `forPeer` true for users other than the user
+  ("Contacts and blocking work only with users."); in the chat scope
+  they exist only in private chats and act on that person.
+  `list_contacts` (account scope) takes `query` (name, username or
+  phone, ignoring case), `limit` (1–200, default 100) and `offset`; it
+  requests the contacts when not loaded and returns `{"contacts":
+  [{"id", "name", "username", "phone", "mutual"}], "total",
+  "has_more"}`. `list_blocked` (account scope) takes `limit` and
+  `offset` (`Api::BlockedPeers::request()`), `{"blocked": [{"id",
+  "name", "username"}], "total"}`.
+- `add_contact` takes `first_name` (required), `last_name` and
+  `share_phone` (default false); rows the names, the phone when known
+  and `_share_phone`. A user who is a contact already fails with a hint
+  to use `rename_contact`. `contacts.addContact`, then `applyUpdates`.
+- `rename_contact` (Reversible, action) takes `first_name` and
+  `last_name` of a contact (others fail with a hint to use
+  `add_contact`); `contacts.addContact` with the new names; result the
+  action JSON plus `"name"` (the new full name); the undo puts the old
+  names back.
+- `delete_contacts` takes chats (users that are contacts): targets the
+  users, one `contacts.deleteContacts` with all checked ones.
+  `set_blocked` takes chats and `blocked` (required): title `_block`
+  or `_unblock`, `contacts.block` / `contacts.unblock` per user, then
+  `PeerData::setIsBlocked()` and `Api::BlockedPeers::reload()`.
+
+- `profile` tools are account scope only. `update_profile` takes
+  `first_name`, `last_name` and `bio`, at least one (an empty
+  `first_name` fails; `bio` within the account's limit); rows with the
+  previous values; `account.updateProfile`, the user processed, the bio
+  set on the user. `set_profile_photo` takes `attachment`, `file` or
+  `remove: true` like `set_chat_photo` (`Api::PeerPhoto::upload()` of
+  the user, `Api::PeerPhoto::clear()` of the current photo).
+  `list_emoji_statuses` returns the current status and the recent and
+  default ones `{"current": {"id", "emoji", "until"}, "statuses":
+  [{"id", "emoji"}]}` (`id` the custom emoji document id as a string,
+  `emoji` its emoji). `set_emoji_status` takes `id` or `emoji` (matched
+  among the listed statuses), `until` (local time) or
+  `duration_minutes`, or `clear: true`; it fails without Premium; rows
+  `_status` and `_until`; `Data::EmojiStatuses::set()`.
+
+- `telegram_ai` tools (Read, both scopes, also in background runs) use
+  Telegram's own AI; limits come back as errors. `summarize_message`
+  (chat parameter One, untrusted) takes `message_id` of a message with
+  `canBeSummarized()`: a ready `Api::Transcribes::summary()` returns at
+  once; otherwise `toggleSummary()` (the summary shows in the chat, like
+  the button) and it waits up to 60 seconds for the entry to stop
+  loading, re-checking on the item's text refresh; `premiumRequired`
+  fails with the Premium limit text, an empty result fails. Result
+  `{"chat", "message", "summary"}`.
+- `translate` (chat parameter OptionalOne, untrusted) takes
+  `message_ids` (1–20, with the chat) or `text` (up to 4096
+  characters), exactly one, and `to_lang` (a two-letter code, required):
+  `messages.translateText`; result `{"to_lang", "translations":
+  [{"message", "text"}]}` (`message` only for messages). Nothing in the
+  chat changes.
+- `ai_compose` (no chat parameter, not untrusted) takes `text`
+  (required, up to 4096 characters), `proofread`, `emojify`,
+  `translate_to`, `tone` (a tone of `Data::AiComposeTones` by title,
+  slug or default type) and `custom_tone` (a free prompt), at least one
+  of the last five: `ApiWrap::composeWithAi()`; result `{"text"}`. An
+  unknown tone fails listing the known ones.
+
 | Tool | File | Risk | Scopes | Chat param | Notes |
 |---|---|---|---|---|---|
 | `get_context` | chat | Read | both | None | time, account; the chat brief in the chat scope |
@@ -1265,6 +1479,39 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 | `pause_task` | tasks | Reversible, action | both | None | `task`, `paused` |
 | `delete_task` | tasks | Reversible, action | both | None | `task` |
 | `notify` | tasks | Read | background | None | not in a group |
+| `list_invite_links` | admin_chat | Read | both | One | group `admin` |
+| `create_invite_link` | admin_chat | Visible | both | One | `Change` card |
+| `edit_invite_link` | admin_chat | Visible | both | One | `Change` card |
+| `revoke_invite_links` | admin_chat | Visible | both | One | `Change` card |
+| `edit_chat_info` | admin_chat | Visible | both | One | `Change` card |
+| `set_chat_photo` | admin_chat | Visible | both | One | `Change` card |
+| `set_chat_permissions` | admin_chat | Visible | both | One | `Change` card |
+| `create_chat` | admin_chat | Visible | general | None | `Change` card |
+| `join_chat` | admin_chat | Visible | general | None | `Change` card |
+| `leave_chat` | admin_chat | Visible | both | One | `Change` card |
+| `add_members` | admin_members | Visible | both | One | `Change` card |
+| `remove_members` | admin_members | Visible | both | One | `Change` card |
+| `unban_members` | admin_members | Visible | both | One | `Change` card |
+| `restrict_members` | admin_members | Visible | both | One | `Change` card |
+| `promote_admins` | admin_members | Visible | both | One | `Change` card |
+| `demote_admins` | admin_members | Visible | both | One | `Change` card |
+| `delete_chat_messages` | admin_members | Visible | both | One | `Change` card |
+| `delete_member_history` | admin_members | Visible | both | One | `Change` card |
+| `list_join_requests` | admin_members | Read | both | One | |
+| `answer_join_requests` | admin_members | Visible | both | One | `Change` card |
+| `list_contacts` | contacts | Read | general | None | group `contacts` |
+| `list_blocked` | contacts | Read | general | None | |
+| `add_contact` | contacts | Visible | both | One | `Change` card |
+| `rename_contact` | contacts | Reversible, action | both | One | undo |
+| `delete_contacts` | contacts | Visible | both | Many | `Change` card |
+| `set_blocked` | contacts | Visible | both | Many | `Change` card |
+| `update_profile` | profile | Visible | general | None | `Change` card |
+| `set_profile_photo` | profile | Visible | general | None | `Change` card |
+| `list_emoji_statuses` | profile | Read | general | None | |
+| `set_emoji_status` | profile | Visible | general | None | `Change` card |
+| `summarize_message` | telegram_ai | Read | both | One | untrusted |
+| `translate` | telegram_ai | Read | both | OptionalOne | untrusted |
+| `ai_compose` | telegram_ai | Read | both | None | |
 | `load_tools` | registry | Read | both | None | |
 
 ## UI (`agent/ui/`)
@@ -1509,6 +1756,24 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `lng_agent_action_task_pause`, `_task_resume` or `_task_delete` with the
   result's task title; `list_tasks` and `notify` steps are titled
   `lng_agent_tool_list_tasks` and `lng_agent_tool_notify`.
+- A `Change` card shows `text` as its title, then its rows: the label in
+  the gray detail style and the value wrapping under it, with
+  `lng_agent_card_task_was` and `previous` when it is set; then the
+  targets as checkboxes (the title, and `preview` as a second line when
+  set), an image from `files` as a rounded preview, "allow until the
+  end of the request" when offered, and "Confirm (N)" (with targets) or
+  "Confirm", and "Decline". A final card shows its status line.
+- Steps: `list_members` with `filter` `admins` reads
+  `lng_agent_tool_list_admins`, with `banned` or `restricted`
+  `lng_agent_tool_list_banned`; `list_invite_links`,
+  `list_join_requests`, `list_contacts`, `list_blocked`,
+  `list_emoji_statuses`, `summarize_message`, `translate` and
+  `ai_compose` read `lng_agent_tool_<name>` (`summarize`, `translate`,
+  `ai_compose` for the last three). `rename_contact` action rows read
+  `lng_agent_action_rename_contact` with the result's `name`.
+- `FormatTaskTool()` maps every action and visible tool of stage 3a to its
+  `lng_agent_task_tool_<name>`; the three invite link tools share
+  `lng_agent_task_tool_invite_links`.
 - The settings page adds a "Background tasks" block after "Media":
   "Background model" with the chosen provider's title or "Main model",
   opening a single-choice box (the main model plus every provider) that

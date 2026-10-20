@@ -32,6 +32,23 @@ namespace {
 const auto kFoldersGroup = u"folders"_q;
 const auto kFilesGroup = u"files"_q;
 const auto kTasksGroup = u"tasks"_q;
+const auto kAdminGroup = u"admin"_q;
+const auto kContactsGroup = u"contacts"_q;
+const auto kProfileGroup = u"profile"_q;
+const auto kTelegramAiGroup = u"telegram_ai"_q;
+
+[[nodiscard]] const std::vector<QString> &GroupNames() {
+	static const auto result = std::vector<QString>{
+		kFoldersGroup,
+		kFilesGroup,
+		kTasksGroup,
+		kAdminGroup,
+		kContactsGroup,
+		kProfileGroup,
+		kTelegramAiGroup,
+	};
+	return result;
+}
 
 struct CallAbilities {
 	MediaAbilities main;
@@ -73,11 +90,13 @@ struct CallAbilities {
 	Unexpected("MediaNeed in NeedsMet.");
 }
 
-[[nodiscard]] QString GroupToolNames(const QString &group) {
+[[nodiscard]] QString GroupToolNames(const QString &group, bool account) {
 	auto names = QStringList();
 	const auto collect = [&](const std::vector<ToolEntry> &entries) {
 		for (const auto &entry : entries) {
-			if (entry.group == group) {
+			if (entry.group == group
+				&& entry.policy.interactive
+				&& (account ? entry.policy.general : entry.policy.chat)) {
 				names.push_back(entry.name);
 			}
 		}
@@ -85,7 +104,60 @@ struct CallAbilities {
 	collect(FolderTools::Entries());
 	collect(FileTools::Entries());
 	collect(TaskTools::Entries());
+	collect(AdminMemberTools::Entries());
+	collect(AdminChatTools::Entries());
+	collect(ContactTools::Entries());
+	collect(ProfileTools::Entries());
+	collect(TelegramAiTools::Entries());
 	return names.join(u", "_q);
+}
+
+[[nodiscard]] QString LoadToolsDescription(bool account) {
+	struct Group {
+		QString name;
+		QString about;
+	};
+	const auto groups = std::vector<Group>{
+		{ kFoldersGroup, QString() },
+		{ kFilesGroup, QString() },
+		{ kTasksGroup, u"background tasks that run on new messages or on"
+			" a schedule"_q },
+		{ kAdminGroup, account
+			? u"administering groups and channels"_q
+			: u"administering this chat"_q },
+		{ kContactsGroup, account
+			? u"contacts and blocking"_q
+			: u"contacts and blocking, only in a private chat"_q },
+		{ kProfileGroup, u"the user's own profile"_q },
+		{ kTelegramAiGroup, u"Telegram's own AI: summaries, translation,"
+			" rewriting"_q },
+	};
+	auto parts = QStringList();
+	auto names = QStringList();
+	for (const auto &group : groups) {
+		const auto tools = GroupToolNames(group.name, account);
+		if (tools.isEmpty()) {
+			continue;
+		}
+		names.push_back(u"\"%1\""_q.arg(group.name));
+		parts.push_back(group.about.isEmpty()
+			? u"\"%1\": %2."_q.arg(group.name, tools)
+			: u"\"%1\" (%2): %3."_q.arg(group.name, group.about, tools));
+	}
+	return u"Load an additional group of tools: %1. %2"_q.arg(
+		names.join(u", "_q),
+		parts.join(u' '));
+}
+
+[[nodiscard]] bool ForScopePeer(
+		not_null<Main::Session*> session,
+		const PolicyGate &gate,
+		const ToolEntry &entry) {
+	if (!entry.forPeer || gate.scope().kind != ScopeKind::Chat) {
+		return true;
+	}
+	const auto peer = session->data().peerLoaded(PeerId(gate.scope().peer));
+	return peer && entry.forPeer(peer);
 }
 
 QString DenyText(Decision decision) {
@@ -150,18 +222,11 @@ QString DenyText(Decision decision) {
 ToolEntry LoadToolsEntry() {
 	auto properties = QJsonObject();
 	properties.insert("group", StringProperty(
-		u"The tool group to load: \"folders\", \"files\" or"
-		" \"tasks\"."_q));
-	auto description = u"Load an additional group of tools."
-		" \"folders\": %1. \"files\": %2. \"tasks\" (background tasks"
-		" that run on new messages or on a schedule): %3."_q.arg(
-			GroupToolNames(kFoldersGroup),
-			GroupToolNames(kFilesGroup),
-			GroupToolNames(kTasksGroup));
+		u"The tool group to load."_q));
 	return ToolEntry{
 		.name = u"load_tools"_q,
-		.description = description,
-		.generalDescription = std::move(description),
+		.description = LoadToolsDescription(false),
+		.generalDescription = LoadToolsDescription(true),
 		.inputSchema = ToolSchema(
 			std::move(properties),
 			QJsonArray{ QJsonValue(u"group"_q) }),
@@ -190,6 +255,11 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(MediaTools::Entries());
 		append(FileTools::Entries());
 		append(TaskTools::Entries());
+		append(AdminMemberTools::Entries());
+		append(AdminChatTools::Entries());
+		append(ContactTools::Entries());
+		append(ProfileTools::Entries());
+		append(TelegramAiTools::Entries());
 		result.push_back(LoadToolsEntry());
 		return result;
 	}();
@@ -206,6 +276,7 @@ struct ToolRegistry::Call {
 	bool canAllowForTurn = false;
 	Card card;
 	Fn<void(Card decided)> execute;
+	std::vector<PeerKey> peers;
 	bool hasCard = false;
 	bool approved = false;
 };
@@ -263,7 +334,8 @@ std::vector<ToolSpec> ToolRegistry::tools() const {
 	auto result = std::vector<ToolSpec>();
 	const auto add = [&](const ToolEntry &entry) {
 		if (!_gate->available(entry.policy)
-			|| !NeedsMet(entry.needs, abilities)) {
+			|| !NeedsMet(entry.needs, abilities)
+			|| !ForScopePeer(_session, *_gate, entry)) {
 			return;
 		}
 		result.push_back(ToolSpec{
@@ -460,6 +532,16 @@ void ToolRegistry::execute(
 		}
 		}
 	}
+	if (resolveError.isEmpty() && entry.forPeer) {
+		for (const auto resolved : peers) {
+			if (!entry.forPeer(resolved)) {
+				resolveError = entry.forPeerError.isEmpty()
+					? u"This tool does not work with this chat."_q
+					: entry.forPeerError;
+				break;
+			}
+		}
+	}
 	if (!resolveError.isEmpty()) {
 		deliver(call.id, std::move(resolveError), true);
 		return;
@@ -470,6 +552,7 @@ void ToolRegistry::execute(
 		keys.push_back(resolved->id.value);
 	}
 	const auto decision = _gate->check({ entry.name, entry.policy, keys });
+	meta.peers = keys;
 	meta.verdict = decision.verdict;
 	meta.canAllowForTurn = (decision.verdict == Verdict::Confirm)
 		&& decision.canAllowForTurn;
@@ -598,14 +681,16 @@ void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
 	if (!_pending.contains(toolUseId)) {
 		return;
 	}
-	if (group != kFoldersGroup
-		&& group != kFilesGroup
-		&& group != kTasksGroup) {
+	if (!ranges::contains(GroupNames(), group)) {
+		auto names = QStringList();
+		for (const auto &name : GroupNames()) {
+			names.push_back(u"\"%1\""_q.arg(name));
+		}
 		deliver(
 			toolUseId,
-			u"Unknown tool group: %1. The groups are \"folders\","
-			" \"files\" and \"tasks\"."_q.arg(
-				group.isEmpty() ? u"(empty)"_q : group),
+			u"Unknown tool group: %1. The groups are %2."_q.arg(
+				group.isEmpty() ? u"(empty)"_q : group,
+				names.join(u", "_q)),
 			true);
 		return;
 	}
@@ -614,9 +699,18 @@ void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
 	json.insert("loaded", QJsonValue(true));
 	auto tools = QJsonArray();
 	for (const auto &entry : ToolsTable()) {
-		if (entry.group == group) {
+		if (entry.group == group
+			&& _gate->available(entry.policy)
+			&& ForScopePeer(_session, *_gate, entry)) {
 			tools.push_back(entry.name);
 		}
+	}
+	if (tools.isEmpty()) {
+		deliver(
+			toolUseId,
+			u"The group \"%1\" has no tools in this chat."_q.arg(group),
+			true);
+		return;
 	}
 	json.insert("tools", tools);
 	if (ranges::contains(_loadedGroups, group)) {
@@ -670,7 +764,11 @@ void ToolRegistry::decide(
 		return;
 	}
 	if (decision.allowForTurn && call.canAllowForTurn) {
-		_gate->allowForTurn({ call.tool, call.policy, CheckedPeers(card) });
+		_gate->allowForTurn({
+			call.tool,
+			call.policy,
+			(card.kind == CardKind::Change) ? call.peers : CheckedPeers(card),
+		});
 	}
 	call.card = card;
 	call.approved = true;

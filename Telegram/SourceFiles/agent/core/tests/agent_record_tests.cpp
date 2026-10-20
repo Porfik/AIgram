@@ -326,6 +326,16 @@ void WriteHandTextBlock(QDataStream &stream) {
 		return u"quota differs"_q;
 	} else if (a.task != b.task || a.previousTask != b.previousTask) {
 		return u"task differs"_q;
+	} else if (a.rows.size() != b.rows.size()) {
+		return u"row count differs"_q;
+	}
+	for (auto i = 0; i != int(a.rows.size()); ++i) {
+		const auto &x = a.rows[i];
+		const auto &y = b.rows[i];
+		if (x.label != y.label || x.value != y.value
+			|| x.previous != y.previous) {
+			return u"row "_q + QString::number(i) + u" differs"_q;
+		}
 	}
 	for (auto i = 0; i != int(a.files.size()); ++i) {
 		const auto &x = a.files[i];
@@ -783,7 +793,7 @@ std::vector<Check> RecordChecks() {
 		} },
 		{ u"record_cards_round_trip"_q, [] {
 			auto record = SessionRecord();
-			for (auto kind = 0; kind <= int(CardKind::Action); ++kind) {
+			for (auto kind = 0; kind <= int(CardKind::Change); ++kind) {
 				for (auto status = 0; status <= int(CardStatus::Expired); ++status) {
 					for (auto decided = 0; decided <= int(CardAction::Decline); ++decided) {
 						auto card = SampleCard();
@@ -965,6 +975,56 @@ std::vector<Check> RecordChecks() {
 				return u"card lost"_q;
 			}
 			return CardsEqual(card, restored->cards[0]);
+		} },
+		{ u"record_round_trip_card_rows"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"9999999999999999"_q;
+			auto card = SampleCard();
+			card.kind = CardKind::Change;
+			card.rows = {
+				CardRow{ u"Название"_q, u"Новое"_q, u"Старое"_q },
+				CardRow{ u"Chat"_q, u"Test"_q, QString() },
+			};
+			record.cards.push_back(card);
+			record.cards.push_back(SampleCard());
+			const auto bytes = SerializeSession(record);
+			const auto restored = DeserializeSession(bytes);
+			if (!restored || restored->cards.size() != 2) {
+				return u"deserialization failed"_q;
+			}
+			for (auto i = 0; i != 2; ++i) {
+				const auto diff = CardsEqual(
+					record.cards[i],
+					restored->cards[i]);
+				if (!diff.isEmpty()) {
+					return diff;
+				}
+			}
+			auto truncated = bytes;
+			truncated.chop(2);
+			if (DeserializeSession(truncated)) {
+				return u"truncated rows must fail"_q;
+			}
+			return QString();
+		} },
+		{ u"record_loads_version5_without_rows"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"aaaaaaaaaaaaaaaa"_q;
+			record.cards.push_back(SampleCard());
+			auto bytes = SerializeSession(record);
+			bytes.chop(4);
+			{
+				QDataStream stream(&bytes, QIODevice::ReadWrite);
+				stream.setVersion(QDataStream::Qt_5_1);
+				stream << qint32(5);
+			}
+			const auto restored = DeserializeSession(bytes);
+			if (!restored || restored->cards.size() != 1) {
+				return u"version 5 failed to load"_q;
+			} else if (!restored->cards[0].rows.empty()) {
+				return u"version 5 must have no rows"_q;
+			}
+			return CardsEqual(record.cards[0], restored->cards[0]);
 		} },
 		{ u"record_loads_version4_without_task"_q, [] {
 			auto record = SessionRecord();

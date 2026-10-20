@@ -32,6 +32,7 @@ enum class CardKind : uchar {
 	CreateTask,
 	UpdateTask,
 	Action,
+	Change,
 };
 
 enum class CardStatus : uchar {
@@ -67,6 +68,12 @@ struct CardFile {
 	int64 size = 0;
 };
 
+struct CardRow {
+	QString label;
+	QString value;
+	QString previous;
+};
+
 struct Card {
 	QString toolUseId;
 	CardKind kind = CardKind::Send;
@@ -86,6 +93,7 @@ struct Card {
 	int64 quota = 0;
 	QByteArray task;
 	QByteArray previousTask;
+	std::vector<CardRow> rows;
 };
 
 struct CardDecision {
@@ -103,6 +111,7 @@ struct CardDecision {
 [[nodiscard]] Card ApplyDecision(Card card, const CardDecision &decision);
 [[nodiscard]] std::vector<PeerKey> CheckedPeers(const Card &card);
 [[nodiscard]] int CheckedCount(const Card &card);
+[[nodiscard]] CardStatus TargetsStatus(const Card &card);
 [[nodiscard]] QString CardResultText(const Card &card);
 
 } // namespace Agent

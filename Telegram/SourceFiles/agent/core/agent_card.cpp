@@ -55,7 +55,8 @@ namespace {
 		return u"The user approved the task; it is active now."_q;
 	case CardKind::UpdateTask:
 		return u"The user approved the changes to the task."_q;
-	case CardKind::Action: return u"The action was performed."_q;
+	case CardKind::Action:
+	case CardKind::Change: return u"The action was performed."_q;
 	}
 	Unexpected("Card kind in CardResultText.");
 }
@@ -132,6 +133,15 @@ int CheckedCount(const Card &card) {
 		}
 	}
 	return result;
+}
+
+CardStatus TargetsStatus(const Card &card) {
+	for (const auto &target : card.targets) {
+		if (target.checked && target.error.isEmpty()) {
+			return CardStatus::Done;
+		}
+	}
+	return card.targets.empty() ? CardStatus::Done : CardStatus::Failed;
 }
 
 QString CardResultText(const Card &card) {

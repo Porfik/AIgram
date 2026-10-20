@@ -24,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <vector>
 
 class PeerData;
+class UserData;
 
 namespace Main {
 class Session;
@@ -58,6 +59,8 @@ struct ToolEntry {
 	bool untrusted = true;
 	bool action = false;
 	MediaNeed needs = MediaNeed::None;
+	Fn<bool(not_null<PeerData*>)> forPeer;
+	QString forPeerError;
 	Fn<void(not_null<PendingCall*>)> run;
 };
 
@@ -100,6 +103,23 @@ struct PendingCall final : base::has_weak_ptr {
 	not_null<Main::Session*> session,
 	const QJsonValue &value);
 
+[[nodiscard]] std::vector<not_null<UserData*>> ResolveUserRefs(
+	not_null<Main::Session*> session,
+	const QJsonValue &value,
+	int max,
+	QString &error);
+[[nodiscard]] QString PeerTitle(not_null<PeerData*> peer);
+[[nodiscard]] CardTarget PeerTarget(not_null<PeerData*> peer);
+[[nodiscard]] std::optional<TimeId> ParseLocalTime(
+	const QJsonValue &value,
+	QString &error);
+[[nodiscard]] QString MtpErrorText(const MTP::Error &error);
+void ForEachTarget(
+	not_null<PendingCall*> call,
+	Card card,
+	Fn<void(const CardTarget &target, Fn<void(QString error)> done)> each,
+	Fn<void(Card card)> finished);
+
 [[nodiscard]] QJsonObject ToolSchema(
 	QJsonObject properties,
 	QJsonArray required);
@@ -111,6 +131,7 @@ struct PendingCall final : base::has_weak_ptr {
 	QString description);
 [[nodiscard]] QJsonObject MessageIdProperty(QString description);
 [[nodiscard]] QJsonObject MessageIdsProperty(QString description);
+[[nodiscard]] QJsonObject UsersProperty(int max, QString description);
 
 namespace ChatTools {
 [[nodiscard]] std::vector<ToolEntry> Entries();
@@ -147,5 +168,25 @@ namespace FileTools {
 namespace TaskTools {
 [[nodiscard]] std::vector<ToolEntry> Entries();
 } // namespace TaskTools
+
+namespace AdminMemberTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace AdminMemberTools
+
+namespace AdminChatTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace AdminChatTools
+
+namespace ContactTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace ContactTools
+
+namespace ProfileTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace ProfileTools
+
+namespace TelegramAiTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace TelegramAiTools
 
 } // namespace Agent

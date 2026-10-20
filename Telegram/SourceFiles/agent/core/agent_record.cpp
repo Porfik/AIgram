@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(5);
+constexpr auto kSessionVersion = qint32(6);
 constexpr auto kIndexVersion = qint32(4);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
@@ -407,7 +407,7 @@ std::optional<Card> ReadCard(QDataStream &stream, qint32 version) {
 	stream >> toolUseId >> kind >> status >> decided >> targetCount;
 	if (stream.status() != QDataStream::Ok
 		|| kind < 0
-		|| kind > int(CardKind::Action)
+		|| kind > int(CardKind::Change)
 		|| status < 0
 		|| status > int(CardStatus::Expired)
 		|| decided < 0
@@ -551,6 +551,12 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	WriteStringList(stream, record.undone);
 	stream << qint32(record.info.attachments);
 	stream << record.info.task;
+	for (const auto &card : record.cards) {
+		stream << qint32(card.rows.size());
+		for (const auto &row : card.rows) {
+			stream << row.label << row.value << row.previous;
+		}
+	}
 	return result;
 }
 
@@ -641,6 +647,26 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 		stream >> record.info.task;
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
+		}
+	}
+	if (version >= 6) {
+		for (auto &card : record.cards) {
+			auto rowCount = qint32(0);
+			stream >> rowCount;
+			if (stream.status() != QDataStream::Ok
+				|| rowCount < 0
+				|| rowCount > kMaxTargets) {
+				return std::nullopt;
+			}
+			card.rows.reserve(rowCount);
+			for (auto i = 0; i != rowCount; ++i) {
+				auto row = CardRow();
+				stream >> row.label >> row.value >> row.previous;
+				if (stream.status() != QDataStream::Ok) {
+					return std::nullopt;
+				}
+				card.rows.push_back(std::move(row));
+			}
 		}
 	}
 	if (!stream.atEnd()) {
