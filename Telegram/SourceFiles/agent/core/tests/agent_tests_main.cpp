@@ -36,6 +36,7 @@ namespace {
 	append(ExclusionChecks());
 	append(ChatStateChecks());
 	append(ChatMessagesChecks());
+	append(JournalChecks());
 	append(MediaChecks());
 	append(DocumentsChecks());
 	append(TaskChecks());

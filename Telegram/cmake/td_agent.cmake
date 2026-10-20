@@ -35,6 +35,8 @@ PRIVATE
     agent/core/agent_exclusion_list.h
     agent/core/agent_feed.cpp
     agent/core/agent_feed.h
+    agent/core/agent_journal.cpp
+    agent/core/agent_journal.h
     agent/core/agent_loop.cpp
     agent/core/agent_loop.h
     agent/core/agent_media.cpp
@@ -97,6 +99,7 @@ PRIVATE
     agent/core/tests/agent_documents_tests.cpp
     agent/core/tests/agent_exclusion_tests.cpp
     agent/core/tests/agent_feed_tests.cpp
+    agent/core/tests/agent_journal_tests.cpp
     agent/core/tests/agent_loop_tests.cpp
     agent/core/tests/agent_media_tests.cpp
     agent/core/tests/agent_memory_tests.cpp

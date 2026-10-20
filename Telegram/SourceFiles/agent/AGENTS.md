@@ -63,7 +63,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   preview item, the local pin, typing and the waiting-cards badge);
   `core/agent_chat_state` stores the pin, `core/agent_chat_messages`
   turns the feed into chat messages (`BuildChatMessages()`) and keeps the
-  live tail of a running turn (`LiveTail`).
+  live tail of a running turn (`LiveTail`); `core/agent_journal` lists
+  the agent's done actions for the journal in the profile.
 - UI: `agent_feed_cards.*` are the card and action rows of the feed,
   `agent_section.*` the general agent screen (sessions list and session
   chat), `agent_session_rows.*` the sessions list rows,
@@ -559,6 +560,23 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - Version 9 (stage 5) appends `agentName` and `agentPhoto` (JPEG bytes)
   after `claudePath`; older versions load them empty, which means the
   default name and photo.
+
+## Journal (`agent_journal.h`)
+
+- `BuildJournal()` lists what the agent did, newest first, at most
+  `limit` entries (all when `limit <= 0`), from the given session records
+  (normal sessions and task runs alike).
+- An entry is either a reversible action (a tool use whose name is in
+  `actionTools`) that has a result, or a card whose status is `Done` or
+  `Drafted` (`card` set, `call` is the card's tool use). Tool uses without
+  a result (a turn still running or cut off) and other cards are skipped.
+- `sessionId`, `sessionTitle`, `scope` and `task` come from the record's
+  `info`. `date` is the date of the message holding the tool use, else
+  `info.created`. `undone` is whether the tool use id is in the record's
+  `undone`. `failed` is true for an error result, and for an action whose
+  JSON result has a non-empty `failed` array and an empty `done` array.
+- Order: by `date`, newest first; within one date the later tool use
+  (record order, records in the given order) comes first.
 
 ## Chat messages (`agent_chat_messages.h`, `agent_chat_state.h`)
 
