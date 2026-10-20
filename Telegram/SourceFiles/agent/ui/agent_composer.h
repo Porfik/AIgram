@@ -32,6 +32,7 @@ public:
 	void focusField();
 	[[nodiscard]] QString draft() const;
 	void setDraft(const QString &text);
+	void setShadowAtBottom(bool bottom);
 
 protected:
 	int resizeGetHeight(int newWidth) override;
@@ -46,6 +47,7 @@ private:
 	object_ptr<Ui::InputField> _field;
 	object_ptr<Ui::SendButton> _send;
 	bool _working = false;
+	bool _shadowAtBottom = false;
 	rpl::event_stream<QString> _sends;
 	rpl::event_stream<> _stops;
 	rpl::event_stream<> _attachRequests;

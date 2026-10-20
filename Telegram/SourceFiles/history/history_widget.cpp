@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/history_widget.h"
 
+#include "agent/ui/agent_palette.h"
 #include "agent/ui/agent_panel.h"
 #include "api/api_compose_with_ai.h"
 #include "api/api_editing.h"
@@ -1113,6 +1114,13 @@ HistoryWidget::HistoryWidget(
 	_topBar->forwardSelectionRequest(
 	) | rpl::on_next([=] {
 		forwardSelected();
+	}, _topBar->lifetime());
+	_topBar->agentSelectionRequest(
+	) | rpl::on_next([=] {
+		if (_list
+			&& Agent::Ui::PassToAgent(controller, _list->getSelectedItems())) {
+			clearSelected();
+		}
 	}, _topBar->lifetime());
 	_topBar->deleteSelectionRequest(
 	) | rpl::on_next([=] {

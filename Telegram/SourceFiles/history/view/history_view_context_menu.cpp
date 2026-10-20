@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_context_menu.h"
 
+#include "agent/ui/agent_palette.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_editing.h"
 #include "api/api_global_privacy.h"
@@ -627,6 +628,25 @@ void AddForwardAction(
 		not_null<ListWidget*> list) {
 	AddForwardSelectedAction(menu, request, list);
 	AddForwardMessageAction(menu, request, list);
+	if (request.overSelection && !request.selectedItems.empty()) {
+		const auto weak = base::make_weak(list);
+		Agent::Ui::AddPassToAgentAction(
+			menu,
+			list->controller(),
+			ExtractIdsList(request.selectedItems),
+			true,
+			[=] {
+				if (const auto strong = weak.get()) {
+					strong->cancelSelection();
+				}
+			});
+	} else if (request.item && request.selectedItems.empty()) {
+		Agent::Ui::AddPassToAgentAction(
+			menu,
+			list->controller(),
+			{ request.item->fullId() },
+			false);
+	}
 }
 
 void AddOfferAction(

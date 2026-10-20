@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_composer.h"
 #include "agent/ui/agent_feed_widget.h"
 #include "agent/ui/agent_queue.h"
+#include "data/data_types.h"
 #include "ui/rp_widget.h"
 
 #include <optional>
@@ -37,6 +38,8 @@ namespace Agent::Ui {
 
 using namespace ::Ui;
 
+class PassedMessagesBar;
+
 struct HandoffDraft {
 	QString text;
 	QString untrusted;
@@ -62,6 +65,11 @@ public:
 	void setDraft(const QString &text);
 	void setContentMaxWidth(int width);
 	void startHandoff(HandoffDraft draft);
+	void setComposerOnTop(bool onTop);
+	void setMentionsProvider(Fn<std::vector<PeerKey>()> mentions);
+	void passMessages(HistoryItemsList items);
+	[[nodiscard]] rpl::producer<int> naturalHeightValue() const;
+	[[nodiscard]] int naturalHeight() const;
 
 private:
 	enum class Mode {
@@ -74,6 +82,7 @@ private:
 	void applyMode(Mode mode);
 	void relayout();
 	void relayoutOverlay();
+	void refreshNaturalHeight();
 	void rebuildFeed();
 	void applyState();
 	void refreshSpending();
@@ -105,10 +114,13 @@ private:
 	Session *_session = nullptr;
 	Mode _mode = Mode::Normal;
 	int _contentMaxWidth = 0;
+	bool _composerOnTop = false;
 	std::optional<HandoffDraft> _handoff;
 	Fn<QString()> _hint;
+	Fn<std::vector<PeerKey>()> _mentions;
 	object_ptr<FeedWidget> _feed;
 	object_ptr<Composer> _composer;
+	object_ptr<PassedMessagesBar> _passedBar;
 	object_ptr<QueueStrip> _queueStrip;
 	object_ptr<RpWidget> _welcome;
 	object_ptr<Ui::FlatLabel> _welcomeLabel;
@@ -117,6 +129,7 @@ private:
 	object_ptr<Ui::FlatLabel> _noProviderLabel;
 	object_ptr<Ui::RoundButton> _openSettings;
 	rpl::event_stream<Session*> _sessionChanges;
+	rpl::variable<int> _naturalHeight = 0;
 	rpl::lifetime _sessionLifetime;
 
 };

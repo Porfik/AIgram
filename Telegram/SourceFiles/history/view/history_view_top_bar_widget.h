@@ -110,6 +110,9 @@ public:
 	[[nodiscard]] rpl::producer<> sendNowSelectionRequest() const {
 		return _sendNowSelection.events();
 	}
+	[[nodiscard]] rpl::producer<> agentSelectionRequest() const {
+		return _agentSelection.events();
+	}
 	[[nodiscard]] rpl::producer<> deleteSelectionRequest() const {
 		return _deleteSelection.events();
 	}
@@ -234,6 +237,7 @@ private:
 
 	object_ptr<Ui::RoundButton> _clear;
 	object_ptr<Ui::RoundButton> _forward, _sendNow, _delete;
+	object_ptr<Ui::RoundButton> _agentPass;
 	object_ptr<Ui::InputField> _searchField = { nullptr };
 	object_ptr<Ui::FadeWrapScaled<Ui::IconButton>> _chooseFromUser
 		= { nullptr };
@@ -282,6 +286,7 @@ private:
 
 	rpl::event_stream<> _forwardSelection;
 	rpl::event_stream<> _sendNowSelection;
+	rpl::event_stream<> _agentSelection;
 	rpl::event_stream<> _deleteSelection;
 	rpl::event_stream<> _clearSelection;
 	rpl::event_stream<> _cancelChooseForReport;

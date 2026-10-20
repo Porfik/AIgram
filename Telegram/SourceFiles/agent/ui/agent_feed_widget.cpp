@@ -74,6 +74,7 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 	) | rpl::on_next([=](int height) {
 		_content->resize(_content->width(), height);
 		applyStick();
+		refreshNaturalHeight();
 	}, lifetime());
 	rpl::combine(
 		_scroll->scrollTopValue(),
@@ -90,6 +91,23 @@ FeedWidget::FeedWidget(QWidget *parent, FeedContext context)
 
 rpl::producer<> FeedWidget::retryRequests() const {
 	return _retryRequests.events();
+}
+
+rpl::producer<int> FeedWidget::naturalHeightValue() const {
+	return _naturalHeight.value();
+}
+
+int FeedWidget::naturalHeight() const {
+	return _naturalHeight.current();
+}
+
+void FeedWidget::refreshNaturalHeight() {
+	const auto status = _status->isHidden() ? 0 : _status->height();
+	const auto footer = _spending->isHidden() ? 0
+		: st::agentFeedSpendingMargin.top()
+			+ _spending->height()
+			+ st::agentFeedSpendingMargin.bottom();
+	_naturalHeight = _list->height() + status + footer;
 }
 
 object_ptr<FeedItemWidget> FeedWidget::makeItemWidget(
@@ -387,6 +405,7 @@ void FeedWidget::relayout() {
 	_content->resize(width, _list->height());
 	_list->moveToLeft(left, 0, width);
 	applyStick();
+	refreshNaturalHeight();
 }
 
 void FeedWidget::resizeEvent(QResizeEvent *e) {

@@ -19,6 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_tasks.h"
+#include "agent/tools/agent_tool_format.h"
 #include "agent/tools/agent_tools.h"
 #include "agent/ui/agent_section.h"
 #include "agent/core/agent_media.h"
@@ -32,20 +33,135 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "lang/lang_keys.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
+#include "history/history.h"
 #include "history/history_drag_area.h"
+#include "history/history_item.h"
+#include "history/view/controls/history_view_forward_panel.h"
 #include "main/main_session.h"
 #include "settings/sections/settings_agent.h"
 #include "storage/storage_folder_archive.h"
 #include "storage/storage_media_prepare.h"
+#include "ui/effects/spoiler_mess.h"
+#include "ui/painter.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/buttons.h"
 #include "window/window_session_controller.h"
 
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+
 #include "styles/style_agent.h"
 #include "styles/style_boxes.h"
+#include "styles/style_chat.h"
 #include "styles/style_chat_helpers.h"
 
 namespace Agent::Ui {
+namespace {
+
+[[nodiscard]] QString PassedMessagesText(const HistoryItemsList &items) {
+	const auto peer = items.front()->history()->peer;
+	auto chat = QJsonObject();
+	chat.insert("id", QJsonValue(qint64(peer->id.value)));
+	chat.insert("title", peer->isSelf()
+		? tr::lng_saved_messages(tr::now)
+		: peer->name());
+	auto messages = QJsonArray();
+	for (const auto &item : items) {
+		messages.push_back(ToolFormat::SerializeMessage(item));
+	}
+	auto json = QJsonObject();
+	json.insert("chat", chat);
+	json.insert("messages", messages);
+	return u"Messages the user passed to you:\n"_q + QString::fromUtf8(
+		QJsonDocument(json).toJson(QJsonDocument::Compact));
+}
+
+} // namespace
+
+class PassedMessagesBar final : public RpWidget {
+public:
+	PassedMessagesBar(
+		QWidget *parent,
+		not_null<Window::SessionController*> controller);
+
+	void setItems(HistoryItemsList items);
+	[[nodiscard]] const HistoryItemsList &items() const;
+	[[nodiscard]] bool empty() const;
+	[[nodiscard]] rpl::producer<> changes() const;
+
+protected:
+	void paintEvent(QPaintEvent *e) override;
+	int resizeGetHeight(int newWidth) override;
+
+private:
+	const not_null<Window::SessionController*> _controller;
+	HistoryView::Controls::ForwardPanel _panel;
+	object_ptr<IconButton> _cancel;
+	rpl::event_stream<> _changes;
+
+};
+
+PassedMessagesBar::PassedMessagesBar(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: RpWidget(parent)
+, _controller(controller)
+, _panel([=] { update(); })
+, _cancel(this, st::historyReplyCancel) {
+	_cancel->setClickedCallback([=] {
+		setItems({});
+	});
+	_panel.itemsUpdated(
+	) | rpl::on_next([=] {
+		update();
+		_changes.fire({});
+	}, lifetime());
+}
+
+void PassedMessagesBar::setItems(HistoryItemsList items) {
+	const auto session = &_controller->session();
+	auto to = (Data::Thread*)nullptr;
+	if (!items.empty()) {
+		to = session->data().history(session->user());
+	}
+	_panel.update(
+		to,
+		Data::ResolvedForwardDraft{ .items = std::move(items) });
+	update();
+	_changes.fire({});
+}
+
+const HistoryItemsList &PassedMessagesBar::items() const {
+	return _panel.items();
+}
+
+bool PassedMessagesBar::empty() const {
+	return _panel.empty();
+}
+
+rpl::producer<> PassedMessagesBar::changes() const {
+	return _changes.events();
+}
+
+int PassedMessagesBar::resizeGetHeight(int newWidth) {
+	_cancel->moveToRight(0, 0, newWidth);
+	return st::historyReplyHeight;
+}
+
+void PassedMessagesBar::paintEvent(QPaintEvent *e) {
+	auto p = Painter(this);
+	p.fillRect(rect(), st::historyComposeAreaBg);
+	p.fillRect(0, 0, width(), st::lineWidth, st::shadowFg);
+	st::historyForwardIcon.paint(p, st::historyReplyIconPosition, width());
+	const auto left = st::historyReplySkip;
+	_panel.paint(
+		p,
+		left,
+		0,
+		width() - left - _cancel->width() - st::msgReplyPadding.right(),
+		width());
+}
 
 SessionView::SessionView(
 		QWidget *parent,
@@ -93,6 +209,7 @@ SessionView::SessionView(
 		},
 	},})
 , _composer(this)
+, _passedBar(this, controller)
 , _queueStrip(this, manager, scope)
 , _welcome(this)
 , _welcomeLabel(
@@ -115,6 +232,16 @@ SessionView::SessionView(
 	tr::lng_agent_open_settings(),
 	st::agentOverlayOpenSettings) {
 	_handoffNote->hide();
+	_passedBar->hide();
+	_passedBar->changes(
+	) | rpl::on_next([=] {
+		_passedBar->setVisible(!_passedBar->empty());
+		relayout();
+	}, lifetime());
+	_feed->naturalHeightValue(
+	) | rpl::on_next([=] {
+		refreshNaturalHeight();
+	}, lifetime());
 	_composer->sends(
 	) | rpl::on_next([=](const QString &text) {
 		sendCurrentText(text);
@@ -306,6 +433,46 @@ void SessionView::setContentMaxWidth(int width) {
 	relayout();
 }
 
+void SessionView::setComposerOnTop(bool onTop) {
+	_composerOnTop = onTop;
+	_composer->setShadowAtBottom(onTop);
+	relayout();
+}
+
+void SessionView::setMentionsProvider(Fn<std::vector<PeerKey>()> mentions) {
+	_mentions = std::move(mentions);
+}
+
+void SessionView::passMessages(HistoryItemsList items) {
+	_passedBar->setItems(std::move(items));
+}
+
+rpl::producer<int> SessionView::naturalHeightValue() const {
+	return _naturalHeight.value();
+}
+
+int SessionView::naturalHeight() const {
+	return _naturalHeight.current();
+}
+
+void SessionView::refreshNaturalHeight() {
+	if (_mode == Mode::NoProvider) {
+		_naturalHeight = 0;
+		return;
+	}
+	auto result = _queueStrip->height();
+	if (!_composer->isHidden()) {
+		result += _composer->height();
+	}
+	if (!_passedBar->isHidden()) {
+		result += _passedBar->height();
+	}
+	if (!_handoffNote->isHidden() && _session && _session->isRun()) {
+		result += st::agentFeedItemMargin.top() + _handoffNote->height();
+	}
+	_naturalHeight = result + _feed->naturalHeight();
+}
+
 void SessionView::startHandoff(HandoffDraft draft) {
 	showSession(nullptr);
 	_handoff = std::move(draft);
@@ -417,11 +584,25 @@ void SessionView::sendWithAttachments(
 	const auto session = ensureSession();
 	_feed->scrollToBottom();
 	auto handoff = base::take(_handoff);
+	auto mentions = _mentions ? _mentions() : std::vector<PeerKey>();
+	auto untrusted = handoff ? handoff->untrusted : QString();
+	if (!_passedBar->empty()) {
+		const auto &items = _passedBar->items();
+		const auto peer = items.front()->history()->peer;
+		if (!ranges::contains(mentions, peer->id.value)) {
+			mentions.push_back(peer->id.value);
+		}
+		if (!untrusted.isEmpty()) {
+			untrusted += u"\n\n"_q;
+		}
+		untrusted += PassedMessagesText(items);
+		_passedBar->setItems({});
+	}
 	session->send({
 		.text = text,
-		.mentions = {},
+		.mentions = std::move(mentions),
 		.hint = _hint ? _hint() : QString(),
-		.untrusted = handoff ? handoff->untrusted : QString(),
+		.untrusted = std::move(untrusted),
 		.attachments = std::move(attachments),
 	});
 	_handoffNote->hide();
@@ -649,8 +830,10 @@ void SessionView::relayout() {
 	const auto run = _session && _session->isRun();
 	if (run) {
 		_composer->hide();
+		_passedBar->hide();
 	} else {
 		_composer->show();
+		_passedBar->setVisible(!_passedBar->empty());
 	}
 	_queueStrip->resizeToWidth(w);
 	_queueStrip->setGeometry(0, 0, w, _queueStrip->height());
@@ -672,22 +855,42 @@ void SessionView::relayout() {
 		const auto top = stripHeight + margin.top() + _handoffNote->height();
 		_feed->setGeometry(0, top, w, std::max(h - top, 0));
 	} else {
+		const auto left = (w - content) / 2;
 		_composer->resizeToWidth(content);
 		const auto composerHeight = _composer->height();
-		_composer->setGeometry(
-			(w - content) / 2,
-			h - composerHeight,
-			content,
-			composerHeight);
-		_feed->setGeometry(
-			0,
-			stripHeight,
-			w,
-			h - stripHeight - composerHeight);
+		const auto passed = !_passedBar->isHidden();
+		if (passed) {
+			_passedBar->resizeToWidth(content);
+		}
+		const auto passedHeight = passed ? _passedBar->height() : 0;
+		if (_composerOnTop) {
+			auto top = stripHeight;
+			_passedBar->moveToLeft(left, top, w);
+			top += passedHeight;
+			_composer->setGeometry(left, top, content, composerHeight);
+			top += composerHeight;
+			_feed->setGeometry(0, top, w, std::max(h - top, 0));
+		} else {
+			_composer->setGeometry(
+				left,
+				h - composerHeight,
+				content,
+				composerHeight);
+			_passedBar->moveToLeft(
+				left,
+				h - composerHeight - passedHeight,
+				w);
+			_feed->setGeometry(
+				0,
+				stripHeight,
+				w,
+				std::max(h - stripHeight - composerHeight - passedHeight, 0));
+		}
 	}
 	_feed->setContentMaxWidth(_contentMaxWidth);
 	_feed->show();
 	relayoutOverlay();
+	refreshNaturalHeight();
 }
 
 void SessionView::relayoutOverlay() {
@@ -707,7 +910,7 @@ void SessionView::relayoutOverlay() {
 			top + _noProviderLabel->height() + st::agentOverlayGap);
 		return;
 	}
-	if (_session || !_feed->empty()) {
+	if (_session || !_feed->empty() || _composerOnTop) {
 		_welcome->hide();
 		if (!_session || !_session->isRun()) {
 			_handoffNote->hide();

@@ -30,6 +30,8 @@ public:
 	void scrollToBottom();
 	[[nodiscard]] bool empty() const;
 	[[nodiscard]] rpl::producer<> retryRequests() const;
+	[[nodiscard]] rpl::producer<int> naturalHeightValue() const;
+	[[nodiscard]] int naturalHeight() const;
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
@@ -41,6 +43,7 @@ private:
 	};
 
 	void relayout();
+	void refreshNaturalHeight();
 	void dropLive();
 	void refreshActive();
 	void updateStick();
@@ -69,6 +72,7 @@ private:
 	bool _stick = true;
 	bool _stickFrozen = false;
 	rpl::event_stream<> _retryRequests;
+	rpl::variable<int> _naturalHeight = 0;
 
 };
 

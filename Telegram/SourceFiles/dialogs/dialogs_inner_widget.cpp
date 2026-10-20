@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/dialogs_inner_widget.h"
 
+#include "agent/ui/agent_palette.h"
 #include "dialogs/dialogs_three_state_icon.h"
 #include "dialogs/ui/chat_search_empty.h"
 #include "dialogs/ui/chat_search_in.h"
@@ -6398,6 +6399,10 @@ void InnerWidget::setupShortcuts() {
 		request->check(Command::ShowContacts) && request->handle([=] {
 			_controller->show(PrepareContactsBox(_controller));
 			return true;
+		});
+
+		request->check(Command::AgentPalette) && request->handle([=] {
+			return Agent::Ui::ShowPalette(_controller);
 		});
 
 		if (session().supportMode() && row.key.history()) {

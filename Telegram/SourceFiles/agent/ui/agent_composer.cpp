@@ -179,10 +179,20 @@ int Composer::resizeGetHeight(int newWidth) {
 	return top + rowHeight;
 }
 
+void Composer::setShadowAtBottom(bool bottom) {
+	_shadowAtBottom = bottom;
+	update();
+}
+
 void Composer::paintEvent(QPaintEvent *e) {
 	auto p = QPainter(this);
 	p.fillRect(rect(), st::historyComposeAreaBg);
-	p.fillRect(0, 0, width(), st::lineWidth, st::shadowFg);
+	p.fillRect(
+		0,
+		_shadowAtBottom ? (height() - st::lineWidth) : 0,
+		width(),
+		st::lineWidth,
+		st::shadowFg);
 }
 
 } // namespace Agent::Ui

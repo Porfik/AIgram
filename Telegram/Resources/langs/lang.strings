@@ -1803,6 +1803,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_background_limit_value" = "{cost} or {amount} tokens";
 "lng_agent_background_limit_about" = "When background tasks spend this much in a day, they pause until the next day.";
 
+"lng_agent_pass_to_agent" = "Pass to agent";
+"lng_agent_pass_selected" = "Pass selected to agent";
+"lng_agent_selected_pass" = "To agent";
+
 "lng_agent_card_title_add_members" = "Add members";
 "lng_agent_card_title_remove_members" = "Remove members";
 "lng_agent_card_title_ban_members" = "Ban members";

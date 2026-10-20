@@ -131,6 +131,7 @@ const auto CommandByName = base::flat_map<QString, Command>{
 	{ u"show_chat_preview"_q             , Command::ShowChatPreview },
 
 	{ u"agent_panel"_q                   , Command::AgentPanel },
+	{ u"agent_palette"_q                 , Command::AgentPalette },
 
 	{ u"record_voice"_q                  , Command::RecordVoice },
 	{ u"stash_message"_q                 , Command::StashMessage },
@@ -562,6 +563,7 @@ void Manager::fillDefaults() {
 	set(u"ctrl+\\"_q                 , Command::ShowChatMenu);
 	set(u"ctrl+]"_q                  , Command::ShowChatPreview);
 	set(u"ctrl+shift+a"_q            , Command::AgentPanel);
+	set(u"ctrl+shift+space"_q        , Command::AgentPalette);
 
 	set(u"ctrl+r"_q                  , Command::RecordVoice);
 

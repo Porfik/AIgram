@@ -87,6 +87,7 @@ enum class Command {
 	ShowChatPreview,
 
 	AgentPanel,
+	AgentPalette,
 
 	ShowAdminLog,
 
