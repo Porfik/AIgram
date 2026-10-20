@@ -521,7 +521,7 @@ std::optional<Task> ReadTask(QDataStream &stream) {
 	task.state = TaskState(state);
 	stream >> task.pausedUntil >> task.created >> task.lastFired;
 	stream >> task.lastSeen >> task.spendingDay;
-	if (!ReadTotals(stream, task.spentToday) || !stream.atEnd()) {
+	if (!ReadTotals(stream, task.spentToday)) {
 		return std::nullopt;
 	}
 	return task;
@@ -1263,7 +1263,11 @@ std::optional<Task> DeserializeTask(const QByteArray &bytes) {
 		|| version != kTaskVersion) {
 		return std::nullopt;
 	}
-	return ReadTask(stream);
+	auto result = ReadTask(stream);
+	if (!result || !stream.atEnd()) {
+		return std::nullopt;
+	}
+	return result;
 }
 
 QByteArray SerializeTasks(const std::vector<Task> &tasks) {
@@ -1802,20 +1806,19 @@ LimitHit CheckSpendingLimits(
 		qint64 backgroundTokens,
 		const SpendingTotals &backgroundToday) {
 	const auto hit = [](
-			const TaskLimits &limits,
-			const SpendingTotals &totals,
-			double cost,
-			qint64 tokens) {
-		if (totals.hasCost && limits.dailyCost > 0.) {
-			return cost >= limits.dailyCost;
-		} else if (limits.dailyTokens > 0) {
-			return tokens >= limits.dailyTokens;
+			const SpendingTotals &spent,
+			double costLimit,
+			qint64 tokenLimit) {
+		if (spent.hasCost && costLimit > 0.) {
+			return spent.cost >= costLimit;
+		} else if (tokenLimit > 0) {
+			return spent.tokens() >= tokenLimit;
 		}
 		return false;
 	};
-	if (hit(limits, taskToday, taskToday.cost, taskToday.tokens())) {
+	if (hit(taskToday, limits.dailyCost, limits.dailyTokens)) {
 		return LimitHit::Task;
-	} else if (hit(limits, backgroundToday, backgroundCost, backgroundTokens)) {
+	} else if (hit(backgroundToday, backgroundCost, backgroundTokens)) {
 		return LimitHit::Background;
 	}
 	return LimitHit::None;

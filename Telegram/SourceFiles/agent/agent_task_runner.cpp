@@ -287,6 +287,8 @@ void TaskRunner::processQueues() {
 
 bool TaskRunner::checkCanRun(const Task &task) {
 	if (task.state != TaskState::Active) {
+		LOG(("Agent Info: skipped a run of a task in state %1."
+			).arg(int(task.state)));
 		_queues.remove(task.id);
 		return false;
 	} else if (!_manager->taskProvider(task)) {
@@ -304,6 +306,10 @@ bool TaskRunner::checkCanRun(const Task &task) {
 		providers.backgroundDailyCost,
 		providers.backgroundDailyTokens,
 		_manager->tasks().backgroundToday());
+	if (hit != LimitHit::None) {
+		LOG(("Agent Info: a task run hit the %1 daily limit."
+			).arg((hit == LimitHit::Task) ? "task" : "background"));
+	}
 	if (hit == LimitHit::Task) {
 		pauseTask(
 			task.id,
@@ -345,6 +351,8 @@ void TaskRunner::startRun(const Task &task, Trigger trigger) {
 	const auto provider = _manager->taskProvider(task);
 	Expects(provider != nullptr);
 
+	LOG(("Agent Info: starting a background run, trigger %1."
+		).arg(int(trigger.kind)));
 	const auto now = base::unixtime::now();
 	auto record = SessionRecord();
 	record.info.id = GenerateSessionId();
@@ -701,6 +709,9 @@ QString TaskRunner::actionText(
 }
 
 void TaskRunner::finishRun(not_null<Run*> run) {
+	LOG(("Agent Info: a background run finished, status %1, actions %2."
+		).arg(int(run->session->state().status)
+		).arg(run->info.actions));
 	run->finished = true;
 	const auto &state = run->session->state();
 	const auto &record = run->session->record();
@@ -739,7 +750,13 @@ void TaskRunner::finishRun(not_null<Run*> run) {
 		}
 	}
 	if (const auto found = _manager->tasks().find(taskId)) {
-		const auto task = *found;
+		auto task = *found;
+		if (task.trigger.kind == TriggerKind::Schedule
+			&& task.trigger.schedule.kind == ScheduleKind::Once
+			&& task.state == TaskState::Active) {
+			task.state = TaskState::Finished;
+			_manager->tasks().update(task);
+		}
 		if (info.outcome == RunOutcome::Failed
 			&& task.notify == TaskNotify::Actions) {
 			notify(
@@ -920,6 +937,9 @@ void TaskRunner::reschedule() {
 		}
 		auto updated = task;
 		const auto missed = (due < _startedAt);
+		LOG(("Agent Info: a scheduled task is due, missed %1."
+			).arg(missed ? "yes" : "no"));
+		const auto once = (schedule.kind == ScheduleKind::Once);
 		if (missed) {
 			updated.lastFired = now;
 			if (task.catchUp) {
@@ -928,6 +948,8 @@ void TaskRunner::reschedule() {
 					.date = due,
 					.missedSchedules = 1,
 				});
+			} else if (once) {
+				updated.state = TaskState::Finished;
 			}
 		} else {
 			updated.lastFired = due;
@@ -935,9 +957,6 @@ void TaskRunner::reschedule() {
 				.kind = TriggerKind::Schedule,
 				.date = due,
 			});
-		}
-		if (schedule.kind == ScheduleKind::Once) {
-			updated.state = TaskState::Finished;
 		}
 		updates.push_back(std::move(updated));
 	}

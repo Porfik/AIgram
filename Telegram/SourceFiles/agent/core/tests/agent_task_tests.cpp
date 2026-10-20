@@ -544,6 +544,25 @@ std::vector<Check> SerializeChecks() {
 			}
 			return TaskDiffers(task, *restored);
 		} },
+		{ u"task_serialize_tasks_list_roundtrip"_q, [] {
+			auto second = SampleTask();
+			second.id = u"0000000000000002"_q;
+			second.state = TaskState::Finished;
+			second.trigger.kind = TriggerKind::Schedule;
+			second.trigger.schedule.kind = ScheduleKind::Once;
+			second.trigger.schedule.at = 1'800'000'000;
+			const auto list = std::vector<Task>{ SampleTask(), second };
+			const auto restored = DeserializeTasks(SerializeTasks(list));
+			if (!restored) {
+				return u"a list of two tasks failed to deserialize"_q;
+			} else if (restored->size() != 2) {
+				return u"task count differs"_q;
+			} else if (const auto error = TaskDiffers(list[0], (*restored)[0]);
+					!error.isEmpty()) {
+				return error;
+			}
+			return TaskDiffers(list[1], (*restored)[1]);
+		} },
 		{ u"task_serialize_runs_roundtrip"_q, [] {
 			const auto runs = { SampleRun(0), SampleRun(1), SampleRun(4) };
 			const auto list = std::vector<TaskRun>(runs.begin(), runs.end());
@@ -1034,6 +1053,25 @@ std::vector<Check> LimitChecks() {
 			if (CheckSpendingLimits(limits, {}, 0., 0, cheap)
 				!= LimitHit::None) {
 				return u"under the limits must not hit"_q;
+			}
+			auto background = SpendingTotals();
+			background.inputTokens = 600'000;
+			if (CheckSpendingLimits(
+					TaskLimits(),
+					{},
+					1.,
+					1'000'000,
+					background) != LimitHit::None) {
+				return u"background usage under its limit must not hit"_q;
+			}
+			background.outputTokens = 400'000;
+			if (CheckSpendingLimits(
+					TaskLimits(),
+					{},
+					1.,
+					1'000'000,
+					background) != LimitHit::Background) {
+				return u"background tokens at the limit must hit"_q;
 			}
 			return QString();
 		} },
