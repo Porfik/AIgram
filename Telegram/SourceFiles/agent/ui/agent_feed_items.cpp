@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_items.h"
 
 #include "agent/core/agent_prompts.h"
+#include "agent/ui/agent_feed_media.h"
 #include "base/assertion.h"
 #include "base/variant.h"
 #include "core/click_handler_types.h"
@@ -16,8 +17,13 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "iv/markdown/iv_markdown_parse.h"
 #include "iv/markdown/iv_markdown_prepare.h"
 #include "iv/markdown/iv_markdown_view_widget.h"
+#include "data/data_document.h"
+#include "data/data_session.h"
+#include "history/history_item.h"
 #include "lang/lang_keys.h"
+#include "main/main_session.h"
 #include "ui/abstract_button.h"
+#include "ui/text/format_values.h"
 #include "ui/basic_click_handlers.h"
 #include "ui/integration.h"
 #include "ui/painter.h"
@@ -40,7 +46,79 @@ namespace {
 constexpr auto kStreamRenderDelay = crl::time(100);
 constexpr auto kMaxResultChars = 3000;
 
-[[nodiscard]] QString ToolTitleText(const ToolUseBlock &call) {
+[[nodiscard]] QJsonObject ToolResultObject(
+		const std::optional<ToolResultBlock> &result) {
+	if (!result || result->error) {
+		return {};
+	}
+	const auto document = QJsonDocument::fromJson(
+		UnwrapUntrusted(result->content).toUtf8());
+	return document.isObject() ? document.object() : QJsonObject();
+}
+
+[[nodiscard]] int64 JsonIdValue(const QJsonValue &value) {
+	return value.isString()
+		? value.toString().toLongLong()
+		: int64(value.toDouble());
+}
+
+[[nodiscard]] HistoryItem *ToolResultMessage(
+		Main::Session *session,
+		const QJsonObject &input,
+		const QJsonObject &object) {
+	if (!session) {
+		return nullptr;
+	}
+	const auto chat = object.contains(u"chat"_q)
+		? object.value(u"chat"_q)
+		: input.value(u"chat"_q);
+	if (chat.isString() && !chat.toString().isEmpty()
+		&& !chat.toString().at(0).isDigit()) {
+		return nullptr;
+	}
+	const auto chatId = chat.isUndefined() ? 0 : JsonIdValue(chat);
+	const auto messageId = object.contains(u"message"_q)
+		? object.value(u"message"_q)
+		: input.value(u"message_id"_q);
+	if (!chatId || messageId.isUndefined()) {
+		return nullptr;
+	}
+	return session->data().message(
+		PeerId(uint64(chatId)),
+		MsgId(JsonIdValue(messageId)));
+}
+
+[[nodiscard]] int64 MediaDurationSeconds(HistoryItem *item) {
+	if (!item || !item->media()) {
+		return 0;
+	}
+	const auto document = item->media()->document();
+	return (document && document->hasDuration())
+		? (document->duration() + 500) / 1000
+		: 0;
+}
+
+[[nodiscard]] int64 ResultDurationSeconds(
+		const QJsonObject &object,
+		HistoryItem *item) {
+	const auto value = object.value(u"duration"_q);
+	return value.isDouble() ? int64(value.toDouble()) : MediaDurationSeconds(item);
+}
+
+[[nodiscard]] QString WithDuration(QString title, int64 seconds) {
+	return (seconds > 0)
+		? (title + u" "_q + FormatDurationText(seconds))
+		: title;
+}
+
+[[nodiscard]] bool ResultFromMediaModel(const QJsonObject &object) {
+	return object.value(u"media_model"_q).toBool();
+}
+
+[[nodiscard]] QString ToolTitleBaseText(
+		const ToolUseBlock &call,
+		const std::optional<ToolResultBlock> &result,
+		Main::Session *session) {
 	const auto &name = call.name;
 	if (name == u"get_context"_q) {
 		return tr::lng_agent_tool_get_context(tr::now);
@@ -66,8 +144,100 @@ constexpr auto kMaxResultChars = 3000;
 		return tr::lng_agent_tool_list_folders(tr::now);
 	} else if (name == u"read_chat_memory"_q) {
 		return tr::lng_agent_tool_read_chat_memory(tr::now);
+	} else if (name == u"view_media"_q) {
+		const auto object = ToolResultObject(result);
+		const auto type = object.value(u"type"_q).toString();
+		if (type == u"photo"_q) {
+			return tr::lng_agent_tool_view_photo(tr::now);
+		} else if (type == u"video"_q
+			|| type == u"round_video"_q
+			|| type == u"gif"_q) {
+			return tr::lng_agent_tool_view_video(tr::now);
+		} else if (!object.value(u"attachment"_q).toString().isEmpty()) {
+			return tr::lng_agent_tool_view_attachment(tr::now);
+		}
+		return tr::lng_agent_tool_view_media(tr::now);
+	} else if (name == u"listen_audio"_q) {
+		const auto object = ToolResultObject(result);
+		const auto type = object.value(u"type"_q).toString();
+		const auto title = (type == u"voice"_q || type == u"round_video"_q)
+			? tr::lng_agent_tool_listen_voice(tr::now)
+			: tr::lng_agent_tool_listen_audio(tr::now);
+		return WithDuration(
+			std::move(title),
+			ResultDurationSeconds(
+				object,
+				ToolResultMessage(session, call.input, object)));
+	} else if (name == u"transcribe_voice"_q) {
+		const auto object = ToolResultObject(result);
+		return WithDuration(
+			tr::lng_agent_tool_transcribe(tr::now),
+			MediaDurationSeconds(
+				ToolResultMessage(session, call.input, object)));
+	} else if (name == u"read_file"_q) {
+		const auto fileName = ToolResultObject(result)
+			.value(u"name"_q).toString();
+		return fileName.isEmpty()
+			? tr::lng_agent_tool_read_file_unknown(tr::now)
+			: tr::lng_agent_tool_read_file(tr::now, lt_file, fileName);
+	} else if (name == u"list_agent_files"_q) {
+		return tr::lng_agent_tool_list_agent_files(tr::now);
+	} else if (name == u"draft_files"_q) {
+		return tr::lng_agent_tool_draft_files(tr::now);
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
+}
+
+[[nodiscard]] QString ToolTitleText(
+		const ToolUseBlock &call,
+		const std::optional<ToolResultBlock> &result,
+		Main::Session *session) {
+	auto title = ToolTitleBaseText(call, result, session);
+	if (ResultFromMediaModel(ToolResultObject(result))) {
+		title += u" "_q + tr::lng_agent_tool_media_model(tr::now);
+	}
+	return title;
+}
+
+[[nodiscard]] bool IsMediaTool(const QString &name) {
+	return name == u"view_media"_q
+		|| name == u"listen_audio"_q
+		|| name == u"transcribe_voice"_q
+		|| name == u"read_file"_q;
+}
+
+[[nodiscard]] MediaBlock ResultMediaBlock(const QJsonObject &object) {
+	auto block = MediaBlock();
+	block.attachment = object.value(u"attachment"_q).toString();
+	if (!block.attachment.isEmpty()) {
+		return block;
+	}
+	const auto chat = object.value(u"chat"_q);
+	if (chat.isString() && !chat.toString().isEmpty()
+		&& !chat.toString().at(0).isDigit()) {
+		return block;
+	}
+	block.peer = chat.isUndefined() ? 0 : uint64(JsonIdValue(chat));
+	block.messageId = object.value(u"message"_q).isUndefined()
+		? 0
+		: JsonIdValue(object.value(u"message"_q));
+	return block;
+}
+
+[[nodiscard]] QString ResultTranscriptText(
+		const QString &name,
+		const QJsonObject &object) {
+	if (name == u"listen_audio"_q) {
+		return object.value(u"transcript"_q).toString();
+	} else if (name == u"view_media"_q) {
+		return object.value(u"description"_q).toString();
+	} else if (name == u"transcribe_voice"_q) {
+		return object.value(u"text"_q).toString();
+	} else if (name == u"read_file"_q
+		&& object.value(u"media_model"_q).toBool()) {
+		return object.value(u"text"_q).toString();
+	}
+	return QString();
 }
 
 [[nodiscard]] QString CutForDisplay(const QString &text) {
@@ -531,7 +701,12 @@ int FeedAssistantWidget::resizeGetHeight(int newWidth) {
 
 class FeedStepsWidget::Step final : public VerticalLayout {
 public:
-	Step(QWidget *parent, const FeedStep &data, Fn<void()> toggled);
+	Step(
+		QWidget *parent,
+		const FeedStep &data,
+		const FeedContext &context,
+		Main::Session *session,
+		Fn<void()> toggled);
 
 	void setData(const FeedStep &data);
 	void appendThinking(const QString &text);
@@ -549,6 +724,8 @@ private:
 	void toggleExpanded();
 
 	FeedStep _data;
+	const FeedContext *_context = nullptr;
+	Main::Session *_session = nullptr;
 	Fn<void()> _toggled;
 	ToggleRow *_row = nullptr;
 	SlideWrap<VerticalLayout> *_details = nullptr;
@@ -561,9 +738,13 @@ private:
 FeedStepsWidget::Step::Step(
 	QWidget *parent,
 	const FeedStep &data,
+	const FeedContext &context,
+	Main::Session *session,
 	Fn<void()> toggled)
 : VerticalLayout(parent)
 , _data(data)
+, _context(&context)
+, _session(session)
 , _toggled(std::move(toggled)) {
 	_row = add(object_ptr<ToggleRow>(this, st::agentStepsRowHeight));
 	_details = add(object_ptr<SlideWrap<VerticalLayout>>(
@@ -617,8 +798,8 @@ bool FeedStepsWidget::Step::failed() const {
 QString FeedStepsWidget::Step::title() const {
 	return v::match(_data, [](const FeedThinking &) {
 		return tr::lng_agent_thinking(tr::now);
-	}, [](const FeedTool &data) {
-		return ToolTitleText(data.call);
+	}, [&](const FeedTool &data) {
+		return ToolTitleText(data.call, data.result, _session);
 	});
 }
 
@@ -666,6 +847,26 @@ void FeedStepsWidget::Step::fillDetails() {
 			st::agentStepsThinkingLabel));
 		label->setSelectable(true);
 	}, [&](const FeedTool &data) {
+		const auto object = ToolResultObject(data.result);
+		if (IsMediaTool(data.call.name)) {
+			const auto media = ResultMediaBlock(object);
+			if (media.peer || media.messageId || !media.attachment.isEmpty()) {
+				content->add(
+					MakeFeedMediaPreview(content, *_context, media),
+					style::margins(0, 0, 0, st::agentStepsDetailsGap));
+			}
+			const auto transcript = ResultTranscriptText(
+				data.call.name,
+				object);
+			if (!transcript.isEmpty()) {
+				addSection(tr::lng_agent_tool_transcript(tr::now));
+				const auto label = content->add(object_ptr<FlatLabel>(
+					content,
+					CutForDisplay(transcript),
+					st::agentStepsThinkingLabel));
+				label->setSelectable(true);
+			}
+		}
 		const auto arguments = ArgumentsText(data.call);
 		if (!arguments.isEmpty()) {
 			addSection(tr::lng_agent_tool_arguments(tr::now));
@@ -762,7 +963,12 @@ void FeedStepsWidget::applySteps(const std::vector<FeedStep> &steps) {
 void FeedStepsWidget::addStep(QString key, const FeedStep &step) {
 	const auto list = _list->entity();
 	const auto raw = list->add(
-		object_ptr<Step>(list, step, [=] { notifyManualToggle(); }),
+		object_ptr<Step>(
+			list,
+			step,
+			_context,
+			&_context.controller->session(),
+			[=] { notifyManualToggle(); }),
 		st::agentStepsRowMargin);
 	_entries.push_back({ std::move(key), raw });
 }

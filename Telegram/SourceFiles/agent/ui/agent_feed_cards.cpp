@@ -8,9 +8,20 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_cards.h"
 
 #include "agent/core/agent_prompts.h"
+#include "agent/agent_files.h"
+#include "agent/core/agent_media.h"
 #include "agent/ui/agent_session_view.h"
+#include "core/file_utilities.h"
+#include "core/ui_integration.h"
 #include "lang/lang_keys.h"
+#include "storage/storage_media_prepare.h"
+#include "ui/chat/attach/attach_album_preview.h"
+#include "ui/chat/attach/attach_prepare.h"
+#include "ui/chat/attach/attach_single_file_preview.h"
+#include "ui/chat/attach/attach_single_media_preview.h"
 #include "ui/painter.h"
+#include "ui/text/format_values.h"
+#include "window/window_session_controller.h"
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/labels.h"
@@ -20,10 +31,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonArray>
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonObject>
+#include <QtCore/QTemporaryFile>
+#include <gsl/gsl>
 #include <QtGui/QPainterPath>
 
 #include "styles/style_agent.h"
+#include "styles/style_agent_media.h"
 #include "styles/style_chat_helpers.h"
+#include "styles/style_chat.h"
 
 namespace Agent::Ui {
 namespace {
@@ -32,6 +47,12 @@ namespace {
 	switch (kind) {
 	case CardKind::Send:
 		return tr::lng_agent_card_title_send(tr::now);
+	case CardKind::Transcribe:
+		return tr::lng_agent_card_title_transcribe(tr::now);
+	case CardKind::Download:
+		return tr::lng_agent_card_title_download(tr::now);
+	case CardKind::SendFiles:
+		return tr::lng_agent_card_title_send_files(tr::now);
 	case CardKind::Draft:
 		return tr::lng_agent_card_title_draft(tr::now);
 	case CardKind::Forward:
@@ -57,6 +78,10 @@ namespace {
 [[nodiscard]] QString OptionText(CardKind kind) {
 	return (kind == CardKind::Delete)
 		? tr::lng_agent_card_revoke(tr::now)
+		: (kind == CardKind::PinMessage)
+		? tr::lng_agent_card_notify(tr::now)
+		: (kind == CardKind::SendFiles)
+		? tr::lng_agent_card_uncompressed(tr::now)
 		: tr::lng_agent_card_notify(tr::now);
 }
 
@@ -69,6 +94,102 @@ namespace {
 
 [[nodiscard]] QString CheckedButtonCount(int count) {
 	return tr::lng_agent_card_send_count(tr::now, lt_count, count);
+}
+
+[[nodiscard]] QString FileSizeText(int64 size) {
+	return Ui::FormatSizeText(size);
+}
+
+class SendFilesPreviewBox final : public RpWidget {
+public:
+	SendFilesPreviewBox(
+		QWidget *parent,
+		const FeedContext &context,
+		Ui::PreparedList list);
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+
+private:
+	Ui::PreparedList _list;
+	base::unique_qptr<RpWidget> _preview;
+
+};
+
+SendFilesPreviewBox::SendFilesPreviewBox(
+	QWidget *parent,
+	const FeedContext &context,
+	Ui::PreparedList list)
+: RpWidget(parent)
+, _list(std::move(list)) {
+	Expects(!_list.files.empty());
+
+	const auto captionContext = Core::TextContext(
+		{ .session = &context.controller->session() });
+	if (_list.files.size() > 1) {
+		_preview.reset(Ui::CreateChild<Ui::AlbumPreview>(
+			this,
+			st::defaultComposeControls,
+			gsl::make_span(_list.files),
+			captionContext,
+			Ui::SendFilesWay()));
+	} else {
+		const auto &file = _list.files.front();
+		const auto media = Ui::SingleMediaPreview::Create(
+			this,
+			st::defaultComposeControls,
+			[] { return false; },
+			file,
+			Ui::AttachControls::Type::None);
+		if (media) {
+			_preview.reset(media);
+		} else {
+			_preview.reset(Ui::CreateChild<Ui::SingleFilePreview>(
+				this,
+				st::defaultComposeControls,
+				file,
+				captionContext,
+				Ui::AttachControls::Type::None));
+		}
+	}
+	_preview->show();
+}
+
+int SendFilesPreviewBox::resizeGetHeight(int newWidth) {
+	_preview->resizeToWidth(newWidth);
+	_preview->moveToLeft(0, 0, newWidth);
+	return _preview->height();
+}
+
+[[nodiscard]] Ui::PreparedList SendFilesPreparedList(
+		const FeedContext &context,
+		const std::vector<CardFile> &files,
+		std::vector<std::unique_ptr<QTemporaryFile>> &tempFiles) {
+	const auto session = &context.controller->session();
+	auto paths = QStringList();
+	for (const auto &file : files) {
+		if (Agent::AttachmentIndex(file.ref) > 0) {
+			auto block = context.delegate.attachment(file.ref);
+			if (!block) {
+				continue;
+			}
+			auto temp = std::make_unique<QTemporaryFile>(
+				QDir::tempPath() + u"/agent-XXXXXX-"_q + file.name);
+			if (!temp->open()) {
+				continue;
+			}
+			temp->write(block->bytes);
+			temp->flush();
+			paths.push_back(temp->fileName());
+			tempFiles.push_back(std::move(temp));
+		} else {
+			const auto path = Agent::ResolveAgentFile(session, file.ref);
+			if (!path.isEmpty()) {
+				paths.push_back(path);
+			}
+		}
+	}
+	return Storage::PrepareMediaList(paths, st::agentCardPreviewWidth, false);
 }
 
 } // namespace
@@ -292,6 +413,54 @@ int FeedCardWidget::checkedCount() const {
 	return result;
 }
 
+int64 FeedCardWidget::filesCheckedSize() const {
+	auto total = int64(0);
+	auto index = 0;
+	for (const auto &file : _card.files) {
+		if (index < int(_payload.checked.size())
+			&& _payload.checked[index]) {
+			total += file.size;
+		}
+		++index;
+	}
+	return total;
+}
+
+void FeedCardWidget::refreshFilesTotal() {
+	if (!_filesTotal) {
+		return;
+	}
+	_filesTotal->setText(tr::lng_agent_card_download_size(
+		tr::now,
+		lt_size,
+		FileSizeText(filesCheckedSize())));
+}
+
+void FeedCardWidget::buildSendFilesPreview() {
+	if (_card.files.empty()) {
+		return;
+	}
+	auto list = SendFilesPreparedList(_context, _card.files, _tempFiles);
+	if (list.error != Ui::PreparedList::Error::None
+		|| list.files.empty()) {
+		for (const auto &file : _card.files) {
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					file.name + u" · "_q + FileSizeText(file.size),
+					st::agentFeedCardTargetLabel),
+				style::margins(0, st::agentFeedCardGap, 0, 0));
+		}
+		return;
+	}
+	_inner->add(
+		object_ptr<SendFilesPreviewBox>(
+			_inner,
+			_context,
+			std::move(list)),
+		style::margins(0, 0, 0, 0));
+}
+
 int FeedCardWidget::resizeGetHeight(int newWidth) {
 	const auto cardWidth = std::min(
 		newWidth,
@@ -334,6 +503,8 @@ void FeedCardWidget::build() {
 	_execute = _alternate = nullptr;
 	_buttonsRow = nullptr;
 	_field = nullptr;
+	_filesTotal = nullptr;
+	_tempFiles.clear();
 	_inner.create(this);
 	_inner->show();
 	const auto gap = st::agentFeedCardGap;
@@ -392,7 +563,35 @@ void FeedCardWidget::build() {
 		update();
 		return;
 	}
-	if (pendingNow && hasTargets() && _card.targets.size() > 1) {
+	if (pendingNow && _card.kind == CardKind::Download
+		&& !_card.files.empty()) {
+		auto index = 0;
+		for (const auto &file : _card.files) {
+			const auto i = index++;
+			auto checkbox = _inner->add(
+				object_ptr<Ui::Checkbox>(
+					_inner,
+					file.name + u" · "_q + FileSizeText(file.size),
+					_payload.checked[i],
+					st::agentFeedCardCheckbox),
+				addGap(gap));
+			checkbox->setAllowTextLines(2);
+			checkbox->checkedChanges(
+			) | rpl::on_next([=](bool checked) {
+				_payload.checked[i] = checked;
+				refreshFilesTotal();
+				refreshButtons();
+			}, checkbox->lifetime());
+			_targetCheckboxes.push_back(checkbox);
+		}
+		_filesTotal = _inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				QString(),
+				st::agentFeedCardDetailLabel),
+			addGap(gap));
+		refreshFilesTotal();
+	} else if (pendingNow && hasTargets() && _card.targets.size() > 1) {
 		auto index = 0;
 		for (const auto &target : _card.targets) {
 			const auto i = index++;
@@ -434,6 +633,36 @@ void FeedCardWidget::build() {
 					addGap(0));
 			}
 		}
+	}
+	if (_card.kind == CardKind::Transcribe) {
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_agent_card_transcribe_left(
+					tr::now,
+					lt_done,
+					QString::number(_card.amount),
+					lt_total,
+					QString::number(_card.quota)),
+				st::agentFeedCardDetailLabel),
+			addGap(gap));
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_agent_card_transcribe_about(tr::now),
+				st::agentFeedCardDetailLabel),
+			addGap(0));
+	} else if (_card.kind == CardKind::Download
+		&& !_card.detail.isEmpty()) {
+		_inner->add(
+			object_ptr<Ui::FlatLabel>(
+				_inner,
+				tr::lng_agent_card_download_to(
+					tr::now,
+					lt_path,
+					_card.detail),
+				st::agentFeedCardDetailLabel),
+			addGap(gap));
 	}
 	if (!_card.detail.isEmpty()) {
 		switch (_card.kind) {
@@ -502,6 +731,9 @@ void FeedCardWidget::build() {
 			addGap(gap));
 	}
 	if (pendingNow) {
+		if (_card.kind == CardKind::SendFiles) {
+			buildSendFilesPreview();
+		}
 		if (editable()) {
 			_field = _inner->add(
 				object_ptr<Ui::InputField>(
@@ -510,7 +742,9 @@ void FeedCardWidget::build() {
 					Ui::InputField::Mode::MultiLine,
 					(_card.kind == CardKind::Edit
 						? tr::lng_agent_card_new_text()
-						: tr::lng_agent_card_text_placeholder())),
+						: (_card.kind == CardKind::SendFiles
+							? tr::lng_photo_caption()
+							: tr::lng_agent_card_text_placeholder()))),
 				addGap(gap));
 			_field->setText(_payload.text);
 			_field->changes(
@@ -551,12 +785,23 @@ void FeedCardWidget::build() {
 			object_ptr<CardButtonsRow>(_inner),
 			addGap(gap));
 		const auto executeText = [&] {
-			if (_card.kind == CardKind::Send) {
+			if (_card.kind == CardKind::Transcribe) {
+				return tr::lng_agent_card_transcribe(tr::now);
+			} else if (_card.kind == CardKind::Download) {
+				return tr::lng_agent_card_download_count(
+					tr::now,
+					lt_count,
+					checkedCount());
+			} else if (_card.kind == CardKind::Send) {
 				return (hasTargets() && _card.targets.size() > 1)
 					? CheckedButtonCount(checkedCount())
 					: tr::lng_agent_card_send(tr::now);
 			} else if (_card.kind == CardKind::Draft) {
 				return tr::lng_agent_card_replace(tr::now);
+			} else if (_card.kind == CardKind::SendFiles) {
+				return (hasTargets() && _card.targets.size() > 1)
+					? CheckedButtonCount(checkedCount())
+					: tr::lng_agent_card_send(tr::now);
 			}
 			return (hasTargets() && _card.targets.size() > 1)
 				? tr::lng_agent_card_confirm_count(
@@ -619,7 +864,11 @@ void FeedCardWidget::build() {
 			}
 			switch (_card.status) {
 			case CardStatus::Done:
-				return tr::lng_agent_card_done(tr::now);
+				return (_card.kind == CardKind::Download)
+					? (_card.detail.isEmpty()
+						? tr::lng_agent_card_downloaded(tr::now)
+						: tr::lng_agent_card_saved(tr::now))
+					: tr::lng_agent_card_done(tr::now);
 			case CardStatus::Drafted:
 				return tr::lng_agent_card_drafted(tr::now);
 			case CardStatus::Declined:
@@ -662,6 +911,18 @@ void FeedCardWidget::build() {
 				status,
 				st::agentFeedCardStatusLabel),
 			addGap(gap));
+		if (_card.kind == CardKind::Download
+			&& _card.status == CardStatus::Done
+			&& !_card.detail.isEmpty()) {
+			auto show = _inner->add(
+				object_ptr<Ui::LinkButton>(
+					_inner,
+					tr::lng_context_show_in_folder(tr::now)),
+				addGap(0));
+			show->setClickedCallback([=] {
+				File::ShowInFolder(_card.detail);
+			});
+		}
 		if (_card.autoApproved) {
 			_inner->add(
 				object_ptr<Ui::FlatLabel>(
@@ -704,6 +965,17 @@ void FeedCardWidget::refreshButtons() {
 		&& _card.targets.size() > 1) {
 		_execute->setText(
 			rpl::single(CheckedButtonCount(checkedCount())));
+	} else if (_card.kind == CardKind::Download) {
+		_execute->setText(rpl::single(
+			tr::lng_agent_card_download_count(
+				tr::now,
+				lt_count,
+				checkedCount())));
+	} else if (_card.kind == CardKind::SendFiles) {
+		_execute->setText(rpl::single(
+			hasTargets() && _card.targets.size() > 1
+				? CheckedButtonCount(checkedCount())
+				: tr::lng_agent_card_send(tr::now)));
 	} else if (_card.kind != CardKind::Draft && hasTargets()
 		&& _card.targets.size() > 1) {
 		_execute->setText(rpl::single(
@@ -713,7 +985,8 @@ void FeedCardWidget::refreshButtons() {
 				checkedCount())));
 	}
 	const auto needTargets = hasTargets() && !checkedCount();
-	const auto needText = editable() && !hasText;
+	const auto needText = editable() && !hasText
+		&& _card.kind != CardKind::SendFiles;
 	_execute->setDisabled(needTargets || needText);
 	if (_alternate) {
 		_alternate->setDisabled(needText);
@@ -743,6 +1016,8 @@ struct ParsedAction {
 	QStringList failedTitles;
 	QString folder;
 	QString fact;
+	QStringList saved;
+	QString savedPath;
 
 	[[nodiscard]] QString chats() const {
 		return (done.isEmpty() ? failedTitles : done).join(u", "_q);
@@ -766,9 +1041,17 @@ struct ParsedAction {
 	parsed.fact = object.value("fact").toObject()
 		.value("text").toString();
 	for (const auto value : object.value("done").toArray()) {
-		const auto title = value.toObject().value("title").toString();
+		const auto entry = value.toObject();
+		const auto title = entry.value("title").toString();
 		if (!title.isEmpty()) {
 			parsed.done.push_back(title);
+		}
+		const auto file = entry.value("file").toString();
+		if (!file.isEmpty()) {
+			parsed.saved.push_back(file);
+		}
+		if (parsed.savedPath.isEmpty()) {
+			parsed.savedPath = entry.value("path").toString();
 		}
 	}
 	for (const auto value : object.value("failed").toArray()) {
@@ -795,7 +1078,8 @@ struct ParsedAction {
 		const QJsonObject &input,
 		const QString &chats,
 		const QString &folder,
-		const QString &fact) {
+		const QString &fact,
+		const ParsedAction &parsed) {
 	if (name == u"mark_read"_q) {
 		return tr::lng_agent_action_mark_read(tr::now, lt_chats, chats);
 	} else if (name == u"set_mute"_q) {
@@ -850,6 +1134,13 @@ struct ParsedAction {
 			fact.isEmpty() ? input.value("text").toString() : fact);
 	} else if (name == u"memory_remove"_q) {
 		return tr::lng_agent_action_memory_remove(tr::now, lt_text, fact);
+	} else if (name == u"save_files"_q) {
+		return tr::lng_agent_action_saved(
+			tr::now,
+			lt_file,
+			parsed.saved.isEmpty()
+				? parsed.chats()
+				: parsed.saved.join(u", "_q));
 	}
 	return name;
 }
@@ -868,8 +1159,10 @@ private:
 	object_ptr<Ui::FlatLabel> _mark = { nullptr };
 	object_ptr<Ui::FlatLabel> _text;
 	object_ptr<Ui::FlatLabel> _failedText;
+	object_ptr<Ui::LinkButton> _show;
 	object_ptr<Ui::LinkButton> _undo;
 	object_ptr<Ui::FlatLabel> _undone;
+	bool _showPath = false;
 	rpl::event_stream<> _undoClicks;
 
 };
@@ -880,6 +1173,7 @@ FeedActionsWidget::ActionRow::ActionRow(
 : RpWidget(parent)
 , _text(this, QString(), st::agentFeedTextLabel)
 , _failedText(this, QString(), st::agentFeedActionsMarkBad)
+, _show(this, tr::lng_context_show_in_folder(tr::now))
 , _undo(this, tr::lng_agent_undo(tr::now))
 , _undone(
 	this,
@@ -897,11 +1191,20 @@ FeedActionsWidget::ActionRow::ActionRow(
 		tool.call.input,
 		parsed.chats(),
 		parsed.folder,
-		parsed.fact));
+		parsed.fact,
+		parsed));
 	if (!parsed.failed.isEmpty()) {
 		_failedText->setText(parsed.failed.join(u"\n"_q));
 	} else {
 		_failedText->hide();
+	}
+	if (!parsed.savedPath.isEmpty()) {
+		_showPath = true;
+		_show->setClickedCallback([path = parsed.savedPath] {
+			File::ShowInFolder(path);
+		});
+	} else {
+		_show->hide();
 	}
 	_undo->setClickedCallback([=] {
 		_undoClicks.fire({});
@@ -914,6 +1217,7 @@ void FeedActionsWidget::ActionRow::refreshUndo(
 		bool undoable,
 		bool undone) {
 	_undo->setVisible(undoable && !undone);
+	_show->setVisible(_showPath && !undone);
 	_undone->setVisible(undone);
 }
 
@@ -925,17 +1229,25 @@ int FeedActionsWidget::ActionRow::resizeGetHeight(int newWidth) {
 	const auto gap = st::agentFeedActionsRowGap;
 	_mark->resizeToNaturalWidth(newWidth);
 	const auto left = _mark->width() + gap;
-	const auto undoWidth = _undo->width();
-	_text->resizeToWidth(std::max(newWidth - left - undoWidth - gap, 1));
+	auto right = newWidth;
+	if (!_show->isHidden()) {
+		right -= _show->width() + gap;
+		_show->moveToLeft(right, 0, newWidth);
+	}
+	if (!_undo->isHidden()) {
+		right -= _undo->width() + gap;
+		_undo->moveToLeft(right, 0, newWidth);
+	}
+	_text->resizeToWidth(std::max(right - left, 1));
 	_text->moveToLeft(left, 0, newWidth);
 	_mark->moveToLeft(0, 0, newWidth);
-	_undo->moveToRight(0, 0, newWidth);
 	_undone->moveToRight(0, 0, newWidth);
 	auto height = std::max(
 		_text->height(),
 		std::max(_mark->height(), _undo->height()));
+	height = std::max(height, _show->height());
 	if (!_failedText->isHidden()) {
-		_failedText->resizeToWidth(std::max(newWidth - left, 1));
+		_failedText->resizeToWidth(std::max(right - left, 1));
 		_failedText->moveToLeft(left, height + gap, newWidth);
 		height += gap + _failedText->height();
 	}

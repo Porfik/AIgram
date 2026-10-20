@@ -15,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
 
+#include <QtCore/QTemporaryFile>
 #include <memory>
 #include <vector>
 
@@ -46,6 +47,7 @@ private:
 
 	void capturePayload();
 	void build();
+	void buildSendFilesPreview();
 	void refreshButtons();
 	void decide(CardAction action);
 
@@ -55,12 +57,16 @@ private:
 	[[nodiscard]] bool hasAlternate() const;
 	[[nodiscard]] bool hasTargets() const;
 	[[nodiscard]] int checkedCount() const;
+	[[nodiscard]] int64 filesCheckedSize() const;
+	void refreshFilesTotal();
 
 	FeedContext _context;
 	Card _card;
 	Payload _payload;
 	object_ptr<VerticalLayout> _inner = { nullptr };
 	std::vector<::Ui::Checkbox*> _targetCheckboxes;
+	std::vector<std::unique_ptr<QTemporaryFile>> _tempFiles;
+	::Ui::FlatLabel *_filesTotal = nullptr;
 	::Ui::InputField *_field = nullptr;
 	::Ui::Checkbox *_option = nullptr;
 	::Ui::Checkbox *_allow = nullptr;
