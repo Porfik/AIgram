@@ -397,7 +397,8 @@ std::vector<ToolEntry> Entries() {
 			" time. A confirmation card shows the trigger, the instruction"
 			" (which the user can edit), the allowed actions and chats, the"
 			" limits and the notification mode before the task starts."_q,
-		.inputSchema = TaskInputSchema(false, false),
+		.inputSchema = TaskInputSchema(true, false),
+		.generalSchema = TaskInputSchema(false, false),
 		.policy = ToolPolicy{
 			.risk = Risk::Visible,
 			.background = false,
@@ -412,7 +413,8 @@ std::vector<ToolEntry> Entries() {
 			" trigger, the instruction, the allowed actions and chats, the"
 			" limits or the notification mode. A confirmation card shows the"
 			" changes before they are applied."_q,
-		.inputSchema = TaskInputSchema(false, true),
+		.inputSchema = TaskInputSchema(true, true),
+		.generalSchema = TaskInputSchema(false, true),
 		.policy = ToolPolicy{
 			.risk = Risk::Visible,
 			.background = false,
@@ -463,7 +465,7 @@ std::vector<ToolEntry> Entries() {
 	push(ToolEntry{
 		.name = u"delete_task"_q,
 		.description = u"Delete a background task by its id, with its run"
-			" log. The task can be undone."_q,
+			" log. It can be undone, without the run log."_q,
 		.inputSchema = ToolSchema(
 			[] {
 				auto properties = QJsonObject();
