@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <QtCore/QString>
 
+#include <optional>
 #include <vector>
 
 namespace Agent {
@@ -27,6 +28,8 @@ struct ToolPolicy {
 	bool general = true;
 	bool chat = true;
 	bool outbound = false;
+	bool background = true;
+	bool interactive = true;
 };
 
 struct ActionRequest {
@@ -47,6 +50,7 @@ enum class DenyReason : uchar {
 	OutOfScope,
 	Excluded,
 	Forbidden,
+	OutOfFrame,
 };
 
 struct Decision {
@@ -65,14 +69,21 @@ struct PeerName {
 	const QString &text,
 	const std::vector<PeerName> &candidates);
 
+struct GateFrame {
+	std::vector<QString> tools;
+	Fn<bool(PeerKey)> contains;
+};
+
 class PolicyGate final {
 public:
 	PolicyGate(
 		Scope scope,
 		Fn<bool(PeerKey)> excluded = nullptr,
-		bool tainted = false);
+		bool tainted = false,
+		std::optional<GateFrame> frame = std::nullopt);
 
 	[[nodiscard]] const Scope &scope() const;
+	[[nodiscard]] bool background() const;
 
 	void beginTurn(std::vector<PeerKey> named);
 	void markTainted();
@@ -98,6 +109,7 @@ private:
 
 	const Scope _scope;
 	const Fn<bool(PeerKey)> _excluded;
+	const std::optional<GateFrame> _frame;
 	bool _tainted = false;
 	std::vector<PeerKey> _named;
 	std::vector<Allowance> _allowances;

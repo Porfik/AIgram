@@ -17,6 +17,8 @@ set(style_files
     agent/ui/agent_general.style
     agent/ui/agent_media.style
     agent/ui/agent_panel.style
+    agent/ui/agent_queue.style
+    agent/ui/agent_tasks.style
     ui/td_common.style
     ui/filter_icons.style
     ui/menu_icons.style

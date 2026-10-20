@@ -137,6 +137,7 @@ PRIVATE
     agent/tools/agent_tools_general.cpp
     agent/tools/agent_tools_media.cpp
     agent/tools/agent_tools_memory.cpp
+    agent/tools/agent_tools_tasks.cpp
     agent/ui/agent_chats_row.cpp
     agent/ui/agent_chats_row.h
     agent/ui/agent_composer.cpp
@@ -161,6 +162,8 @@ PRIVATE
     agent/ui/agent_panel.h
     agent/ui/agent_panel_widget.cpp
     agent/ui/agent_panel_widget.h
+    agent/ui/agent_queue.cpp
+    agent/ui/agent_queue.h
     agent/ui/agent_section.cpp
     agent/ui/agent_section.h
     agent/ui/agent_session_view.cpp
@@ -169,6 +172,10 @@ PRIVATE
     agent/ui/agent_sessions_list.h
     agent/ui/agent_spending_format.cpp
     agent/ui/agent_spending_format.h
+    agent/ui/agent_task_format.cpp
+    agent/ui/agent_task_format.h
+    agent/ui/agent_tasks_view.cpp
+    agent/ui/agent_tasks_view.h
     agent/ui/agent_userpic.cpp
     agent/ui/agent_userpic.h
     agent/agent_attachments.cpp
@@ -189,6 +196,8 @@ PRIVATE
     agent/agent_media_loader.h
     agent/agent_memories.cpp
     agent/agent_memories.h
+    agent/agent_notifications.cpp
+    agent/agent_notifications.h
     agent/agent_session.cpp
     agent/agent_session.h
     agent/agent_session_store.cpp
@@ -197,6 +206,10 @@ PRIVATE
     agent/agent_settings.h
     agent/agent_spending_tracker.cpp
     agent/agent_spending_tracker.h
+    agent/agent_task_runner.cpp
+    agent/agent_task_runner.h
+    agent/agent_tasks.cpp
+    agent/agent_tasks.h
     api/api_attached_stickers.cpp
     api/api_attached_stickers.h
     api/api_authorizations.cpp

@@ -652,6 +652,7 @@ std::vector<ToolEntry> BuildEntries() {
 			.risk = Risk::Reversible,
 			.general = false,
 			.chat = true,
+			.background = false,
 		},
 		.action = true,
 		.run = RunSetDraft,

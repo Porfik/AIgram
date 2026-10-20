@@ -24,6 +24,7 @@ struct LoopOptions {
 	int maxOutputTokens = 0;
 	int maxSteps = 25;
 	QString pdfEngine;
+	QString cacheKey;
 };
 
 class Loop final : public Engine, public base::has_weak_ptr {

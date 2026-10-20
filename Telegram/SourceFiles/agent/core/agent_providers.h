@@ -56,6 +56,9 @@ struct ProvidersState {
 	bool showSpending = false;
 	RowPreview rowPreview = RowPreview::LastMessage;
 	QString mediaId;
+	QString backgroundId;
+	double backgroundDailyCost = 1.;
+	qint64 backgroundDailyTokens = 1'000'000;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);
@@ -66,6 +69,9 @@ struct ProvidersState {
 	const ProvidersState &state);
 [[nodiscard]] const ProviderSettings *MediaProvider(
 	const ProvidersState &state);
+[[nodiscard]] const ProviderSettings *BackgroundProvider(
+	const ProvidersState &state,
+	const QString &taskProviderId = QString());
 [[nodiscard]] bool IsOpenRouter(const ProviderSettings &settings);
 [[nodiscard]] std::unique_ptr<Adapter> CreateAdapter(
 	const ProviderSettings &settings);

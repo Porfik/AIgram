@@ -35,7 +35,10 @@ class Memories;
 class Session;
 class SessionStore;
 class SpendingTracker;
+class TaskRunner;
+class Tasks;
 class Transport;
+struct Task;
 
 struct ScopeActivity {
 	bool working = false;
@@ -61,6 +64,8 @@ public:
 	[[nodiscard]] MediaAbilities abilities(
 		const ProviderSettings &provider) const;
 	[[nodiscard]] const ProviderSettings *mediaProvider() const;
+	[[nodiscard]] const ProviderSettings *taskProvider(
+		const Task &task) const;
 
 	[[nodiscard]] std::vector<SessionInfo> list(const Scope &scope) const;
 	[[nodiscard]] std::optional<SessionInfo> info(const QString &id) const;
@@ -79,6 +84,9 @@ public:
 	[[nodiscard]] Exclusions &exclusions() const;
 	[[nodiscard]] SpendingTracker &spending() const;
 	[[nodiscard]] Attachments &attachments() const;
+	[[nodiscard]] Tasks &tasks() const;
+	[[nodiscard]] TaskRunner &runner() const;
+	void removeTask(const QString &id);
 
 	[[nodiscard]] Transport &transport() const;
 	void save(not_null<Session*> session);
@@ -107,6 +115,8 @@ private:
 	const std::unique_ptr<Exclusions> _exclusions;
 	const std::unique_ptr<SpendingTracker> _spending;
 	const std::unique_ptr<Attachments> _attachments;
+	const std::unique_ptr<Tasks> _tasks;
+	std::unique_ptr<TaskRunner> _runner;
 	ProvidersState _providers;
 	rpl::variable<bool> _enabled = false;
 	std::vector<SessionInfo> _index;

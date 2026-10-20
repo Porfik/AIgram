@@ -185,6 +185,28 @@ const ProviderSettings *MediaProvider(const ProvidersState &state) {
 	return nullptr;
 }
 
+const ProviderSettings *BackgroundProvider(
+		const ProvidersState &state,
+		const QString &taskProviderId) {
+	const auto find = [&](const QString &id) -> const ProviderSettings* {
+		if (id.isEmpty()) {
+			return nullptr;
+		}
+		for (const auto &provider : state.list) {
+			if (provider.id == id) {
+				return &provider;
+			}
+		}
+		return nullptr;
+	};
+	if (const auto result = find(taskProviderId)) {
+		return result;
+	} else if (const auto result = find(state.backgroundId)) {
+		return result;
+	}
+	return ActiveProvider(state);
+}
+
 bool IsOpenRouter(const ProviderSettings &settings) {
 	const auto host = QUrl(settings.baseUrl).host();
 	return host == u"openrouter.ai"_q

@@ -119,6 +119,7 @@ struct Request {
 	std::vector<ToolSpec> tools;
 	int maxOutputTokens = 0;
 	QString pdfEngine;
+	QString cacheKey;
 };
 
 enum class ErrorKind : uchar {

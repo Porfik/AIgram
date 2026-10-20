@@ -15,6 +15,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session_store.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/agent_task_runner.h"
+#include "agent/agent_tasks.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_openai.h"
 #include "base/algorithm.h"
@@ -44,7 +46,8 @@ Manager::Manager(not_null<Main::Session*> session)
 , _memories(std::make_unique<Memories>(session))
 , _exclusions(std::make_unique<Exclusions>(session))
 , _spending(std::make_unique<SpendingTracker>(session))
-, _attachments(std::make_unique<Attachments>(session)) {
+, _attachments(std::make_unique<Attachments>(session))
+, _tasks(std::make_unique<Tasks>(session)) {
 	Agent::ProvidersChanged(
 	) | rpl::on_next([=] {
 		refresh();
@@ -56,9 +59,12 @@ Manager::Manager(not_null<Main::Session*> session)
 		stopExcluded();
 	}, _lifetime);
 	refresh();
+	_runner = std::make_unique<TaskRunner>(this);
 }
 
-Manager::~Manager() = default;
+Manager::~Manager() {
+	_runner = nullptr;
+}
 
 Main::Session &Manager::session() const {
 	return *_session;
@@ -129,6 +135,11 @@ MediaAbilities Manager::abilities(const ProviderSettings &provider) const {
 
 const ProviderSettings *Manager::mediaProvider() const {
 	const auto result = MediaProvider(_providers);
+	return (result && CreateAdapter(*result)) ? result : nullptr;
+}
+
+const ProviderSettings *Manager::taskProvider(const Task &task) const {
+	const auto result = BackgroundProvider(_providers, task.providerId);
 	return (result && CreateAdapter(*result)) ? result : nullptr;
 }
 
@@ -403,6 +414,13 @@ void Manager::clearAllData() {
 		addScope(entry.scope);
 		attachments.emplace(entry.id, entry.attachments);
 	}
+	_runner->stopAll();
+	for (const auto &task : _tasks->list()) {
+		for (const auto &run : _tasks->runs(task.id)) {
+			_store->removeSession(run.sessionId);
+		}
+	}
+	_tasks->clearAll();
 	auto sessions = base::take(_sessions);
 	for (const auto &session : sessions) {
 		session->stop();
@@ -440,6 +458,34 @@ Attachments &Manager::attachments() const {
 
 SpendingTracker &Manager::spending() const {
 	return *_spending;
+}
+
+Tasks &Manager::tasks() const {
+	return *_tasks;
+}
+
+TaskRunner &Manager::runner() const {
+	return *_runner;
+}
+
+void Manager::removeTask(const QString &id) {
+	_runner->taskRemoved(id);
+	for (const auto &run : _tasks->runs(id)) {
+		if (const auto session = findOpen(run.sessionId)) {
+			session->stop();
+		}
+		const auto it = std::find_if(
+			begin(_sessions),
+			end(_sessions),
+			[&](const auto &session) {
+				return session->id() == run.sessionId;
+			});
+		if (it != end(_sessions)) {
+			_sessions.erase(it);
+		}
+		_store->removeSession(run.sessionId);
+	}
+	_tasks->remove(id);
 }
 
 void Manager::upsertIndex(const SessionInfo &info) {

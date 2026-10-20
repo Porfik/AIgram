@@ -108,14 +108,20 @@ std::vector<PeerKey> FindNamedPeers(
 PolicyGate::PolicyGate(
 	Scope scope,
 	Fn<bool(PeerKey)> excluded,
-	bool tainted)
+	bool tainted,
+	std::optional<GateFrame> frame)
 : _scope(scope)
 , _excluded(std::move(excluded))
+, _frame(std::move(frame))
 , _tainted(tainted) {
 }
 
 const Scope &PolicyGate::scope() const {
 	return _scope;
+}
+
+bool PolicyGate::background() const {
+	return _frame.has_value();
 }
 
 void PolicyGate::beginTurn(std::vector<PeerKey> named) {
@@ -132,7 +138,9 @@ bool PolicyGate::tainted() const {
 }
 
 bool PolicyGate::available(const ToolPolicy &policy) const {
-	return (_scope.kind == ScopeKind::Account) ? policy.general : policy.chat;
+	const auto mode = _frame ? policy.background : policy.interactive;
+	return mode
+		&& ((_scope.kind == ScopeKind::Account) ? policy.general : policy.chat);
 }
 
 bool PolicyGate::visible(PeerKey peer) const {

@@ -47,6 +47,8 @@ PRIVATE
     agent/core/agent_spending.h
     agent/core/agent_sse.cpp
     agent/core/agent_sse.h
+    agent/core/agent_task.cpp
+    agent/core/agent_task.h
     agent/core/agent_transport.h
     agent/core/agent_types.cpp
     agent/core/agent_types.h
@@ -84,6 +86,7 @@ PRIVATE
     agent/core/tests/agent_request_tests.cpp
     agent/core/tests/agent_spending_tests.cpp
     agent/core/tests/agent_sse_tests.cpp
+    agent/core/tests/agent_task_tests.cpp
     agent/core/tests/agent_tests.h
     agent/core/tests/agent_tests_main.cpp
 )

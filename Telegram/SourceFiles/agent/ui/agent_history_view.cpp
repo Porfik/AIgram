@@ -74,6 +74,10 @@ rpl::producer<QString> HistoryView::openSessionRequests() const {
 	return _openSessionRequests.events();
 }
 
+rpl::producer<QString> HistoryView::openRunRequests() const {
+	return _openRunRequests.events();
+}
+
 void HistoryView::showTab(HistoryTab tab) {
 	const auto focused = InFocusChain(this);
 	_tab = tab;

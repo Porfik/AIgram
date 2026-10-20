@@ -29,6 +29,8 @@ enum class CardKind : uchar {
 	Transcribe,
 	Download,
 	SendFiles,
+	CreateTask,
+	UpdateTask,
 };
 
 enum class CardStatus : uchar {
@@ -39,6 +41,7 @@ enum class CardStatus : uchar {
 	Declined,
 	Failed,
 	NotDone,
+	Expired,
 };
 
 enum class CardAction : uchar {
@@ -80,6 +83,8 @@ struct Card {
 	std::vector<CardFile> files;
 	int64 amount = 0;
 	int64 quota = 0;
+	QByteArray task;
+	QByteArray previousTask;
 };
 
 struct CardDecision {

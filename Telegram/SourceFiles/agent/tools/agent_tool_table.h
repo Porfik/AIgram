@@ -87,6 +87,7 @@ struct PendingCall final : base::has_weak_ptr {
 		QString question,
 		Fn<void(QString text, QString error)> done)> askMediaModel;
 	Fn<std::optional<MediaBlock>(QString id)> readAttachment;
+	Fn<void(QString text)> notify;
 	mtpRequestId historiesRequestId = 0;
 
 	void setRequestId(mtpRequestId id);
@@ -141,5 +142,9 @@ namespace MediaTools {
 namespace FileTools {
 [[nodiscard]] std::vector<ToolEntry> Entries();
 } // namespace FileTools
+
+namespace TaskTools {
+[[nodiscard]] std::vector<ToolEntry> Entries();
+} // namespace TaskTools
 
 } // namespace Agent

@@ -94,6 +94,19 @@ QString SystemPrompt(const PromptContext &context) {
 	return result;
 }
 
+QString TaskSystemPrompt(const TaskPromptContext &context) {
+	return SystemPrompt({
+		.scope = context.scope,
+		.account = context.account,
+		.instructions = context.instructions,
+		.chat = context.chat,
+	}) + u"\n\nTask: "_q + context.task;
+}
+
+QString FormatChatCounters(const ChatBrief &brief) {
+	return QString();
+}
+
 QString FormatChatBrief(const ChatBrief &brief) {
 	auto title = brief.title;
 	title.replace('\n', ' ');

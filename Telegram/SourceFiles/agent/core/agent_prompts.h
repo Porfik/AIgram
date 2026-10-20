@@ -34,8 +34,20 @@ struct PromptContext {
 	std::optional<ChatBrief> chat;
 };
 
+struct TaskPromptContext {
+	Scope scope;
+	QString account;
+	QString instructions;
+	QString title;
+	QString task;
+	QString frame;
+	std::optional<ChatBrief> chat;
+};
+
 [[nodiscard]] QString SystemPrompt(const PromptContext &context);
+[[nodiscard]] QString TaskSystemPrompt(const TaskPromptContext &context);
 [[nodiscard]] QString FormatChatBrief(const ChatBrief &brief);
+[[nodiscard]] QString FormatChatCounters(const ChatBrief &brief);
 [[nodiscard]] QString WrapUntrusted(const QString &content);
 [[nodiscard]] QString UnwrapUntrusted(const QString &content);
 [[nodiscard]] QString HintText(const QString &hint);

@@ -28,6 +28,7 @@ struct SessionInfo {
 	QString preview;
 	bool previewOutgoing = false;
 	int attachments = 0;
+	QString task;
 };
 
 struct SessionRecord {

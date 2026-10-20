@@ -39,6 +39,14 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   and downloads message media, `agent_media_convert.*` scales images,
   decodes audio and unzips office files, `agent_files.*` is the agent
   folder and saving to it.
+- Background tasks: `agent_task` in `core` is the pure part (the task
+  model, filters, schedules, parsing the model's input, limits);
+  `agent_tasks.*` stores tasks and their runs, `agent_task_runner.*`
+  watches triggers and runs tasks, `agent_notifications.*` shows their
+  system notifications. Tools are `agent_tools_tasks.cpp` (`TaskTools`).
+  UI: `agent_tasks_view.*` the "Tasks" tab, `agent_task_format.*` the
+  task texts, `agent_queue.*` the "waiting for your decision" strip and
+  box (styles `agent_tasks.style` and `agent_queue.style`).
 - UI: `agent_feed_cards.*` are the card and action rows of the feed,
   `agent_section.*` the general agent screen, `agent_chats_row.*` the
   "✦ Agent" row above the chat list, `agent_history_view.*` the history
@@ -139,6 +147,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `ParseModels()` reads `architecture.input_modalities` when present:
   `image` into `vision`, `audio`, `video` and `file` into `audio`,
   `video` and `files` (each set true or false).
+- `Request::cacheKey`, when not empty, keeps the provider's prompt cache
+  warm: to OpenRouter (`IsOpenRouter()`) it goes as the `x-session-id`
+  header, to a provider whose base URL host is `api.openai.com` as the
+  `prompt_cache_key` body field; other providers get nothing.
 - It reads `usage.cost` (OpenRouter) into `Usage::cost` with `hasCost`;
   when `usage.is_byok` is true it adds
   `usage.cost_details.upstream_inference_cost`, which the user's own key
@@ -166,7 +178,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - Destroying a `Loop` while busy cancels everything and emits nothing.
 - The loop does not retry failed requests; it ends the turn with
   `TurnEnd::Failed` and the error.
-- `LoopOptions::pdfEngine` is copied into every request.
+- `LoopOptions::pdfEngine` and `LoopOptions::cacheKey` are copied into
+  every request.
 
 ## Provider settings (`agent_providers.h`)
 
@@ -187,6 +200,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `priceCached` of each provider and `mediaId` after `rowPreview`; older
   versions load them false and empty. `vision`, `audio`, `video` and
   `files` say what the model takes besides text when `/models` doesn't.
+- Version 6 appends `backgroundId` (`QString`), `backgroundDailyCost`
+  (`double`) and `backgroundDailyTokens` (`qint64`) after `mediaId`;
+  older versions load an empty id, 1.0 and 1 000 000.
+  `BackgroundProvider()` is the provider with `taskProviderId`, else the
+  one with `backgroundId`, else `ActiveProvider()`; ids that match no
+  provider are skipped.
 - `MediaProvider()` is the provider whose id is `mediaId`, null when
   `mediaId` is empty or unknown. `IsOpenRouter()` is true when the host of
   `baseUrl` is `openrouter.ai` or a subdomain of it.
@@ -227,6 +246,19 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - Taint is sticky for the session: `markTainted()` is never undone, and the
   session persists it in `SessionRecord::tainted`, because content read
   earlier stays in the model context.
+- `ToolPolicy::interactive` and `background` (both true by default) say
+  whether a tool exists in normal sessions and in background task runs.
+  A gate made with a `GateFrame` is a task run's gate: `background()` is
+  true and `available()` needs `background`, otherwise `interactive`,
+  besides the scope flag.
+- With a frame, `check()` keeps the first four steps (not available,
+  forbidden, excluded, out of scope) and then decides by the frame
+  instead of allowances and taint: the peers are in the frame when
+  `GateFrame::contains` is true for each (a null `contains` holds no
+  peer; an empty peer list is in the frame). `Read`: in the frame
+  `Allow`, otherwise `Deny` with `OutOfFrame`. `Reversible` and
+  `Visible`: the tool in `GateFrame::tools` and the peers in the frame
+  `Allow`, otherwise `Confirm` with `canAllowForTurn` false.
 
 ## Cards (`agent_card.h`)
 
@@ -255,12 +287,18 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   editable caption and `proposedText` the model's caption, `option` is
   "send without compression" (off, `optionAvailable` when a file is an
   image).
-- `CardTextEditable()` is true for `Send`, `Draft`, `Edit` and
-  `SendFiles`. `CardHasAlternate()` is true for `Send` ("to draft") and
-  `Draft` ("append"); `Execute` means "send", "replace", "confirm",
-  "transcribe" or "download".
-- `CardAlwaysAsks()` is true for `Draft`, `Transcribe` and `Download`:
-  such a card is shown even when the gate allows the call and never
+- `CreateTask` and `UpdateTask`: no targets; `task` is `SerializeTask()`
+  of the proposed task and, for `UpdateTask`, `previousTask` of the task
+  as it was; `text` is the editable task instruction and `proposedText`
+  the model's.
+- `Expired` is a final status: a background task's card nobody answered
+  for `kTaskCardExpireSeconds`; nothing was done.
+- `CardTextEditable()` is true for `Send`, `Draft`, `Edit`, `SendFiles`,
+  `CreateTask` and `UpdateTask`. `CardHasAlternate()` is true for `Send`
+  ("to draft") and `Draft` ("append"); `Execute` means "send",
+  "replace", "confirm", "transcribe", "download", "create" or "save".
+- `CardAlwaysAsks()` is true for `Draft`, `Transcribe`, `Download`,
+  `CreateTask` and `UpdateTask`: such a card is shown even when the gate allows the call and never
   offers "allow for the turn".
 - `ApplyDecision()`: `Decline` sets `Declined` and keeps everything else.
   `Execute` and `Alternate` (only where `CardHasAlternate()`) copy
@@ -281,7 +319,11 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   transcription, a declined `Download` that the user declined the
   download; a done `Download` names the saved files and the folder, a
   done `SendFiles` the chats like `Send`. An approved `Transcribe` and a
-  reading `Download` end with the tool's own result instead.
+  reading `Download` end with the tool's own result instead. A done
+  `CreateTask` says the user approved and the task is active, a done
+  `UpdateTask` that the user approved the changes, both with the edited
+  instruction like an edited text. An `Expired` card says the user did
+  not answer in time, the card expired and nothing was done.
 
 ## Session records (`agent_record.h`)
 
@@ -314,6 +356,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   image blocks of older versions load as `Image` media blocks. Index
   version 4 adds `attachments`. `SessionInfo::attachments` is how many
   attachment ids (`a1`, `a2`, ...) the session issued.
+- Version 5 writes `info.task` (the task id of a background run, empty
+  for normal sessions), `Card::task`, `previousTask` and the `Expired`
+  status; older records load an empty task. The index stays version 4:
+  runs never enter it.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -481,6 +527,117 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   fifth when there is one, never splitting a surrogate pair. `total` is
   the text size and `nextOffset` the offset after the page, -1 at the end.
 
+## Tasks (`agent_task.h`)
+
+- A `Task` is a background rule of one account. `scope` is where it was
+  made: `Account()` from the general agent, `Chat(peer)` from that chat's
+  panel. `trigger` is a new message by `filter` or a `schedule`; `frame`
+  is what a run may do without asking. `providerId` empty means the
+  background model. `state` `DailyLimit` and `HourlyLimit` pause until
+  `pausedUntil` (unix seconds); `Finished` is a fired `Once` schedule.
+  `lastFired` is the last trigger time, `lastSeen` the last time the
+  client ran with the task loaded (for missed events). `spentToday`
+  holds the priced usage of day `spendingDay` (`QDate::toJulianDay()`).
+- `ChatSet` names chats by `peers`, by `kinds` (`ChatKindFlag` bits) and
+  by `folders` (filter ids); `triggerChat` (frames only) adds the chat
+  of the run's trigger message. `empty()` has none of them.
+- `ChatFacts::kind` is one flag: bots `Bot`, other users (and the user's
+  own chat) `Private`, basic groups, supergroups and forums `Group`,
+  broadcast channels `Channel`. `folders` are the ids of the folders the
+  chat is in now; `self` marks Saved Messages.
+- `ChatSetContains()` is false for peer 0; true when the peer is in
+  `peers`, when its kind is in `kinds` and it is not `self`, when one of
+  its folders is in `folders`, or when `triggerChat` and the peer is
+  `triggerPeer` (non-zero).
+- `TimeWindow` holds minutes of the day (`from`, `till` in 0..1439) and
+  `days` (bit 0 Monday ... bit 6 Sunday, 0 every day). `always()` is
+  `from == till` with no days. `InTimeWindow()`: the time fits when
+  `from == till`, when `from <= t < till`, or for a window over midnight
+  (`from > till`) when `t >= from` or `t < till`. With `days`, the day
+  must be in the mask; in a window over midnight a time before `till`
+  counts as the previous day.
+- `MatchesMessage()` is false for `fromAgent`. An `outgoing` message
+  matches only in `self` (Saved Messages) and only when the filter names
+  that peer in `chats.peers`. Then every set condition must hold: the
+  chat by `ChatSetContains(chats, chat)` (an empty set matches no chat),
+  `sender` in `senders` when there are any, the text when `keywords`
+  or `regex` are set (any keyword as a case-insensitive substring, or
+  a case-insensitive `QRegularExpression` match; with both set either is
+  enough; an invalid regex matches nothing), `media & filter.media` when
+  `media` is not 0, `mentionsMe` with `mentionsOnly`, and
+  `InTimeWindow()` of `local`.
+- `NextFireTime()` returns the first fire time strictly after `after`,
+  or 0 when there is none. `Interval`: steps of
+  `max(everyMinutes, kTaskMinIntervalMinutes)` minutes from `anchor`
+  (`anchor` itself when it is after `after`). `Times`: the earliest local
+  date and time in `zone` after `after` whose minute of the day is in
+  `times` and whose weekday is in `days` (any day for 0), looking at most
+  eight days ahead; 0 for no times. `Once`: `at` when it is after
+  `after`, else 0.
+- `GenerateTaskId()` is 16 lowercase hex digits.
+- Serialization uses `QDataStream` (`Qt_5_1`) with a leading `quint32`
+  version 1: `SerializeTask()` every field of `Task`, `SerializeTasks()`
+  a count and the tasks, `SerializeRuns()` a count and every field of
+  each `TaskRun` (with the usage cost and `hasCost`). Unknown versions,
+  truncated data, negative or huge counts and out-of-range enum values
+  deserialize to `std::nullopt`.
+- `TaskInputSchema(chatScope, update)` is the JSON schema of the
+  `create_task` (`update` false) and `update_task` input:
+  `title`, `instruction`, `trigger` {`type` `message`, `schedule` or
+  `once`; for messages `chats`, `chat_types` (`private`, `group`,
+  `channel`, `bot`), `folders`, `senders`, `keywords`, `regex`, `media`
+  (`text`, `photo`, `video`, `voice`, `round_video`, `audio`,
+  `document`, `sticker`, `gif`), `mentions_only`, `time_window` {`from`,
+  `till` as `HH:MM`, `days`}; for schedules `every_minutes` or `times`
+  (`HH:MM` strings) and `days` (`mon` ... `sun`); for `once` `at` as
+  `YYYY-MM-DD HH:MM` local time}, `allowed_actions` (action tool names),
+  `allowed_chats` {`chats`, `chat_types`, `folders`, `trigger_chat`},
+  `notify` (`actions` or `log_only`), `catch_up` and `limits`
+  {`daily_cost` dollars, `daily_tokens`, `actions_per_hour`}. Create
+  requires `title`, `instruction` and `trigger`; update requires `task`
+  (the id) and nothing else. The chat scope schema has no `chats`,
+  `chat_types`, `folders` or `allowed_chats`. Descriptions tell the
+  model what each field means, that own messages trigger only in Saved
+  Messages, and that `allowed_actions` run without asking while
+  everything else waits for the user.
+- `ParseTaskInput()` fills `scope`, `title`, `instruction`, `trigger`,
+  `frame`, `notify`, `catchUp` and `limits` and leaves the rest default;
+  it fails with one English error naming the field: an empty or too long
+  `title` (`kTaskMaxTitleChars`) or `instruction`
+  (`kTaskMaxInstructionChars`), an unknown `type`, a message trigger of
+  the account scope without `chats`, `chat_types` or `folders`, a chat or
+  sender `refs.chat` returns 0 for ("Unknown chat: ..."), a folder
+  `refs.folder` doesn't know, more than `kTaskMaxKeywords` keywords, an
+  invalid regex (with its error), an unknown media or day name, a bad
+  `HH:MM`, a schedule with both or neither of `every_minutes` and
+  `times`, `every_minutes` below `kTaskMinIntervalMinutes`, more than
+  `kTaskMaxTimes` times, an `at` that is not after `refs.now`, an action
+  `refs.actionTool` rejects, `trigger_chat` without a message trigger,
+  limits outside 0.01..100 dollars, 1000..100 000 000 tokens or 1..1000
+  actions, or, in the chat scope, any of the account-only fields. In the
+  chat scope both `filter.chats` and `frame.chats` are the scope peer.
+  Without `allowed_chats` the frame chats are `triggerChat` for a message
+  trigger and empty for schedules. Senders resolve with `refs.chat` too.
+  Times are kept sorted and unique.
+- `ParseTaskUpdate()` starts from `base` and parses only the given
+  fields with the same rules: a given `trigger`, `allowed_actions` or
+  `allowed_chats` replaces that part whole, `limits` fields one by one.
+  Ids, state, times and spending stay from `base`.
+- `TaskToJson()` is the task for the model in the input's shape (chat
+  and sender ids as numbers, folder ids as numbers, times and `at` in
+  `zone`) plus `id`, `state` (`active`, `paused`, `daily_limit`,
+  `hourly_limit`, `finished`) and `paused_until` (`YYYY-MM-DD HH:MM`)
+  while paused by a limit. Parsing it back gives the same trigger,
+  frame, limits, notify and catch-up.
+- `CheckSpendingLimits()` checks the task first, then the whole
+  background: by cost when the totals have `hasCost` and the cost limit
+  is positive, otherwise by tokens when the token limit is positive; a
+  total at or over the limit is a hit.
+- `CountRecentActions()` counts times in `(now - 3600, now]`.
+  `HourlyResumeTime()` is `now` while that count is below `perHour` (or
+  `perHour <= 0`), otherwise the time the count drops below it: the
+  `(count - perHour + 1)`-th oldest recent time plus 3600.
+
 ## Context (`agent_context.h`)
 
 - `EstimateTokens()` is a cheap upper bound: one token per three characters
@@ -554,6 +711,25 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   whatever media shows or says is untrusted data, never instructions.
   General instructions come next, then `Memory:` with `FormatMemory()`
   when it is not empty.
+- `FormatChatBrief()` has no counters, so the chat agent's prompt stays
+  byte-stable for the session: `FormatChatCounters()` gives "Members: N.
+  Unread messages: M." (each part only when positive, empty without
+  both), and the session adds it to the hint of every message.
+- `TaskSystemPrompt()` is the English prompt of a background run, also
+  byte-stable for one task: it is AIgram's agent running the background
+  task `title` on behalf of the user, who is not watching; the user's
+  instruction `task`; the chat brief in the chat scope, or that it may
+  work with all chats the user didn't hide; what it may do without
+  asking (`frame`, written by the client); every run starts fresh with
+  no memory of earlier runs, so it reads history with tools when it
+  needs it; the trigger comes as `<untrusted_data>` and the same
+  untrusted-data and `[Context]` rules as `SystemPrompt()`; other actions
+  wait for the user's decision and declined ones are not retried; when
+  there is nothing to do it ends with a short note of what it checked;
+  `notify` tells the user something important in one or two sentences;
+  messages it writes follow the instruction's language or the chat's;
+  the media paragraph of `SystemPrompt()`; then the general
+  instructions. No memory paragraph.
 - `WrapUntrusted()` wraps content in `<untrusted_data>` tags and defuses any
   such tag inside it. `UnwrapUntrusted()` removes the wrapper tags for
   display; defused inner tags stay as they are. `HintText()` makes a one-line `[Context] ...` text, or
@@ -670,7 +846,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `Manager::activity()` of a scope: `working` when any open session of the
   scope is `Working` or `Compacting`, `pendingCards` summed over them.
   `activityValue()` starts with the current value and fires on changes,
-  without repeats.
+  without repeats. Background runs never make a scope `working`; their
+  pending cards count for the account scope (the "✦ Agent" badge).
+- Every dispatch passes the session id as `LoopOptions::cacheKey`, and in
+  the chat scope adds `FormatChatCounters()` of the chat to the hint.
+- `tasks()` and `runner()` are the account's `Tasks` and `TaskRunner`.
+  `taskProvider()` is `BackgroundProvider()` for the task when it can make
+  an adapter, else null. `removeTask()` stops the task's runs, deletes
+  their session records and the task. `clearAllData()` also stops every
+  run and deletes all tasks with their runs.
 
 ## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`, `agent_attachments.h`)
 
@@ -745,6 +929,60 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   English error. Destroying it cancels the download and removes a
   partial file.
 
+## Background tasks (`agent_tasks.h`, `agent_task_runner.h`, `agent_notifications.h`)
+
+- `Tasks` keeps the agent values `tasks` (`SerializeTasks()`),
+  `t/<taskId>` (`SerializeRuns()` of the task's runs) and `bgspending`
+  (`SerializeSpending()` of the whole background). It loads `tasks` and
+  `bgspending` on first use and each runs value on first use; unreadable
+  values log an error and start empty.
+- `list()` is every task in creation order; `list(scope)` is all of them
+  for the account scope and the tasks whose `scope` equals it for a chat
+  scope. `find()` is null for unknown ids; the pointer lives until the
+  next change.
+- `add()` appends a task (or replaces one with the same id), `update()`
+  replaces one by id (unknown ids are ignored), `remove()` erases the
+  task and its runs value; each saves and fires `changes()` with the id,
+  `remove()` also `runChanges()`. `clearAll()` removes `tasks`, every
+  `t/<id>` and `bgspending`, empties everything and fires `changes()`
+  with an empty id.
+- `runs()` is newest first. `saveRun()` replaces the run with the same
+  `sessionId` or puts it first, keeps the `kTaskMaxRuns` newest, saves
+  the runs value, fires `runChanges()` and returns the session ids of the
+  runs it dropped (the caller deletes those records).
+- `addUsage()` takes a priced usage of one of the task's requests: it
+  resets `spentToday` when `spendingDay` is not today (local date),
+  adds the usage there and to today's `bgspending` bucket
+  (`AddSpending()`), fires `changes()` with the id and saves both two
+  seconds later (or in the destructor). `backgroundToday()` is today's
+  background bucket.
+- `TaskRunner` watches the triggers: `Data::Session::newItemAdded()` for
+  message tasks (facts by the client, `MatchesMessage()`), a timer per
+  scheduled task (`NextFireTime()` from `lastFired`, else `created`), and
+  at start the missed events of tasks with `catchUp`. A run is a
+  `Session` with `info.task` set, the task's scope, a frame gate and the
+  task's provider (`Manager::taskProvider()`); its record is saved like a
+  session but goes to `Tasks::saveRun()` instead of the index. Runs of a
+  task go one at a time, at most `kTaskMaxParallelRuns` for the account,
+  at most `kTaskMaxSteps` requests each, `kTaskMaxQueued` waiting
+  triggers per task (repeats of one message dropped). A card in a run
+  waits up to `kTaskCardExpireSeconds`, then it is decided `Expired`.
+  Limits pause the task (`DailyLimit` until the next local midnight,
+  `HourlyLimit` until `HourlyResumeTime()`) and the background limit
+  skips every run until the next day; each pause notifies. Finished run
+  sessions stay open until the client quits, so their actions can be
+  undone.
+- `waiting(scope)` lists the runs with pending cards, of all tasks for
+  the account scope and of the scope's tasks for a chat scope, oldest
+  first; `waitingChanges()` fires when it changes. `running(taskId)` is
+  true while a run of the task works or waits; `runningChanges()` fires
+  the task id.
+- `ShowTaskNotification()` shows a system notification through the
+  client's notification manager: the userpic of `peer` (the user's own
+  for 0), `title`, `text`, with sound only when `sound`; a click opens
+  the run session in the general agent screen, or in the chat panel for
+  a chat task.
+
 ## Tools (`agent/tools/`)
 
 - `ToolRegistry` is a session's `ToolExecutor`. `tools()` lists only the
@@ -817,8 +1055,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   error. `canUndo()` stays true until an undo succeeds. Undo closures
   live in memory with the registry, so nothing is undoable after a
   restart.
-- `load_tools` (account and chat scope) takes a `group`: `folders` or
-  `files`. Loading an already loaded group is a no-op success.
+- `load_tools` (account and chat scope) takes a `group`: `folders`,
+  `files` or `tasks`. Loading an already loaded group is a no-op success.
+- In a background run (`PolicyGate::background()`) `tools()` lists every
+  entry the gate makes available, group entries included, without
+  `load_tools`; media abilities are those of the run's provider; and
+  `PendingCall::notify` shows a task notification. Tools that are only
+  for normal sessions have `background` false: `load_tools`, the memory
+  tools, `find_setting`, `open`, `continue_in_general`, `set_draft`,
+  `draft_files` and the `tasks` group.
 - Messages are passed as id, local date and time, sender, text with
   entities as Markdown, reply id and a short media description. Reading
   never marks anything read.
@@ -904,6 +1149,43 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `list_agent_files` (group `files`) returns `{"folder": path, "files":
   [{"name", "size", "modified"}]}`, at most 200, newest first.
 
+- Task tools (`agent_tools_tasks.cpp`, group `tasks`, both scopes, not
+  in background runs) work on `Manager::tasks()` within the scope: the
+  account scope sees every task, a chat scope only tasks with its scope;
+  an unknown or foreign `task` id fails with "Unknown task: <id>". Chats,
+  senders and folders resolve through `TaskRefs`: `chat` is
+  `ResolveChatRef()` of a visible peer (0 otherwise, also for excluded
+  ones), `folder` an id or a case-insensitive title of a folder of
+  `Data::ChatFilters` that is not hidden, `actionTool` a table entry with
+  `action` or `Visible` risk and `background` true, `zone` the system
+  time zone and `now` the unix time.
+- `create_task` takes `TaskInputSchema(chatScope, false)`. A parse error
+  fails the call; over `kTaskMaxTasks` tasks fails. Otherwise the task
+  gets `GenerateTaskId()`, `created` now and the gate's scope, and a
+  `CreateTask` card asks (`text` the instruction, `task` the serialized
+  task). On approval the task takes the decided instruction, goes to
+  `Tasks::add()`, and the result is `{"task": TaskToJson(), "created":
+  true}`.
+- `update_task` takes `TaskInputSchema(chatScope, true)`:
+  `ParseTaskUpdate()` of the stored task, then an `UpdateTask` card
+  (`previousTask` the stored task) and on approval `Tasks::update()` with
+  the decided instruction and the stored state, runs and spending; the
+  result is `{"task": TaskToJson(), "updated": true}`. A call that
+  changes nothing fails with "Nothing to change.".
+- `list_tasks` (Read, not untrusted) returns `{"tasks": [TaskToJson() +
+  "running": bool, "chats": [{"id", "title"}] for every peer the task
+  names]}` in creation order.
+- `pause_task` (Reversible, action) takes `task` and `paused`: `true`
+  sets `Paused`, `false` sets `Active` and clears `pausedUntil`; it
+  returns `{"task": {"id", "title"}, "state": "paused"|"active"}` and its
+  undo restores the previous state and `pausedUntil`.
+- `delete_task` (Reversible, action) takes `task`, calls
+  `Manager::removeTask()` and returns `{"task": {"id", "title"},
+  "deleted": true}`; its undo adds the task back (without its run log).
+- `notify` (Read, background only, not untrusted) takes `text` (1..1000
+  characters, required) and calls `PendingCall::notify`; it returns
+  `{"notified": true}` and fails without a `notify` callback.
+
 | Tool | File | Risk | Scopes | Chat param | Notes |
 |---|---|---|---|---|---|
 | `get_context` | chat | Read | both | None | time, account; the chat brief in the chat scope |
@@ -944,6 +1226,12 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 | `send_files` | files | Visible, outbound | general | Many | `SendFiles` card |
 | `draft_files` | files | Read | chat | None | opens the send window |
 | `list_agent_files` | files | Read | both | None | |
+| `create_task` | tasks | Visible | both | None | `CreateTask` card |
+| `update_task` | tasks | Visible | both | None | `UpdateTask` card |
+| `list_tasks` | tasks | Read | both | None | |
+| `pause_task` | tasks | Reversible, action | both | None | `task`, `paused` |
+| `delete_task` | tasks | Reversible, action | both | None | `task` |
+| `notify` | tasks | Read | background | None | not in a group |
 | `load_tools` | registry | Read | both | None | |
 
 ## UI (`agent/ui/`)
@@ -1111,3 +1399,82 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   "None", opening a single-choice box (none plus the providers other than
   the active one) that sets `mediaId`, its about line, and "Agent folder"
   opening the folder, with `lng_agent_folder_about`.
+- `HistoryView` has three tabs: "Sessions", "Tasks" and "Memory". The
+  "Tasks" tab is a `TasksView` of the scope in a scroll area;
+  `HistoryView::openRunRequests()` forwards its run clicks, and the panel
+  and the general screen open that run session like a session from the
+  list.
+- `TasksView` has two modes. The list shows `Tasks::list(scope)`, newest
+  first: the title, `FormatTaskTrigger()` on one elided line and
+  `FormatTaskState()` (in the active text color while running or
+  waiting); a click opens the task. Without tasks it shows
+  `lng_agent_tasks_empty`. The task mode starts with a back link
+  (`lng_agent_tasks_back`) and the title, then label and value rows like
+  the settings info rows: "When" (`FormatTaskTrigger()`), "What to do"
+  (the instruction, wrapping, with "Edit instruction" opening a box with
+  a multi-line field of at most `kTaskMaxInstructionChars`), "Without
+  asking" (`FormatTaskFrame()`), "Model" (`FormatTaskModel()`, a click
+  opens a single-choice box: "Background model" plus every provider,
+  setting `providerId`), "Limits" (`FormatTaskLimits()`, a click opens a
+  box with the three limits), "Notifications" (a toggle: on is
+  `Actions`, off `LogOnly`), the catch-up line when set and the spending
+  today (`lng_agent_task_spent_today`, tokens without a cost). Then
+  "Pause" or "Resume" (a limit pause resumes to `Active` with
+  `pausedUntil` 0), "Delete task" (confirmed, `Manager::removeTask()`,
+  back to the list) and `lng_agent_task_change_hint`. Under "Runs" each
+  run of `Tasks::runs()` shows `FormatTaskRunTrigger()` with its start
+  time and `FormatTaskRunOutcome()`; a click fires `openRunRequests()`
+  with its session id. The view rebuilds on `Tasks::changes()`,
+  `runChanges()`, `TaskRunner::runningChanges()` and `waitingChanges()`
+  and goes back to the list when its task is removed.
+- `agent_task_format` builds the user-facing task texts from the lang
+  keys `lng_agent_task_*` and `lng_agent_run_*`. Chats are their titles
+  (`id N` when not loaded), kinds and folders by their names, lists
+  joined with ", ". `FormatTaskTrigger()`: for messages
+  `lng_agent_task_message_in` with the chats, then the set conditions
+  (`_from`, `_keywords` with the words in quotes, `_regex`, `_media`,
+  `_mentions`, `_window` with `_on_days`); for schedules
+  `FormatTaskSchedule()`. `FormatTaskSchedule()`: every N hours when the
+  interval is whole hours, else every N minutes; times as `HH:MM`, every
+  day, on weekdays (Monday to Friday), weekends or the listed weekday
+  names (`lng_weekday1`...); once with the date and time.
+  `FormatTaskFrame()`: `_frame_none` without tools, else `_frame_actions`
+  with `FormatTaskTool()` names and the frame chats (`_trigger_chat`,
+  `_frame_nowhere` for an empty set). `FormatTaskTool()` maps the action
+  tools to `lng_agent_task_tool_*` (folder tools to `_folders`), others
+  to their names. `FormatTaskLimits()` uses the cost form when
+  `costKnown`, else the tokens form. `FormatTaskModel()` is the task's
+  provider title, or `_model_default` with the background model.
+  `FormatTaskState()`: running, waiting, then by `state` (the hourly
+  pause with its time). `FormatTaskRunTrigger()`: missed messages or a
+  missed run, the sender and chat of a message, or "On schedule".
+  `FormatTaskRunOutcome()`: running, waiting, the number of actions or
+  "Nothing to do", the error, or interrupted.
+- A session view of a run (`info.task` not empty) is read-only: no
+  composer, attaching or dropping, a gray note `lng_agent_run_about`
+  with the task title over the feed. Its cards can still be decided and
+  its actions undone.
+- `QueueStrip` is a full-width clickable bar at the top of a normal
+  session view showing `lng_agent_queue_strip` with the number of
+  pending cards of `TaskRunner::waiting(scope)`; it has zero height and
+  is hidden when nothing waits. `ShowQueueBox()` lists the waiting runs
+  (the task title, the run trigger, the time since) and opens the chosen
+  one; a session view opens it in place.
+- `CreateTask` and `UpdateTask` cards show the task from `Card::task`:
+  "When", "What to do" (the editable instruction while pending),
+  "Without asking", "Model", "Limits", "Notifications" and the catch-up
+  line; an `UpdateTask` card shows only the instruction and the changed
+  rows, each with `lng_agent_card_task_was` and the old value. Buttons
+  are "Create" or "Save" and "Decline"; a done card reads
+  `lng_agent_card_task_created` or `_task_updated`. Every card kind shows
+  `lng_agent_card_expired` for `Expired`.
+- `pause_task` and `delete_task` action rows read
+  `lng_agent_action_task_pause`, `_task_resume` or `_task_delete` with the
+  result's task title; `list_tasks` and `notify` steps are titled
+  `lng_agent_tool_list_tasks` and `lng_agent_tool_notify`.
+- The settings page adds a "Background tasks" block after "Media":
+  "Background model" with the chosen provider's title or "Main model",
+  opening a single-choice box (the main model plus every provider) that
+  sets `backgroundId`, its about line, and "Daily limit" with
+  `lng_agent_background_limit_value`, opening a box with the dollars and
+  tokens fields, with `lng_agent_background_limit_about`.

@@ -29,6 +29,7 @@ namespace {
 
 const auto kFoldersGroup = u"folders"_q;
 const auto kFilesGroup = u"files"_q;
+const auto kTasksGroup = u"tasks"_q;
 
 struct CallAbilities {
 	MediaAbilities main;
@@ -77,6 +78,7 @@ struct CallAbilities {
 	};
 	collect(FolderTools::Entries());
 	collect(FileTools::Entries());
+	collect(TaskTools::Entries());
 	return names.join(u", "_q);
 }
 
@@ -142,11 +144,14 @@ QString DenyText(Decision decision) {
 ToolEntry LoadToolsEntry() {
 	auto properties = QJsonObject();
 	properties.insert("group", StringProperty(
-		u"The tool group to load: \"folders\" or \"files\"."_q));
+		u"The tool group to load: \"folders\", \"files\" or"
+		" \"tasks\"."_q));
 	auto description = u"Load an additional group of tools."
-		" \"folders\": %1. \"files\": %2."_q.arg(
+		" \"folders\": %1. \"files\": %2. \"tasks\" (background tasks"
+		" that run on new messages or on a schedule): %3."_q.arg(
 			GroupToolNames(kFoldersGroup),
-			GroupToolNames(kFilesGroup));
+			GroupToolNames(kFilesGroup),
+			GroupToolNames(kTasksGroup));
 	return ToolEntry{
 		.name = u"load_tools"_q,
 		.description = description,
@@ -154,7 +159,7 @@ ToolEntry LoadToolsEntry() {
 		.inputSchema = ToolSchema(
 			std::move(properties),
 			QJsonArray{ QJsonValue(u"group"_q) }),
-		.policy = ToolPolicy{ .risk = Risk::Read },
+		.policy = ToolPolicy{ .risk = Risk::Read, .background = false },
 		.untrusted = false,
 		.run = [](not_null<PendingCall*> call) {
 			call->loadGroup(call->input.value("group").toString().trimmed());
@@ -178,6 +183,7 @@ const std::vector<ToolEntry> &ToolsTable() {
 		append(MemoryTools::Entries());
 		append(MediaTools::Entries());
 		append(FileTools::Entries());
+		append(TaskTools::Entries());
 		result.push_back(LoadToolsEntry());
 		return result;
 	}();
@@ -521,11 +527,14 @@ void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
 	if (!_pending.contains(toolUseId)) {
 		return;
 	}
-	if (group != kFoldersGroup && group != kFilesGroup) {
+	if (group != kFoldersGroup
+		&& group != kFilesGroup
+		&& group != kTasksGroup) {
 		deliver(
 			toolUseId,
-			u"Unknown tool group: %1. The groups are \"folders\" and"
-			" \"files\"."_q.arg(group.isEmpty() ? u"(empty)"_q : group),
+			u"Unknown tool group: %1. The groups are \"folders\","
+			" \"files\" and \"tasks\"."_q.arg(
+				group.isEmpty() ? u"(empty)"_q : group),
 			true);
 		return;
 	}

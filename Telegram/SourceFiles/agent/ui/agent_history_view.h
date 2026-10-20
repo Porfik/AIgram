@@ -33,6 +33,7 @@ class SessionsList;
 
 enum class HistoryTab : uchar {
 	Sessions,
+	Tasks,
 	Memory,
 };
 
@@ -45,6 +46,7 @@ public:
 		Scope scope);
 
 	[[nodiscard]] rpl::producer<QString> openSessionRequests() const;
+	[[nodiscard]] rpl::producer<QString> openRunRequests() const;
 
 	void showTab(HistoryTab tab);
 	[[nodiscard]] HistoryTab tab() const;
@@ -67,6 +69,7 @@ private:
 	ScrollArea *_memoryScroll = nullptr;
 	MemoryList *_memory = nullptr;
 	rpl::event_stream<QString> _openSessionRequests;
+	rpl::event_stream<QString> _openRunRequests;
 
 };
 

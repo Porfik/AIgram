@@ -47,5 +47,6 @@ struct Check {
 [[nodiscard]] std::vector<Check> ExclusionChecks();
 [[nodiscard]] std::vector<Check> MediaChecks();
 [[nodiscard]] std::vector<Check> DocumentsChecks();
+[[nodiscard]] std::vector<Check> TaskChecks();
 
 } // namespace Agent::Tests

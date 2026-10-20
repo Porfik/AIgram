@@ -36,6 +36,7 @@ namespace {
 	append(ExclusionChecks());
 	append(MediaChecks());
 	append(DocumentsChecks());
+	append(TaskChecks());
 	return result;
 }
 

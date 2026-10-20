@@ -422,7 +422,7 @@ std::vector<ToolEntry> BuildEntries() {
 		ToolSchema(
 			std::move(findProperties),
 			QJsonArray{ QJsonValue(u"query"_q) }),
-		ToolPolicy{ .general = true, .chat = false },
+		ToolPolicy{ .general = true, .chat = false, .background = false },
 		ChatParam::None,
 		false,
 		RunFindSetting);
@@ -431,7 +431,7 @@ std::vector<ToolEntry> BuildEntries() {
 		u"Open a settings deep link from find_setting, or a chat"
 		" (optionally at a message) on screen."_q,
 		ToolSchema(std::move(openProperties), QJsonArray()),
-		ToolPolicy{ .general = true, .chat = false },
+		ToolPolicy{ .general = true, .chat = false, .background = false },
 		ChatParam::OptionalOne,
 		false,
 		RunOpen);
@@ -442,7 +442,7 @@ std::vector<ToolEntry> BuildEntries() {
 		ToolSchema(
 			std::move(handoffProperties),
 			QJsonArray{ QJsonValue(u"request"_q) }),
-		ToolPolicy{ .general = false, .chat = true },
+		ToolPolicy{ .general = false, .chat = true, .background = false },
 		ChatParam::None,
 		false,
 		RunContinueInGeneral);

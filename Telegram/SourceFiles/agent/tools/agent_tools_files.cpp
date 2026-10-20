@@ -626,6 +626,7 @@ std::vector<ToolEntry> Entries() {
 			.risk = Risk::Read,
 			.general = false,
 			.chat = true,
+			.background = false,
 		},
 		.group = kFilesGroup,
 		.untrusted = false,
