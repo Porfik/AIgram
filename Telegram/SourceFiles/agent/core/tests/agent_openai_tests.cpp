@@ -1115,6 +1115,98 @@ namespace {
 			}
 			return CheckHeader(request, "Authorization", "Bearer sk-test");
 		} },
+		{ u"openai_endpoints_request"_q, [] {
+			auto settings = ProviderSettings();
+			settings.baseUrl = u"https://openrouter.ai/api/v1"_q;
+			settings.model = u"z-ai/glm-5.3-flash"_q;
+			const auto url = u"https://openrouter.ai/api/v1/models"
+				u"/z-ai/glm-5.3-flash/endpoints"_q;
+			const auto withKey = OpenAi::EndpointsRequest(settings);
+			if (withKey.url != url) {
+				return u"url: got %1, expected %2"_q.arg(withKey.url, url);
+			} else if (withKey.post) {
+				return u"endpoints must be a GET request"_q;
+			} else if (HasHeader(withKey, "Authorization")) {
+				return u"a missing key must omit Authorization"_q;
+			}
+			settings.apiKey = u"sk-test"_q;
+			const auto keyed = OpenAi::EndpointsRequest(settings);
+			if (keyed.url != url) {
+				return u"url with key: got %1"_q.arg(keyed.url);
+			}
+			return CheckHeader(keyed, "Authorization", "Bearer sk-test");
+		} },
+		{ u"openai_endpoints_request_trailing_slash"_q, [] {
+			auto settings = ProviderSettings();
+			settings.baseUrl = u"https://openrouter.ai/api/v1/"_q;
+			settings.model = u"z-ai/glm-5.3-flash"_q;
+			const auto request = OpenAi::EndpointsRequest(settings);
+			const auto url = u"https://openrouter.ai/api/v1/models"
+				u"/z-ai/glm-5.3-flash/endpoints"_q;
+			return (request.url == url)
+				? QString()
+				: u"url: got %1, expected %2"_q.arg(request.url, url);
+		} },
+		{ u"openai_key_request"_q, [] {
+			auto settings = ProviderSettings();
+			settings.baseUrl = u"https://openrouter.ai/api/v1"_q;
+			const auto request = OpenAi::KeyRequest(settings);
+			const auto url = u"https://openrouter.ai/api/v1/key"_q;
+			if (request.url != url) {
+				return u"url: got %1, expected %2"_q.arg(request.url, url);
+			} else if (request.post) {
+				return u"key must be a GET request"_q;
+			} else if (HasHeader(request, "Authorization")) {
+				return u"an empty key must omit Authorization"_q;
+			}
+			settings.apiKey = u"sk-test"_q;
+			return CheckHeader(
+				OpenAi::KeyRequest(settings),
+				"Authorization",
+				"Bearer sk-test");
+		} },
+		{ u"openai_parse_endpoints_fixture"_q, [] {
+			const auto routes = OpenAi::ParseEndpoints(
+				ReadFixture(u"openrouter-endpoints.json"_q));
+			if (routes.size() != 3) {
+				return u"routes: got %1, expected 3"_q.arg(routes.size());
+			}
+			struct Expected {
+				QString provider;
+				bool tools;
+			};
+			const auto expected = std::vector<Expected>{
+				{ u"BaseTen"_q, true },
+				{ u"InferenceNet"_q, false },
+				{ u"Novita"_q, false },
+			};
+			auto index = 0;
+			for (const auto &item : expected) {
+				const auto &route = routes[index];
+				if (route.provider != item.provider
+					|| route.tools != item.tools) {
+					return u"route %1: got %2 (tools %3), expected %4 (tools %5)"_q
+						.arg(index)
+						.arg(route.provider)
+						.arg(route.tools ? u"yes"_q : u"no"_q)
+						.arg(item.provider)
+						.arg(item.tools ? u"yes"_q : u"no"_q);
+				}
+				++index;
+			}
+			return QString();
+		} },
+		{ u"openai_parse_endpoints_bad"_q, [] {
+			if (!OpenAi::ParseEndpoints(QByteArray("not json")).empty()) {
+				return u"malformed JSON must give an empty list"_q;
+			} else if (!OpenAi::ParseEndpoints(
+					QByteArray(R"({"data":{}})"_q)).empty()) {
+				return u"a missing data must give an empty list"_q;
+			} else if (!OpenAi::ParseEndpoints(QByteArray()).empty()) {
+				return u"empty bytes must give an empty list"_q;
+			}
+			return QString();
+		} },
 	};
 }
 

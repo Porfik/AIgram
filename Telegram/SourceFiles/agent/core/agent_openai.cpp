@@ -761,15 +761,63 @@ std::vector<int> SearchModels(
 }
 
 HttpRequest EndpointsRequest(const ProviderSettings &settings) {
-	return HttpRequest();
+	auto result = HttpRequest();
+	result.url = SlashJoinedUrl(
+		settings.baseUrl,
+		u"models/"_q + settings.model + u"/endpoints"_q);
+	result.post = false;
+	if (!settings.apiKey.isEmpty()) {
+		result.headers.push_back(
+			{ "Authorization", "Bearer " + settings.apiKey.toUtf8() });
+	}
+	return result;
 }
 
 std::vector<ModelRoute> ParseEndpoints(const QByteArray &json) {
-	return {};
+	auto result = std::vector<ModelRoute>();
+	const auto document = QJsonDocument::fromJson(json);
+	if (!document.isObject()) {
+		return result;
+	}
+	const auto endpoints = document.object()
+		.value(u"data"_q).toObject()
+		.value(u"endpoints"_q).toArray();
+	auto byProvider = base::flat_map<QString, int>();
+	for (const auto &endpoint : endpoints) {
+		const auto object = endpoint.toObject();
+		const auto provider = object.value(u"provider_name"_q).toString();
+		if (provider.isEmpty()) {
+			continue;
+		}
+		auto tools = false;
+		const auto parameters = object
+			.value(u"supported_parameters"_q).toArray();
+		for (const auto &parameter : parameters) {
+			if (parameter.toString() == u"tools"_q) {
+				tools = true;
+				break;
+			}
+		}
+		const auto existing = byProvider.find(provider);
+		if (existing == byProvider.end()) {
+			byProvider.emplace(provider, int(result.size()));
+			result.push_back({ provider, tools });
+		} else if (tools) {
+			result[existing->second].tools = true;
+		}
+	}
+	return result;
 }
 
 HttpRequest KeyRequest(const ProviderSettings &settings) {
-	return HttpRequest();
+	auto result = HttpRequest();
+	result.url = SlashJoinedUrl(settings.baseUrl, u"key"_q);
+	result.post = false;
+	if (!settings.apiKey.isEmpty()) {
+		result.headers.push_back(
+			{ "Authorization", "Bearer " + settings.apiKey.toUtf8() });
+	}
+	return result;
 }
 
 Error ParseError(const HttpHead &head, const QByteArray &body) {

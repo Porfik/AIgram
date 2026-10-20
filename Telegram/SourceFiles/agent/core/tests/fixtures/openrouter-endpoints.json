@@ -1,0 +1,53 @@
+{
+ "data": {
+  "id": "z-ai/glm-5.3-flash",
+  "name": "Z.ai: GLM 5.3 Flash",
+  "description": "GLM-5.3-Flash is a native multimodal model from Z.ai.",
+  "context_length": 1048576,
+  "pricing": {
+   "prompt": "0.0000028",
+   "completion": "0.000008",
+   "input_cache_read": "0.0000002"
+  },
+  "endpoints": [
+    {
+     "name": "BaseTen",
+     "provider_name": "BaseTen",
+     "context_length": 1048576,
+     "supported_parameters": [
+      "frequency_penalty",
+      "include_reasoning",
+      "max_tokens",
+      "tools"
+     ],
+     "status": 200
+    },
+    {
+     "name": "InferenceNet",
+     "provider_name": "InferenceNet",
+     "context_length": 524288,
+     "supported_parameters": [
+      "frequency_penalty",
+      "max_tokens"
+     ],
+     "status": 200
+    },
+    {
+     "name": "BaseTen",
+     "provider_name": "BaseTen",
+     "context_length": 1048576,
+     "supported_parameters": [
+      "frequency_penalty",
+      "max_tokens"
+     ],
+     "status": 200
+    },
+    {
+     "name": "Novita",
+     "provider_name": "Novita",
+     "context_length": 262144,
+     "status": 200
+    }
+  ]
+ }
+}
