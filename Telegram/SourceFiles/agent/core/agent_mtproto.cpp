@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_mtproto.h"
 
 #include <algorithm>
+#include <cmath>
 
 namespace Agent {
 namespace {
@@ -63,6 +64,129 @@ const auto kSideEffectNames = std::array{
 	u"contacts.getLocated"_q,
 	u"messages.startBot"_q,
 };
+
+constexpr auto kMaxBareId = (uint64(1) << 48) - 1;
+constexpr auto kMaxJsonId = (uint64(1) << 53);
+constexpr auto kBotApiChannelShift = int64(1000000000000);
+
+[[nodiscard]] const base::flat_map<QString, std::vector<QString>> &Redirects() {
+	using List = std::vector<QString>;
+	static const auto result = base::flat_map<QString, List>{
+		{ u"messages.sendMessage"_q, List{ u"send_message"_q } },
+		{ u"messages.forwardMessages"_q, List{ u"forward_messages"_q } },
+		{ u"messages.editMessage"_q, List{ u"edit_message"_q } },
+		{ u"messages.deleteMessages"_q, List{ u"delete_messages"_q } },
+		{ u"channels.deleteMessages"_q, List{
+			u"delete_messages"_q,
+			u"delete_chat_messages"_q,
+		} },
+		{ u"messages.sendReaction"_q, List{ u"react"_q } },
+		{ u"messages.updatePinnedMessage"_q, List{ u"pin_message"_q } },
+		{ u"messages.readHistory"_q, List{ u"mark_read"_q } },
+		{ u"channels.readHistory"_q, List{ u"mark_read"_q } },
+		{ u"account.updateNotifySettings"_q, List{ u"set_mute"_q } },
+		{ u"folders.editPeerFolders"_q, List{ u"set_archived"_q } },
+		{ u"messages.toggleDialogPin"_q, List{ u"set_pinned"_q } },
+		{ u"messages.updateDialogFilter"_q, List{
+			u"create_folder"_q,
+			u"rename_folder"_q,
+			u"set_folder_chats"_q,
+			u"delete_folder"_q,
+		} },
+		{ u"messages.updateDialogFiltersOrder"_q, List{
+			u"reorder_folders"_q,
+		} },
+		{ u"account.updateProfile"_q, List{ u"update_profile"_q } },
+		{ u"photos.updateProfilePhoto"_q, List{ u"set_profile_photo"_q } },
+		{ u"photos.uploadProfilePhoto"_q, List{ u"set_profile_photo"_q } },
+		{ u"account.updateEmojiStatus"_q, List{ u"set_emoji_status"_q } },
+		{ u"contacts.block"_q, List{ u"set_blocked"_q } },
+		{ u"contacts.unblock"_q, List{ u"set_blocked"_q } },
+		{ u"contacts.addContact"_q, List{
+			u"add_contact"_q,
+			u"rename_contact"_q,
+		} },
+		{ u"contacts.deleteContacts"_q, List{ u"delete_contacts"_q } },
+		{ u"channels.inviteToChannel"_q, List{ u"add_members"_q } },
+		{ u"messages.addChatUser"_q, List{ u"add_members"_q } },
+		{ u"channels.editBanned"_q, List{
+			u"remove_members"_q,
+			u"restrict_members"_q,
+			u"unban_members"_q,
+		} },
+		{ u"channels.editAdmin"_q, List{
+			u"promote_admins"_q,
+			u"demote_admins"_q,
+		} },
+		{ u"messages.editChatAdmin"_q, List{
+			u"promote_admins"_q,
+			u"demote_admins"_q,
+		} },
+		{ u"messages.deleteChatUser"_q, List{
+			u"remove_members"_q,
+			u"leave_chat"_q,
+		} },
+		{ u"channels.leaveChannel"_q, List{ u"leave_chat"_q } },
+		{ u"channels.joinChannel"_q, List{ u"join_chat"_q } },
+		{ u"messages.importChatInvite"_q, List{ u"join_chat"_q } },
+		{ u"channels.createChannel"_q, List{ u"create_chat"_q } },
+		{ u"messages.createChat"_q, List{ u"create_chat"_q } },
+		{ u"messages.editChatTitle"_q, List{ u"edit_chat_info"_q } },
+		{ u"channels.editTitle"_q, List{ u"edit_chat_info"_q } },
+		{ u"messages.editChatAbout"_q, List{ u"edit_chat_info"_q } },
+		{ u"messages.editChatPhoto"_q, List{ u"set_chat_photo"_q } },
+		{ u"channels.editPhoto"_q, List{ u"set_chat_photo"_q } },
+		{ u"messages.editChatDefaultBannedRights"_q, List{
+			u"set_chat_permissions"_q,
+		} },
+		{ u"channels.toggleSlowMode"_q, List{ u"set_chat_permissions"_q } },
+		{ u"messages.exportChatInvite"_q, List{ u"create_invite_link"_q } },
+		{ u"messages.editExportedChatInvite"_q, List{
+			u"edit_invite_link"_q,
+			u"revoke_invite_links"_q,
+		} },
+		{ u"messages.hideChatJoinRequest"_q, List{
+			u"answer_join_requests"_q,
+		} },
+		{ u"channels.deleteParticipantHistory"_q, List{
+			u"delete_member_history"_q,
+		} },
+	};
+	return result;
+}
+
+[[nodiscard]] QString RedirectText(const std::vector<QString> &tools) {
+	auto result = QString();
+	for (auto i = 0, count = int(tools.size()); i != count; ++i) {
+		if (i) {
+			result += (i + 1 == count) ? u" or "_q : u", "_q;
+		}
+		result += tools[i];
+	}
+	return result;
+}
+
+[[nodiscard]] std::optional<int64> JsonInteger(const QJsonValue &value) {
+	if (value.isDouble()) {
+		const auto d = value.toDouble();
+		if (d != std::floor(d) || std::abs(d) > double(kMaxJsonId)) {
+			return std::nullopt;
+		}
+		return int64(d);
+	} else if (!value.isString()) {
+		return std::nullopt;
+	}
+	const auto text = value.toString().trimmed();
+	auto ok = false;
+	const auto result = text.toLongLong(&ok);
+	return ok ? std::make_optional(int64(result)) : std::nullopt;
+}
+
+[[nodiscard]] PeerRef TypedRef(PeerRefKind kind, int64 id) {
+	return (id > 0 && uint64(id) <= kMaxBareId)
+		? PeerRef{ kind, uint64(id) }
+		: PeerRef();
+}
 
 [[nodiscard]] QString NamespaceOf(const QString &name) {
 	const auto dot = name.indexOf(u'.');
@@ -178,6 +302,44 @@ MethodClass ClassifyMethod(const TlSchema &schema, const QString &name) {
 	return MethodClass::Write;
 }
 
+std::vector<QString> MethodRedirect(const QString &name) {
+	const auto &redirects = Redirects();
+	const auto i = redirects.find(name);
+	return (i != redirects.end()) ? i->second : std::vector<QString>();
+}
+
+PeerRef ParsePeerRef(const QJsonValue &value) {
+	if (value.isString()) {
+		const auto text = value.toString().trimmed();
+		const auto colon = text.indexOf(u':');
+		if (colon > 0) {
+			const auto prefix = text.left(colon).trimmed().toLower();
+			const auto id = JsonInteger(QJsonValue(text.mid(colon + 1)));
+			if (!id) {
+				return PeerRef();
+			} else if (prefix == u"user") {
+				return TypedRef(PeerRefKind::User, *id);
+			} else if (prefix == u"chat") {
+				return TypedRef(PeerRefKind::Chat, *id);
+			} else if (prefix == u"channel") {
+				return TypedRef(PeerRefKind::Channel, *id);
+			}
+			return PeerRef();
+		}
+	}
+	const auto id = JsonInteger(value);
+	if (!id || !*id) {
+		return PeerRef();
+	} else if (*id < 0) {
+		return (-*id > kBotApiChannelShift)
+			? TypedRef(PeerRefKind::Channel, -*id - kBotApiChannelShift)
+			: TypedRef(PeerRefKind::Chat, -*id);
+	} else if (uint64(*id) > kMaxBareId) {
+		return PeerRef{ PeerRefKind::Peer, uint64(*id) };
+	}
+	return PeerRef{ PeerRefKind::Bare, uint64(*id) };
+}
+
 std::vector<MethodNamespace> MethodNamespaces(const TlSchema &schema) {
 	auto counts = base::flat_map<QString, int>();
 	for (const auto &function : schema.functions()) {
@@ -199,17 +361,23 @@ std::vector<MethodNamespace> MethodNamespaces(const TlSchema &schema) {
 std::vector<const TlCombinator*> FindMethods(
 		const TlSchema &schema,
 		const QString &query,
-		int limit) {
+		int limit,
+		bool *partial) {
+	if (partial) {
+		*partial = false;
+	}
 	const auto words = QueryWords(query);
 	if (words.empty() || limit <= 0) {
 		return {};
 	}
 	struct Candidate {
 		const TlCombinator *method = nullptr;
+		int matched = 0;
 		bool inName = false;
 		int index = 0;
 	};
 	auto candidates = std::vector<Candidate>();
+	auto best = 0;
 	auto index = 0;
 	for (const auto &function : schema.functions()) {
 		const auto i = index++;
@@ -217,15 +385,12 @@ std::vector<const TlCombinator*> FindMethods(
 			continue;
 		}
 		auto inName = true;
-		auto matches = true;
+		auto matched = 0;
 		for (const auto &word : words) {
-			const auto inMethodName = function.name.contains(
-				word,
-				Qt::CaseInsensitive);
-			if (inMethodName) {
+			if (function.name.contains(word, Qt::CaseInsensitive)) {
+				++matched;
 				continue;
 			}
-			inName = false;
 			auto found = false;
 			for (const auto &param : function.params) {
 				if (param.name.contains(word, Qt::CaseInsensitive)
@@ -234,14 +399,24 @@ std::vector<const TlCombinator*> FindMethods(
 					break;
 				}
 			}
-			if (!found) {
-				matches = false;
-				break;
+			if (found) {
+				inName = false;
+				++matched;
 			}
 		}
-		if (matches) {
-			candidates.push_back({ &function, inName, i });
+		if (matched > 0) {
+			best = std::max(best, matched);
+			candidates.push_back({ &function, matched, inName, i });
 		}
+	}
+	candidates.erase(
+		std::remove_if(candidates.begin(), candidates.end(), [&](
+				const Candidate &candidate) {
+			return candidate.matched < best;
+		}),
+		candidates.end());
+	if (partial && best < int(words.size())) {
+		*partial = !candidates.empty();
 	}
 	std::sort(candidates.begin(), candidates.end(), [](auto &a, auto &b) {
 		if (a.inName != b.inName) {
@@ -276,12 +451,20 @@ std::optional<QString> DescribeTl(
 			error = u"%1 is never allowed."_q.arg(name);
 			return std::nullopt;
 		}
+		const auto redirect = MethodRedirect(name);
 		auto result = MethodSignature(*function) + u"\n"_q
-			+ ((classification == MethodClass::Read)
+			+ (!redirect.empty()
+				? u"call_method refuses it: use %1 instead.\n"_q.arg(
+					RedirectText(redirect))
+				: (classification == MethodClass::Read)
 				? u"reads, runs without asking.\n"_q
 				: u"changes something, the user confirms it on a card.\n"_q)
-			+ u"InputPeer, InputUser and InputChannel"
-				u" take a chat id or @username.\n"_q;
+			+ u"InputPeer, InputUser and InputChannel take a chat id from"
+				u" other tools, an @username, or a user_id, chat_id or"
+				u" channel_id from MTProto results (write user:<id>,"
+				u" chat:<id> or channel:<id> when unsure).\n"
+				u"Values with access_hash or file_reference and uploaded"
+				u" files can't be passed.\n"_q;
 		auto types = QStringList();
 		const auto addType = [&](const QString &type) {
 			if (TlIsBuiltinType(type)) {

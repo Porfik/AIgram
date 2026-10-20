@@ -156,6 +156,25 @@ std::vector<Check> MtprotoChecks() {
 			if (FindMethods(*schema, u"get history"_q, 2).size() > 2) {
 				return u"the limit must hold"_q;
 			}
+			auto partial = true;
+			if (FindMethods(*schema, u"get history"_q, 10, &partial).empty()
+				|| partial) {
+				return u"full matches must not be partial"_q;
+			}
+			const auto some = FindMethods(
+				*schema,
+				u"full channel info"_q,
+				5,
+				&partial);
+			if (!partial || some.empty()
+				|| some.front()->name != u"channels.getFullChannel"_q) {
+				return u"the best partial match must come first: "_q
+					+ (some.empty() ? QString() : some.front()->name);
+			}
+			if (!FindMethods(*schema, u"qqqzzz"_q, 5, &partial).empty()
+				|| partial) {
+				return u"no match must give nothing"_q;
+			}
 			const auto byParam = FindMethods(*schema, u"random_id"_q, 10);
 			if (byParam.empty()) {
 				return u"a parameter name must be searched too"_q;
@@ -219,20 +238,33 @@ std::vector<Check> MtprotoChecks() {
 			}
 			const auto read = result;
 			if (!result->contains(u"reads, runs without asking."_q)
-				|| !result->contains(u"InputPeer, InputUser and InputChannel take a chat id or @username."_q)
+				|| !result->contains(u"InputPeer, InputUser and InputChannel take a chat id from other tools, an @username"_q)
+				|| !result->contains(u"uploaded files can't be passed."_q)
 				|| !result->contains(u"messages.Messages: "_q)
 				|| !result->contains(u"messages.messagesSlice{"_q)) {
 				return u"unexpected description:\n"_q + *result;
 			}
 			const auto write = DescribeTl(
 				*schema,
-				u"messages.sendMessage"_q,
+				u"messages.setTyping"_q,
 				error);
 			if (!write || !write->contains(
 				u"changes something, the user confirms it on a card."_q)) {
 				return u"a write must say it changes something"_q;
 			} else if (read->contains(u"changes something"_q)) {
 				return u"a read must not say it changes something"_q;
+			}
+			const auto redirected = DescribeTl(
+				*schema,
+				u"channels.editBanned"_q,
+				error);
+			if (!redirected || !redirected->contains(
+				u"call_method refuses it: use remove_members,"
+				u" restrict_members or unban_members instead."_q)) {
+				return u"a redirected method must name its tools:\n"_q
+					+ (redirected ? *redirected : error);
+			} else if (redirected->contains(u"changes something"_q)) {
+				return u"a redirected method must not offer a card"_q;
 			}
 			return QString();
 		} },
@@ -321,6 +353,91 @@ std::vector<Check> MtprotoChecks() {
 				return u"only 20 types must be shown:\n"_q + *result;
 			} else if (!result->contains(u"C: c0{x: int}"_q)) {
 				return u"the first type must be shown:\n"_q + *result;
+			}
+			return QString();
+		} },
+		{ u"mtproto_redirects"_q, [] {
+			const auto schema = RealSchema();
+			if (!schema) {
+				return u"api.tl must parse"_q;
+			}
+			const auto expect = [&](
+					const QString &name,
+					std::vector<QString> tools) {
+				return MethodRedirect(name) == tools;
+			};
+			if (!expect(u"messages.sendMessage"_q, { u"send_message"_q })
+				|| !expect(u"folders.editPeerFolders"_q,
+					{ u"set_archived"_q })
+				|| !expect(u"contacts.addContact"_q,
+					{ u"add_contact"_q, u"rename_contact"_q })) {
+				return u"known methods must redirect to their tools"_q;
+			} else if (!MethodRedirect(u"messages.getHistory"_q).empty()
+				|| !MethodRedirect(u"messages.setTyping"_q).empty()
+				|| !MethodRedirect(u"messages.sendMessages"_q).empty()) {
+				return u"other methods must not redirect"_q;
+			}
+			for (const auto &name : {
+					u"messages.sendMessage"_q,
+					u"channels.editBanned"_q,
+					u"photos.uploadProfilePhoto"_q,
+					u"messages.updateDialogFiltersOrder"_q,
+					u"channels.deleteParticipantHistory"_q }) {
+				if (!schema->function(name)) {
+					return u"a redirected method must exist: "_q + name;
+				}
+			}
+			return QString();
+		} },
+		{ u"mtproto_peer_refs"_q, [] {
+			const auto is = [](
+					const QJsonValue &value,
+					PeerRefKind kind,
+					uint64 id) {
+				const auto ref = ParsePeerRef(value);
+				return (ref.kind == kind) && (ref.id == id);
+			};
+			const auto channelPeer = (uint64(2) << 48) | 777;
+			if (!is(QJsonValue(12345), PeerRefKind::Bare, 12345)
+				|| !is(QJsonValue(u" 12345 "_q), PeerRefKind::Bare, 12345)
+				|| !is(
+					QJsonValue(double(channelPeer)),
+					PeerRefKind::Peer,
+					channelPeer)
+				|| !is(
+					QJsonValue(QString::number(channelPeer)),
+					PeerRefKind::Peer,
+					channelPeer)) {
+				return u"numbers must be bare ids or peer values"_q;
+			} else if (!is(QJsonValue(u"user:5"_q), PeerRefKind::User, 5)
+				|| !is(QJsonValue(u"Chat: 6"_q), PeerRefKind::Chat, 6)
+				|| !is(
+					QJsonValue(u"channel:1234567890"_q),
+					PeerRefKind::Channel,
+					1234567890)) {
+				return u"typed ids must keep their kind"_q;
+			} else if (!is(
+					QJsonValue(u"-1001234567890"_q),
+					PeerRefKind::Channel,
+					1234567890)
+				|| !is(
+					QJsonValue(-1001234567890.),
+					PeerRefKind::Channel,
+					1234567890)
+				|| !is(QJsonValue(-1005), PeerRefKind::Chat, 1005)) {
+				return u"Bot API ids must map to chats and channels"_q;
+			} else if (!is(QJsonValue(u"@durov"_q), PeerRefKind::None, 0)
+				|| !is(QJsonValue(0), PeerRefKind::None, 0)
+				|| !is(QJsonValue(1.5), PeerRefKind::None, 0)
+				|| !is(QJsonValue(u"user:"_q), PeerRefKind::None, 0)
+				|| !is(QJsonValue(u"group:5"_q), PeerRefKind::None, 0)
+				|| !is(
+					QJsonValue(QString::number(channelPeer).prepend(
+						u"channel:"_q)),
+					PeerRefKind::None,
+					0)
+				|| !is(QJsonValue(true), PeerRefKind::None, 0)) {
+				return u"other values must not be ids"_q;
 			}
 			return QString();
 		} },

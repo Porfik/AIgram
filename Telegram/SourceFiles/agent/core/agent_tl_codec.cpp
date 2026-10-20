@@ -217,13 +217,37 @@ bool EncodeVector(
 	return true;
 }
 
+[[nodiscard]] bool Buildable(
+		Encoder &e,
+		const TlCombinator &combinator,
+		const QString &path) {
+	for (const auto &param : combinator.params) {
+		if (param.name == u"access_hash" || param.name == u"file_reference") {
+			return e.fail(
+				path,
+				u"%1 needs an %2 the agent never sees; files, media and"
+				u" such values can't be passed here."_q.arg(
+					combinator.name,
+					param.name));
+		}
+	}
+	return true;
+}
+
 bool EncodeObject(
 		Encoder &e,
 		QByteArray &out,
 		const QString &type,
 		const QJsonValue &value,
 		const QString &path) {
-	if (!value.isObject()) {
+	if (type == u"InputFile"
+		|| type == u"InputEncryptedFile"
+		|| type == u"InputSecureFile") {
+		return e.fail(
+			path,
+			u"uploading files is not supported here; send files with"
+			u" send_files, set_chat_photo or set_profile_photo."_q);
+	} else if (!value.isObject()) {
 		return e.fail(path, u"expected an object"_q);
 	}
 	const auto object = value.toObject();
@@ -236,6 +260,8 @@ bool EncodeObject(
 			return e.fail(
 				path,
 				u"pass \"_\" naming a constructor of %1"_q.arg(type));
+		} else if (!Buildable(e, *list.front(), path)) {
+			return false;
 		}
 		return EncodeCombinator(
 			e, out, *list.front(), object, path, !TlIsBareType(type));
@@ -247,6 +273,8 @@ bool EncodeObject(
 		return e.fail(
 			path,
 			u"%1 is not of type %2"_q.arg(name).arg(type));
+	} else if (!Buildable(e, *combinator, path)) {
+		return false;
 	}
 	return EncodeCombinator(
 		e,

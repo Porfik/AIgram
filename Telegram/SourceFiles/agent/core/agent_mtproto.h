@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_tl_schema.h"
 
+#include <QtCore/QJsonValue>
 #include <QtCore/QStringList>
 
 #include <vector>
@@ -24,6 +25,23 @@ enum class MethodClass : uchar {
 [[nodiscard]] MethodClass ClassifyMethod(
 	const TlSchema &schema,
 	const QString &name);
+[[nodiscard]] std::vector<QString> MethodRedirect(const QString &name);
+
+enum class PeerRefKind : uchar {
+	None,
+	Peer,
+	User,
+	Chat,
+	Channel,
+	Bare,
+};
+
+struct PeerRef {
+	PeerRefKind kind = PeerRefKind::None;
+	uint64 id = 0;
+};
+
+[[nodiscard]] PeerRef ParsePeerRef(const QJsonValue &value);
 
 struct MethodNamespace {
 	QString name;
@@ -35,7 +53,8 @@ struct MethodNamespace {
 [[nodiscard]] std::vector<const TlCombinator*> FindMethods(
 	const TlSchema &schema,
 	const QString &query,
-	int limit);
+	int limit,
+	bool *partial = nullptr);
 [[nodiscard]] QString MethodSignature(const TlCombinator &method);
 [[nodiscard]] std::optional<QString> DescribeTl(
 	const TlSchema &schema,

@@ -1188,6 +1188,60 @@ std::vector<Check> TlChecks() {
 				QJsonValue(u"00112233445566778899aabbccddeeff"
 					"00112233445566778899aabbccddeeff"_q));
 		} },
+		{ u"tl_encode_unbuildable"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			auto check = EncodeFail(
+				*parsed.schema,
+				u"test.flags"_q,
+				QJsonObject{ { u"o"_q, QJsonObject{
+					{ u"_"_q, u"obj.secret"_q },
+					{ u"access_hash"_q, u"1"_q },
+					{ u"x"_q, 1 },
+					{ u"file_reference"_q, u""_q } } } },
+				FixedRefs(QByteArray()),
+				u"params.o: obj.secret needs an access_hash the agent"
+				u" never sees"_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			const auto real = Parse(ReadApiTl());
+			if (!real.schema) {
+				return u"api.tl must parse: "_q + real.error;
+			}
+			check = EncodeFail(
+				*real.schema,
+				u"photos.uploadProfilePhoto"_q,
+				QJsonObject{ { u"file"_q, QJsonObject{
+					{ u"_"_q, u"inputFile"_q },
+					{ u"id"_q, u"1"_q },
+					{ u"parts"_q, 1 },
+					{ u"name"_q, u"a.jpg"_q },
+					{ u"md5_checksum"_q, u""_q } } } },
+				FixedRefs(QByteArray()),
+				u"params.file: uploading files is not supported here"_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return EncodeFail(
+				*real.schema,
+				u"messages.sendMedia"_q,
+				QJsonObject{
+					{ u"peer"_q, u"@chat"_q },
+					{ u"media"_q, QJsonObject{
+						{ u"_"_q, u"inputMediaDocument"_q },
+						{ u"id"_q, QJsonObject{
+							{ u"_"_q, u"inputDocument"_q },
+							{ u"id"_q, u"1"_q },
+							{ u"access_hash"_q, u"2"_q },
+							{ u"file_reference"_q, u""_q } } } } },
+					{ u"message"_q, u""_q },
+					{ u"random_id"_q, u"5"_q } },
+				FixedRefs(QByteArray::fromHex("ea183b7f")),
+				u"params.media.id: inputDocument needs an access_hash"_q);
+		} },
 		{ u"tl_encode_more_errors"_q, [] {
 			const auto parsed = CodecSchema();
 			if (!parsed.schema) {
