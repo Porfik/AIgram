@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_session.h"
 
+#include "agent/agent_chat.h"
 #include "main/main_session.h"
 #include "main/main_session_settings.h"
 #include "main/main_app_config.h"
@@ -2911,7 +2912,8 @@ bool Session::pinnedCanPin(not_null<Dialogs::Entry*> entry) const {
 		return pinnedChatsOrder(forum).size() < pinnedChatsLimit(forum);
 	} else {
 		const auto folder = entry->folder();
-		return pinnedChatsOrder(folder).size() < pinnedChatsLimit(folder);
+		const auto &order = pinnedChatsOrder(folder);
+		return Agent::CountPinnedForLimit(order) < pinnedChatsLimit(folder);
 	}
 }
 
@@ -2962,7 +2964,7 @@ rpl::producer<int> Session::maxPinnedChatsLimitValue(
 	) | rpl::map([folder, limits = Data::PremiumLimits(_session)] {
 		return folder
 			? limits.dialogsFolderPinnedPremium()
-			: limits.dialogsPinnedPremium();
+			: (limits.dialogsPinnedPremium() + 1); // the agent chat
 	});
 }
 

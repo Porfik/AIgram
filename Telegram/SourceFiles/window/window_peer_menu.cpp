@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "window/window_peer_menu.h"
 
+#include "agent/agent_chat.h"
 #include "agent/ui/agent_menus.h"
 #include "base/call_delayed.h"
 #include "menu/menu_check_item.h"
@@ -4373,6 +4374,9 @@ void FillDialogsEntryMenu(
 		not_null<SessionController*> controller,
 		Dialogs::EntryState request,
 		const PeerMenuCallback &callback) {
+	if (Agent::Ui::FillAgentChatMenu(controller, request, callback)) {
+		return;
+	}
 	Filler(controller, request, callback).fill();
 }
 

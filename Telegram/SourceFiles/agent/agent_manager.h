@@ -29,6 +29,7 @@ class Session;
 
 namespace Agent {
 
+class AgentChat;
 class Attachments;
 class ClaudeLauncher;
 class ClaudePool;
@@ -98,11 +99,13 @@ public:
 		SessionRecord record,
 		RunSetup setup);
 	[[nodiscard]] Session *open(const QString &id);
+	[[nodiscard]] Session *loaded(const QString &id) const;
 	void rename(const QString &id, const QString &title);
 	void remove(const QString &id);
 	void unload(const QString &id);
 	void clearAllData();
 
+	[[nodiscard]] AgentChat &chat() const;
 	[[nodiscard]] Memories &memories() const;
 	[[nodiscard]] Exclusions &exclusions() const;
 	[[nodiscard]] SpendingTracker &spending() const;
@@ -151,6 +154,7 @@ private:
 	const std::unique_ptr<Attachments> _attachments;
 	const std::unique_ptr<Tasks> _tasks;
 	std::unique_ptr<TaskRunner> _runner;
+	std::unique_ptr<AgentChat> _chat;
 	ProvidersState _providers;
 	int _acting = 0;
 	rpl::variable<bool> _enabled = false;

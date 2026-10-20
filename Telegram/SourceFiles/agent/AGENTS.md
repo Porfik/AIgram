@@ -57,9 +57,20 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   UI: `agent_tasks_view.*` the "Tasks" tab, `agent_task_format.*` the
   task texts, `agent_queue.*` the "waiting for your decision" strip and
   box (styles `agent_tasks.style` and `agent_queue.style`).
+- The agent chat (stage 5, plan 11.9): `agent_chat.*` owns the local
+  agent peer (`AgentChat`: a bot `UserData` with the fake id
+  `AgentPeerId()`, its `History` in the real chats list, the chat list
+  preview item, the local pin, typing and the waiting-cards badge);
+  `core/agent_chat_state` stores the pin, `core/agent_chat_messages`
+  turns the feed into chat messages (`BuildChatMessages()`) and keeps the
+  live tail of a running turn (`LiveTail`).
 - UI: `agent_feed_cards.*` are the card and action rows of the feed,
-  `agent_section.*` the general agent screen, `agent_chats_row.*` the
-  "✦ Agent" row above the chat list, `agent_history_view.*` the history
+  `agent_section.*` the general agent screen (sessions list and session
+  chat), `agent_session_rows.*` the sessions list rows,
+  `agent_chat_view.*` the native session view (`ChatView`),
+  `agent_chat_items.*` its local history items (`ChatItems`),
+  `agent_feed_format.*` the step, action and card texts shared by both
+  feeds, `agent_profile.*` the agent profile, `agent_history_view.*` the history
   pane with its tabs, `agent_memory_list.*` the memory tab,
   `agent_menus.*` the agent items of the chat and folder menus and
   `agent_spending_format.*` the spending texts, `agent_feed_attachments.*`
@@ -76,12 +87,30 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `Agent::Ui::AddPassToAgentAction()` in both message context menus, the
   "To agent" button of `HistoryView::TopBarWidget` in selection mode
   (`agentSelectionRequest()`, handled by `HistoryWidget` and
-  `HistoryView::ChatWidget`), `Agent::Ui::SetupChatsListRow()` in
-  `Dialogs::Widget`, `Agent::Ui::FillPeerMenu()` in the `Window::PeerMenu`
+  `HistoryView::ChatWidget`), `Agent::Ui::FillPeerMenu()` in the `Window::PeerMenu`
   filler, `Agent::Ui::FillFolderMenu()` in both folder menus,
   `Agent::Ui::PanelAvailabilityChanges()` in the history top bar and
   `NativeManager::showCustomNotification()` with its activation check at
   the start of `Window::Notifications::Manager::notificationActivated()`.
+- The agent chat keeps the agent peer off the server with one-line
+  checks of `Agent::IsAgentPeer()` / `IsAgentHistory()`:
+  `MainWidget::showHistory()` (opens the general agent screen instead),
+  `Window::FillDialogsEntryMenu()` (`Agent::Ui::FillAgentChatMenu()`),
+  `ApiWrap::savePinnedOrder()` (left out of the order), the pinned limit
+  in `Data::Session::pinnedCanPin()` (`CountPinnedForLimit()`) and
+  `maxPinnedChatsLimitValue()` (one extra slot in the main list),
+  `ApiWrap::requestFullPeer()`, `Data::Histories::requestDialogEntry()`,
+  cloud drafts (`ShouldSkipPlainDraftCloudSave()`,
+  `ApiWrap::savePreparedDraftToCloud()`), `Data::ChatFilter::contains()`
+  (never in folders), `Info::Memento` (the agent peer's Info section is
+  `Section::Type::Agent`, the agent profile) and
+  `Api::ActivateBotButton()` (`ChatItems::Activate()` handles the inline
+  buttons of agent items). `Exclusions::excluded()` is true for the agent
+  peer, so tools never see it.
+- `HistoryView::ComposeControlsDescriptor` has `customMenuText` /
+  `customMenuClicked` (a bot-menu-style button left of the field, the
+  session model) and `customStopShown` / `customStopClicked` (the send
+  button turns into "Stop" while the field is empty).
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
@@ -527,6 +556,26 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   the `claude` binary chosen by the user, empty to search `PATH`.
 - `IsClaudeOnOpenRouter()` is `IsOpenRouter()` with a model id starting
   with `anthropic/` (case ignored).
+- Version 9 (stage 5) appends `agentName` and `agentPhoto` (JPEG bytes)
+  after `claudePath`; older versions load them empty, which means the
+  default name and photo.
+
+## Chat messages (`agent_chat_messages.h`, `agent_chat_state.h`)
+
+- `BuildChatMessages()` groups feed items into chat messages: a user
+  message per `FeedUser`; an agent message collects the steps and actions
+  that come before a text and ends with that text, so steps or actions
+  after a text start a new agent message; a card or a user message ends
+  the pending agent message; summaries are their own messages. Keys are
+  the kind letter (`u`, `a`, `c`, `s`) and the first record index, with
+  `.N` added for repeats, so they stay stable while a turn grows.
+- `LiveTail` folds engine events of the running step into an assistant
+  message (text and thinking deltas joined, tool uses filled by
+  `ToolCallRequested`) and a user message of tool results; the view
+  appends them to the record messages and clears the tail on every
+  record change.
+- `ChatState` (`pinned`, `pinnedIndex`, `since`) is the agent value
+  `chat`, version 1; a new agent chat is pinned on top.
 
 ## Scope (`agent_scope.h`)
 
@@ -711,6 +760,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   every thinking block and appends `info.usage.cacheWriteTokens` after
   `info.profileId`; index version 6 appends it after `profileId` of every
   entry. Older records and indexes load them false and zero.
+- Version 9 (stage 5) appends `Message::date` (unix seconds, `qint64`)
+  of every message after `cacheWriteTokens`; older records load zero.
+  The session stamps a user message when it is sent and every message
+  copied from the loop the first time it appears.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -2180,29 +2233,85 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   untrusted text, starting or opening another session drops it.
 - `SessionView::setContentMaxWidth()` centers the feed items and the
   composer within that width while the scroll bar stays at the edge.
-- The general agent screen is a `Window::SectionWidget` in the center
-  column, built like the panel: a top bar with the title, "new session"
-  and "history"; the history replaces the feed with the account scope's
-  sessions, each with the userpics of the chats it touched; the feed and
-  the composer limited to `agentGeneralContentMaxWidth`. Its memento keeps
-  the session, the history state and the unsent text.
-  `ShowGeneralAgent()` shows it; chats opened by the agent push it into
-  the section stack, and its sessions keep running in the background.
-- `SetupChatsListRow()` puts the "✦ Agent" row on top of the dialogs list
-  while `shown` (only the main "All chats" list, without search, folders
-  or forums) and `Manager::enabled()`. It is painted like a dialog row:
-  `PaintAgentUserpic()` (a smooth purple gradient circle with the ✦ icon,
-  shared with the sessions list and the general screen), the name, the
-  newest account session's `updated` as the date, a read check when the
-  preview is the user's own message, and under the name per `rowPreview`
-  the session's `preview`, its title or the hint (each falling back to the
-  next). While working it shows "Working..." in the service color like
-  "typing", waiting cards show as an unread badge. It opens the general
-  agent screen.
-- The general screen's top bar shows the agent like a chat partner: the
-  userpic, "Agent" and a status line (the session title, "New session" or
-  "History"; "Working..." or "Waiting for your decision..." in the typing
-  color). Clicking it toggles the history.
+- The agent chat (plan 11.9). `AgentChat` creates the agent peer once per
+  account session: a bot `UserData` (`AgentPeerId()`, outside the range
+  of real and name-hashed fake ids) named `AgentName()` of
+  `ProvidersState::agentName` with a local userpic (`agentPhoto`, else
+  `DefaultAgentPhoto()`), and its `History`. While `Manager::enabled()`,
+  the history holds one local preview item (the newest account session's
+  `preview` / title / hint per `rowPreview`, outgoing when the preview is
+  the user's, dated `updated` or the first-shown time `ChatState::since`),
+  so the native dialogs row shows it; a new item is added before the old
+  one is destroyed, so the last message never becomes unknown. Disabled,
+  the history is unpinned and cleared (`ClearType::DeleteChat`). The
+  waiting cards of the account scope are the history's unread count;
+  while a session works, a typing action is registered every 5 s and
+  cancelled at the end.
+- The pin is local: `ChatState{ pinned, pinnedIndex }` in the agent value
+  `chat`. `applyPinned()` puts the history at `pinnedIndex` of the main
+  pinned list; on every `pinnedDialogsOrderUpdated()` a missing agent
+  (the server list replaced the order) is put back, and a moved one has
+  its new index saved. "Pin" / "Unpin" in `FillAgentChatMenu()` change
+  the state; an unpinned agent sorts by its preview date.
+- The general agent screen is a `Window::SectionWidget` with two modes.
+  The list mode shows a chat-like top bar (the agent userpic, the name,
+  the default model or "typing…" / "waiting for your decision…", "⋮"
+  with `FillAgentChatMenu()`; a click on the name opens the profile),
+  "＋ New session" and `SessionRows` (each session like a dialog row:
+  the first touched chat's userpic or the agent's, the title, the date,
+  the preview with a read check when outgoing, "typing…" while working,
+  the waiting cards as an unread badge; the context menu renames or
+  deletes). The session mode shows the session title over the agent
+  name or the session status, "⋮" with `ShowSessionMenu()`, and a
+  `ChatView`; its back arrow returns to the list. `ShowGeneralAgent()`
+  opens the list, `ShowGeneralAgentNewSession()` an empty session,
+  `ShowGeneralAgentSession()` a session, the handoff variant an empty
+  session with the handoff draft. `activeChat()` is the agent history,
+  so the dialogs row is highlighted and the third column shows the
+  profile. The section re-applies its mode visibility in
+  `showFinishedHook()`, since the show animation shows every child.
+- The agent profile (`ProfileWidget`, `Section::Type::Agent` of the agent
+  peer): a centered userpic, the name and "AI agent", then "Default
+  model" (a single-choice box), "Tasks" and "Memory" with their counts
+  (each opens a `ProfileMemento` of that mode, pushed onto the Info
+  stack) and "Agent Settings"; the top bar "Edit" opens
+  `ShowEditAgentProfileBox()` (a `UserpicButton` choosing a photo, "Use
+  the default photo", the name field; saved as a 320 px JPEG and the name
+  through `UpdateProviders()`). The settings page has "Agent name and
+  photo" opening the same box.
+- `ChatView` is the native session view: a `HistoryView::ListWidget`
+  (`Context::Replies`) over `ChatItems::ids()`, the agent chat theme as
+  the background, a "jump down" corner button and `ComposeControls`
+  (emoji only, attachments, no stickers, voice, inline bots or
+  autocomplete) on the agent history: its custom menu button shows the
+  session model and opens the model menu, its custom stop stops the
+  session. A run session gets a write restriction with
+  `lng_agent_run_about`. Sending takes the field text and the agent
+  history's forward draft (the passed messages, set by
+  `passMessages()`), files go through `SendFilesBox` as before. The view
+  rebuilds `BuildChatMessages(BuildFeed(record + LiveTail))` at most every
+  50 ms and keeps to the bottom while the user is there.
+- `ChatItems` keeps one local item (`FakeHistoryItem`) per chat message,
+  keyed by `ChatMessage::key`, updated in place when its signature
+  changes: user messages are outgoing text; agent messages are a rich
+  page (`Iv::RichPage`: a Details block with the steps, each step a
+  nested Details with the arguments and the result as code, a Thinking
+  block while a live turn thinks, the action lines, then
+  `Iv::Editor::BlocksFromMarkdown()` of the text) or plain text with
+  entities when the page is simple; undoable actions get "Undo" / "Undo
+  all"; cards are their title, targets, rows and quoted text with the
+  status line in italics and inline buttons by state ("Send (N)" /
+  "Confirm (N)" primary, "To draft" / "Append", "Edit..." or
+  "Details..." for cards a box adds to, "Decline" danger; "Continue in
+  the general agent" for a handoff; "Show in Folder" for a done
+  download); the summary, the handoff note, "Summarizing…" and the
+  session spending are service messages; a failed turn is an incoming
+  message with "Retry" (and "Model settings" for auth errors); queued
+  messages are outgoing with the sending clock. Buttons carry
+  `agent:<action>:<id>` and reach `ChatView` through
+  `ChatItems::buttons()`; "Edit..." shows the old `FeedCardWidget` in a
+  box. Item dates come from `Message::date` (records v9), else the
+  session creation time, and never decrease.
 - `HistoryView` is the history pane of the panel and the general screen:
   "Sessions" and "Memory" tabs over a scroll area with the scope's
   `SessionsList` or its `MemoryList` (owner `Scope::peer`). With it open

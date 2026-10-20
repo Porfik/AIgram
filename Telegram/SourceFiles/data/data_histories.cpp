@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/data_histories.h"
 
+#include "agent/agent_chat.h"
 #include "api/api_text_entities.h"
 #include "data/business/data_shortcut_messages.h"
 #include "data/components/ephemeral_messages.h"
@@ -402,7 +403,12 @@ void Histories::requestDialogEntry(not_null<Data::Folder*> folder) {
 void Histories::requestDialogEntry(
 		not_null<History*> history,
 		Fn<void()> callback) {
-	if (const auto channel = history->peer->asChannel()) {
+	if (Agent::IsAgentHistory(history)) {
+		if (callback) {
+			callback();
+		}
+		return;
+	} else if (const auto channel = history->peer->asChannel()) {
 		if (channel->isCommunity()) {
 			return;
 		}

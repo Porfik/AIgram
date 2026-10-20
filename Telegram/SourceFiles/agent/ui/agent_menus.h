@@ -9,6 +9,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class PeerData;
 
+namespace Dialogs {
+struct EntryState;
+} // namespace Dialogs
+
 namespace Ui::Menu {
 struct MenuCallback;
 } // namespace Ui::Menu
@@ -22,6 +26,10 @@ namespace Agent::Ui {
 void FillPeerMenu(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer,
+	const ::Ui::Menu::MenuCallback &addAction);
+[[nodiscard]] bool FillAgentChatMenu(
+	not_null<Window::SessionController*> controller,
+	const Dialogs::EntryState &request,
 	const ::Ui::Menu::MenuCallback &addAction);
 void FillFolderMenu(
 	not_null<Window::SessionController*> controller,

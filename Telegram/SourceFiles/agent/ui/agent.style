@@ -262,3 +262,6 @@ agentFeedSpendingLabel: FlatLabel(defaultFlatLabel) {
 	}
 }
 agentFeedSpendingMargin: margins(16px, 4px, 16px, 6px);
+
+agentChatEmptyWidth: 260px;
+agentPaletteNaturalList: 320px;

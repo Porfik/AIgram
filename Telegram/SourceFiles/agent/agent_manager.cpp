@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 
 #include "agent/agent_attachments.h"
+#include "agent/agent_chat.h"
 #include "agent/agent_claude.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_http_transport.h"
@@ -74,9 +75,11 @@ Manager::Manager(not_null<Main::Session*> session)
 	}, _lifetime);
 	refresh();
 	_runner = std::make_unique<TaskRunner>(this);
+	_chat = std::make_unique<AgentChat>(this);
 }
 
 Manager::~Manager() {
+	_chat = nullptr;
 	_runner = nullptr;
 	_claudePool->clear();
 }
@@ -363,6 +366,10 @@ not_null<Session*> Manager::startRun(
 	return result;
 }
 
+Session *Manager::loaded(const QString &id) const {
+	return findOpen(id);
+}
+
 Session *Manager::findOpen(const QString &id) const {
 	for (const auto &session : _sessions) {
 		if (session->id() == id) {
@@ -530,6 +537,10 @@ void Manager::clearAllData() {
 		updateActivity(scope);
 		_listChanges.fire_copy(scope);
 	}
+}
+
+AgentChat &Manager::chat() const {
+	return *_chat;
 }
 
 Memories &Manager::memories() const {

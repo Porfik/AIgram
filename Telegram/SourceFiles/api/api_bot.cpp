@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "api/api_bot.h"
 
+#include "agent/ui/agent_chat_items.h"
 #include "apiwrap.h"
 #include "api/api_cloud_password.h"
 #include "api/api_send_progress.h"
@@ -322,6 +323,8 @@ void ActivateBotButton(ClickHandlerContext context, BotButtonLookup lookup) {
 	}
 	const auto button = lookup();
 	if (!button) {
+		return;
+	} else if (Agent::Ui::ChatItems::Activate(item, *button)) {
 		return;
 	}
 

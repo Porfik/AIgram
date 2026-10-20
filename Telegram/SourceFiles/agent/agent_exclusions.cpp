@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_exclusions.h"
 
+#include "agent/agent_chat.h"
 #include "data/data_chat_filters.h"
 #include "data/data_session.h"
 #include "main/main_session.h"
@@ -24,7 +25,7 @@ Exclusions::Exclusions(not_null<Main::Session*> session)
 }
 
 bool Exclusions::excluded(PeerKey peer) const {
-	if (ranges::contains(_list.peers, peer)) {
+	if (IsAgentPeer(PeerId(peer)) || ranges::contains(_list.peers, peer)) {
 		return true;
 	}
 	if (_list.folders.empty() || !peer) {

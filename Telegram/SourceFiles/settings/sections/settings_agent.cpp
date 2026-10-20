@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "settings/sections/settings_agent.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_files.h"
 #include "agent/agent_manager.h"
@@ -14,6 +15,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_spending_tracker.h"
 #include "agent/ui/agent_claude_boxes.h"
 #include "agent/ui/agent_model_boxes.h"
+#include "agent/ui/agent_profile.h"
 #include "agent/ui/agent_spending_format.h"
 #include "boxes/peer_list_box.h"
 #include "boxes/peer_list_controllers.h"
@@ -841,6 +843,19 @@ void BuildEntryPoints(
 		const std::shared_ptr<AgentState> &state,
 		not_null<Window::SessionController*> controller) {
 	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/profile"_q,
+		.title = tr::lng_agent_profile_button(),
+		.label = rpl::single(rpl::empty) | rpl::then(
+			state->changed.events()
+		) | rpl::map([=] {
+			return ::Agent::AgentName(state->providers.agentName);
+		}),
+		.onClick = [=] {
+			::Agent::Ui::ShowEditAgentProfileBox(controller);
+		},
+		.keywords = { u"name"_q, u"photo"_q, u"avatar"_q, u"agent"_q },
+	});
 	const auto button = builder.addButton({
 		.id = u"agent/show-entry-points"_q,
 		.title = tr::lng_agent_show_entry_points(),

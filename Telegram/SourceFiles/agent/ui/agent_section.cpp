@@ -7,36 +7,56 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_section.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
-#include "agent/ui/agent_chats_row.h"
-#include "agent/ui/agent_history_view.h"
-#include "agent/ui/agent_session_view.h"
-#include "agent/ui/agent_userpic.h"
+#include "agent/agent_settings.h"
+#include "agent/ui/agent_menus.h"
+#include "agent/ui/agent_model_boxes.h"
+#include "agent/ui/agent_chat_view.h"
+#include "agent/ui/agent_session_rows.h"
 #include "agent/ui/agent_sessions_list.h"
+#include "data/data_user.h"
+#include "dialogs/dialogs_key.h"
+#include "history/history.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mainwidget.h"
+#include "settings/settings_common.h"
+#include "ui/abstract_button.h"
+#include "ui/chat/chat_theme.h"
+#include "ui/controls/userpic_button.h"
 #include "ui/painter.h"
 #include "ui/rp_widget.h"
-#include "ui/abstract_button.h"
 #include "ui/text/text.h"
-#include "window/section_memento.h"
-#include "window/section_widget.h"
 #include "ui/ui_utility.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/labels.h"
+#include "ui/widgets/menu/menu_add_action_callback.h"
+#include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
+#include "ui/widgets/scroll_area.h"
 #include "ui/widgets/shadow.h"
+#include "ui/wrap/vertical_layout.h"
+#include "window/section_memento.h"
+#include "window/section_widget.h"
+#include "window/window_adaptive.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent_general.h"
 #include "styles/style_agent_panel.h"
 #include "styles/style_chat.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_info.h"
+#include "styles/style_menu_icons.h"
+#include "styles/style_settings.h"
 
 namespace Agent::Ui {
 namespace {
+
+enum class Mode {
+	List,
+	Session,
+};
 
 class GeneralAgentMemento final : public Window::SectionMemento {
 public:
@@ -48,37 +68,23 @@ public:
 		Window::Column column,
 		const QRect &geometry) override;
 
-	void setSessionId(const QString &id);
-	const QString &sessionId() const;
-	void setListOpen(bool open);
-	bool listOpen() const;
-	void setDraft(const QString &text);
-	const QString &draft() const;
-	void setHandoff(std::optional<HandoffDraft> draft);
-	const std::optional<HandoffDraft> &handoff() const;
-	void setHistoryTab(HistoryTab tab);
-	HistoryTab historyTab() const;
-
-private:
-	QString _sessionId;
-	bool _listOpen = false;
-	HistoryTab _historyTab = HistoryTab::Sessions;
-	QString _draft;
-	std::optional<HandoffDraft> _handoff;
+	Mode mode = Mode::List;
+	QString sessionId;
+	std::optional<HandoffDraft> handoff;
 
 };
 
-class TitleButton final : public Ui::AbstractButton {
+class HeaderTitle final : public ::Ui::AbstractButton {
 public:
-	explicit TitleButton(QWidget *parent);
+	explicit HeaderTitle(QWidget *parent);
 
-	void setStatus(const QString &text, bool active);
+	void setTexts(const QString &name, const QString &status, bool active);
 
 protected:
 	void paintEvent(QPaintEvent *e) override;
 
 private:
-	Ui::Text::String _name;
+	::Ui::Text::String _name;
 	QString _status;
 	bool _statusActive = false;
 
@@ -89,8 +95,8 @@ public:
 	GeneralAgentSection(
 		QWidget *parent,
 		not_null<Window::SessionController*> controller);
-	~GeneralAgentSection();
 
+	Dialogs::RowDescriptor activeChat() const override;
 	bool hasTopBarShadow() const override;
 	QRect floatPlayerAvailableRect() override;
 	bool floatPlayerHandleWheelEvent(QEvent *e) override;
@@ -102,58 +108,82 @@ public:
 	void setInternalState(
 		const QRect &geometry,
 		not_null<GeneralAgentMemento*> memento);
-	void applyHandoff(HandoffDraft draft);
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
 	void paintEvent(QPaintEvent *e) override;
 	void doSetInnerFocus() override;
+	void showFinishedHook() override;
+	void showAnimatedHook(
+		const Window::SectionSlideParams &params) override;
 
 private:
-	class Inner;
+	void setupTopBar();
+	void applyModeVisibility();
+	void setupList();
+	void applyMemento(not_null<GeneralAgentMemento*> memento);
+	void showList();
+	void showSession(Session *session);
+	void trackSession(Session *session);
+	void showMenu();
+	void updateHeader();
+	void updateControlsGeometry();
 
-	object_ptr<Inner> _inner;
+	const not_null<Manager*> _manager;
+	const not_null<History*> _history;
+	Mode _mode = Mode::List;
+	::Ui::RpWidget *_topBar = nullptr;
+	::Ui::IconButton *_back = nullptr;
+	::Ui::UserpicButton *_userpic = nullptr;
+	HeaderTitle *_title = nullptr;
+	::Ui::IconButton *_menuToggle = nullptr;
+	::Ui::PlainShadow *_shadow = nullptr;
+	::Ui::ScrollArea *_listScroll = nullptr;
+	::Ui::RpWidget *_listContent = nullptr;
+	::Ui::VerticalLayout *_list = nullptr;
+	SessionRows *_rows = nullptr;
+	::Ui::FlatLabel *_listAbout = nullptr;
+	ChatView *_sessionView = nullptr;
+	base::unique_qptr<::Ui::PopupMenu> _menu;
+	rpl::lifetime _sessionLifetime;
 
 };
 
-TitleButton::TitleButton(QWidget *parent)
+HeaderTitle::HeaderTitle(QWidget *parent)
 : AbstractButton(parent) {
-	_name.setText(st::msgNameStyle, tr::lng_agent_row_title(tr::now));
 }
 
-void TitleButton::setStatus(const QString &text, bool active) {
-	if (_status == text && _statusActive == active) {
+void HeaderTitle::setTexts(
+		const QString &name,
+		const QString &status,
+		bool active) {
+	if (_name.toString() == name
+		&& _status == status
+		&& _statusActive == active) {
 		return;
 	}
-	_status = text;
+	_name.setText(st::msgNameStyle, name);
+	_status = status;
 	_statusActive = active;
 	update();
 }
 
-void TitleButton::paintEvent(QPaintEvent *e) {
+void HeaderTitle::paintEvent(QPaintEvent *e) {
 	auto p = Painter(this);
-	const auto size = st::topBarInfoButtonInnerSize;
-	PaintAgentUserpic(
-		p,
-		st::topBarInfoButtonInnerPosition.x(),
-		(height() - size) / 2,
-		width(),
-		size);
-	const auto left = st::topBarInfoButtonSize.width();
 	const auto available = std::max(
-		width() - left - st::topBarNameRightPadding,
+		width() - st::topBarNameRightPadding,
 		0);
 	p.setPen(st::dialogsNameFg);
 	_name.draw(p, {
-		.position = { left, st::topBarArrowPadding.top() },
+		.position = { 0, st::topBarArrowPadding.top() },
 		.availableWidth = available,
 		.elisionLines = 1,
 	});
 	p.setFont(st::dialogsTextFont);
 	p.setPen(_statusActive ? st::historyStatusFgTyping : st::historyStatusFg);
 	p.drawTextLeft(
-		left,
-		(height()
+		0,
+		(st::topBarHeight
 			- st::topBarArrowPadding.bottom()
 			- st::dialogsTextFont->height),
 		width(),
@@ -172,389 +202,270 @@ object_ptr<Window::SectionWidget> GeneralAgentMemento::createWidget(
 	}
 	auto result = object_ptr<GeneralAgentSection>(parent, controller);
 	result->setInternalState(geometry, this);
-	if (const auto handoff = _handoff) {
-		result->applyHandoff(*handoff);
-	}
 	return result;
 }
 
-void GeneralAgentMemento::setSessionId(const QString &id) {
-	_sessionId = id;
-}
-
-const QString &GeneralAgentMemento::sessionId() const {
-	return _sessionId;
-}
-
-void GeneralAgentMemento::setListOpen(bool open) {
-	_listOpen = open;
-}
-
-bool GeneralAgentMemento::listOpen() const {
-	return _listOpen;
-}
-
-void GeneralAgentMemento::setDraft(const QString &text) {
-	_draft = text;
-}
-
-const QString &GeneralAgentMemento::draft() const {
-	return _draft;
-}
-
-void GeneralAgentMemento::setHandoff(std::optional<HandoffDraft> draft) {
-	_handoff = std::move(draft);
-}
-
-const std::optional<HandoffDraft> &GeneralAgentMemento::handoff() const {
-	return _handoff;
-}
-
-void GeneralAgentMemento::setHistoryTab(HistoryTab tab) {
-	_historyTab = tab;
-}
-
-HistoryTab GeneralAgentMemento::historyTab() const {
-	return _historyTab;
-}
-
-class GeneralAgentSection::Inner final : public RpWidget {
-public:
-	Inner(
-		QWidget *parent,
-		not_null<Window::SessionController*> controller);
-
-	void saveState(not_null<GeneralAgentMemento*> memento) const;
-	void restoreState(not_null<GeneralAgentMemento*> memento);
-	void applyHandoff(HandoffDraft draft);
-	void setInnerFocus();
-	[[nodiscard]] rpl::producer<QString> titleValue() const;
-	[[nodiscard]] rpl::producer<bool> listOpenValue() const;
-	[[nodiscard]] QRect floatPlayerRect() const;
-	[[nodiscard]] bool floatPlayerWheel(QEvent *e);
-
-protected:
-	void resizeEvent(QResizeEvent *e) override;
-
-private:
-	void setupTopBar();
-	void updateControlsGeometry();
-	void updateBackVisibility();
-	void showHistory(bool shown);
-	void showSession(Session *session);
-	void trackSession(Session *session);
-	void updateTitle();
-	[[nodiscard]] int contentTop() const;
-
-	const not_null<Window::SessionController*> _controller;
-	const not_null<Manager*> _manager;
-	const Scope _scope;
-	RpWidget *_topBar = nullptr;
-	Ui::IconButton *_back = nullptr;
-	TitleButton *_title = nullptr;
-	Ui::IconButton *_menu = nullptr;
-	Ui::IconButton *_history = nullptr;
-	Ui::IconButton *_new = nullptr;
-	Ui::PlainShadow *_shadow = nullptr;
-	SessionView *_sessionView = nullptr;
-	HistoryView *_historyView = nullptr;
-	base::unique_qptr<PopupMenu> _menuPopup;
-	rpl::variable<bool> _listOpen = false;
-	rpl::variable<QString> _titleText;
-	rpl::lifetime _sessionLifetime;
-
-};
-
-GeneralAgentSection::Inner::Inner(
+GeneralAgentSection::GeneralAgentSection(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller)
-: RpWidget(parent)
-, _controller(controller)
+: Window::SectionWidget(parent, controller)
 , _manager(&controller->session().agent())
-, _scope(Scope::Account()) {
+, _history(_manager->chat().history()) {
 	setupTopBar();
-	_shadow = Ui::CreateChild<Ui::PlainShadow>(this);
+	_shadow = ::Ui::CreateChild<::Ui::PlainShadow>(this);
 	_shadow->show();
-	_sessionView = Ui::CreateChild<SessionView>(
+	setupList();
+	_sessionView = ::Ui::CreateChild<ChatView>(
 		this,
-		_controller,
+		controller,
 		_manager,
-		_scope);
-	_sessionView->setContentMaxWidth(st::agentGeneralContentMaxWidth);
-	_historyView = Ui::CreateChild<HistoryView>(
-		this,
-		_controller,
-		_manager,
-		_scope);
-	_historyView->openSessionRequests(
-	) | rpl::on_next([=](const QString &id) {
-		showSession(_manager->open(id));
-	}, lifetime());
-	_historyView->openRunRequests(
-	) | rpl::on_next([=](const QString &id) {
-		showSession(_manager->open(id));
+		Scope::Account());
+	Window::ChatThemeValueFromPeer(
+		controller,
+		_manager->chat().user()
+	) | rpl::on_next([=](std::shared_ptr<::Ui::ChatTheme> &&theme) {
+		controller->setChatStyleTheme(theme);
 	}, lifetime());
 	_sessionView->sessionChanges(
 	) | rpl::on_next([=](Session *session) {
 		trackSession(session);
 	}, lifetime());
-
-	const auto list = _manager->list(_scope);
-	showSession(list.empty() ? nullptr : _manager->open(list.front().id));
+	_manager->activityValue(
+		Scope::Account()
+	) | rpl::on_next([=] {
+		updateHeader();
+	}, lifetime());
+	rpl::merge(
+		_manager->chat().nameValue() | rpl::to_empty,
+		Agent::ProvidersChanged()
+	) | rpl::on_next([=] {
+		updateHeader();
+	}, lifetime());
+	controller->adaptive().value(
+	) | rpl::on_next([=] {
+		updateControlsGeometry();
+	}, lifetime());
+	showList();
 }
 
-void GeneralAgentSection::Inner::setupTopBar() {
-	_topBar = Ui::CreateChild<RpWidget>(this);
+void GeneralAgentSection::setupTopBar() {
+	_topBar = ::Ui::CreateChild<::Ui::RpWidget>(this);
 	_topBar->show();
 	_topBar->paintRequest(
 	) | rpl::on_next([=](QRect clip) {
 		auto p = QPainter(_topBar);
-		p.fillRect(clip, st::windowBg);
+		p.fillRect(clip, st::topBarBg);
 	}, _topBar->lifetime());
 
-	_title = Ui::CreateChild<TitleButton>(_topBar);
+	_back = ::Ui::CreateChild<::Ui::IconButton>(
+		_topBar,
+		st::historyTopBarBack);
+	_back->setAccessibleName(tr::lng_go_back(tr::now));
+	_back->setClickedCallback([=] {
+		if (_mode == Mode::Session) {
+			showList();
+		} else {
+			controller()->showBackFromStack();
+		}
+	});
+
+	const auto showProfile = [=] {
+		controller()->showPeerInfo(_manager->chat().user());
+	};
+	_userpic = ::Ui::CreateChild<::Ui::UserpicButton>(
+		_topBar,
+		_manager->chat().user(),
+		st::topBarInfoButton);
+	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
+	_userpic->show();
+	_title = ::Ui::CreateChild<HeaderTitle>(_topBar);
+	_title->setClickedCallback(showProfile);
 	_title->show();
-	_title->setClickedCallback([=] {
-		showHistory(!_listOpen.current());
-		if (!_listOpen.current()) {
-			_sessionView->setInnerFocus();
-		}
-	});
-	_menu = Ui::CreateChild<Ui::IconButton>(_topBar, st::infoTopBarMenu);
-	_menu->setAccessibleName(tr::lng_agent_session_more(tr::now));
-	_menu->setClickedCallback([=] {
-		if (const auto session = _sessionView->session()) {
-			ShowSessionMenu(
-				_controller,
-				_manager,
-				_menu,
-				session->id(),
-				_menuPopup);
-		}
-	});
-	_history = Ui::CreateChild<Ui::IconButton>(
+
+	_menuToggle = ::Ui::CreateChild<::Ui::IconButton>(
 		_topBar,
-		st::agentPanelTopBarHistory);
-	_history->setAccessibleName(tr::lng_agent_history(tr::now));
-	_history->setToolTip(tr::lng_agent_history(tr::now));
-	_history->show();
-	_history->setClickedCallback([=] {
-		showHistory(!_listOpen.current());
-		if (!_listOpen.current()) {
-			_sessionView->setInnerFocus();
-		}
+		st::topBarMenuToggle);
+	_menuToggle->setAccessibleName(tr::lng_agent_session_more(tr::now));
+	_menuToggle->setClickedCallback([=] {
+		showMenu();
 	});
-	listOpenValue(
-	) | rpl::on_next([=](bool open) {
-		_history->setIconOverride(
-			open ? &st::agentPanelTopBarHistoryActive : nullptr);
-	}, _history->lifetime());
-	_new = Ui::CreateChild<Ui::IconButton>(
-		_topBar,
-		st::agentPanelTopBarNew);
-	_new->setAccessibleName(tr::lng_agent_new_session(tr::now));
-	_new->setToolTip(tr::lng_agent_new_session(tr::now));
-	_new->show();
-	_new->setClickedCallback([=] {
+	_menuToggle->show();
+}
+
+void GeneralAgentSection::setupList() {
+	_listScroll = ::Ui::CreateChild<::Ui::ScrollArea>(
+		this,
+		st::defaultSolidScroll);
+	const auto content = _listScroll->setOwnedWidget(
+		object_ptr<::Ui::RpWidget>(_listScroll));
+	_listContent = content.data();
+	_list = ::Ui::CreateChild<::Ui::VerticalLayout>(content.data());
+	content->widthValue(
+	) | rpl::on_next([=](int width) {
+		const auto inner = std::min(width, st::agentGeneralContentMaxWidth);
+		_list->resizeToWidth(inner);
+		_list->moveToLeft((width - inner) / 2, 0);
+	}, content->lifetime());
+	_list->heightValue(
+	) | rpl::on_next([=](int height) {
+		content->resize(content->width(), height);
+	}, content->lifetime());
+	content->paintRequest(
+	) | rpl::on_next([=](QRect clip) {
+		auto p = QPainter(content.data());
+		p.fillRect(clip, st::dialogsBg);
+	}, content->lifetime());
+
+	const auto add = Settings::AddButtonWithIcon(
+		_list,
+		tr::lng_agent_new_session(),
+		st::settingsButtonActive,
+		{ &st::settingsIconAdd, Settings::IconType::Round, &st::windowBgActive });
+	add->setClickedCallback([=] {
 		showSession(nullptr);
 		_sessionView->setInnerFocus();
 	});
-
-	const auto stackEmpty = _controller->content()->stackIsEmpty();
-	const auto oneColumn = _controller->adaptive().isOneColumn();
-	if (stackEmpty && !oneColumn) {
-		return;
-	}
-	_back = Ui::CreateChild<Ui::IconButton>(
-		_topBar,
-		st::infoTopBarBack);
-	_back->setAccessibleName(tr::lng_go_back(tr::now));
-	_back->show();
-	_back->setClickedCallback([=] {
-		_controller->showBackFromStack();
-	});
+	_rows = _list->add(object_ptr<SessionRows>(
+		_list,
+		controller(),
+		_manager,
+		Scope::Account()));
+	_rows->openRequests(
+	) | rpl::on_next([=](const QString &id) {
+		showSession(_manager->open(id));
+	}, _rows->lifetime());
+	_listAbout = _list->add(
+		object_ptr<::Ui::FlatLabel>(
+			_list,
+			tr::lng_agent_sessions_empty(),
+			st::agentSessionRowsAbout),
+		st::agentSessionRowsAboutPadding);
+	_rows->heightValue(
+	) | rpl::on_next([=] {
+		_listAbout->setVisible(_rows->empty());
+	}, _listAbout->lifetime());
+	_listScroll->show();
 }
 
-void GeneralAgentSection::Inner::updateBackVisibility() {
-	if (!_back) {
-		return;
-	}
-	const auto stackEmpty = _controller->content()->stackIsEmpty();
-	const auto oneColumn = _controller->adaptive().isOneColumn();
-	_back->setVisible(!stackEmpty || oneColumn);
+Dialogs::RowDescriptor GeneralAgentSection::activeChat() const {
+	return { _history, FullMsgId() };
 }
 
-void GeneralAgentSection::Inner::showHistory(bool shown) {
-	const auto focused = Ui::InFocusChain(this);
-	_listOpen = shown;
-	if (shown) {
-		_historyView->show();
-		if (focused) {
-			_historyView->setInnerFocus();
-		}
-		_sessionView->hide();
-	} else {
-		_sessionView->show();
-		if (focused) {
-			_sessionView->setInnerFocus();
-		}
-		_historyView->hide();
+void GeneralAgentSection::applyModeVisibility() {
+	const auto list = (_mode == Mode::List);
+	_listScroll->setVisible(list);
+	_sessionView->setVisible(!list);
+}
+
+void GeneralAgentSection::showFinishedHook() {
+	applyModeVisibility();
+	updateControlsGeometry();
+	_sessionView->showFinished();
+}
+
+void GeneralAgentSection::showAnimatedHook(
+		const Window::SectionSlideParams &params) {
+	_sessionView->showStarted();
+}
+
+void GeneralAgentSection::showList() {
+	const auto focused = ::Ui::InFocusChain(this);
+	_mode = Mode::List;
+	_listScroll->show();
+	if (focused) {
+		_listScroll->setFocus();
 	}
-	updateTitle();
+	_sessionView->hide();
+	_sessionLifetime.destroy();
+	updateHeader();
 	updateControlsGeometry();
 }
 
-void GeneralAgentSection::Inner::showSession(Session *session) {
+void GeneralAgentSection::showSession(Session *session) {
+	_mode = Mode::Session;
 	_sessionView->showSession(session);
+	_sessionView->show();
+	_listScroll->hide();
 	trackSession(session);
-	showHistory(false);
+	updateControlsGeometry();
 }
 
-void GeneralAgentSection::Inner::trackSession(Session *session) {
-	_sessionLifetime = rpl::lifetime();
-	_menu->setVisible(session != nullptr);
-	updateControlsGeometry();
+void GeneralAgentSection::trackSession(Session *session) {
+	_sessionLifetime.destroy();
 	if (session) {
 		rpl::merge(
 			session->recordChanges(),
 			session->stateChanges()
 		) | rpl::on_next([=] {
-			updateTitle();
+			updateHeader();
 		}, _sessionLifetime);
 	}
-	updateTitle();
+	updateHeader();
 }
 
-void GeneralAgentSection::Inner::updateTitle() {
-	const auto session = _sessionView->session();
-	if (_listOpen.current()) {
-		_titleText = tr::lng_agent_history(tr::now);
-	} else if (session) {
-		const auto title = session->record().info.title;
-		_titleText = title.isEmpty()
-			? tr::lng_agent_session_untitled(tr::now)
-			: title;
-	} else {
-		_titleText = tr::lng_agent_new_session(tr::now);
+void GeneralAgentSection::showMenu() {
+	const auto session = (_mode == Mode::Session)
+		? _sessionView->session()
+		: nullptr;
+	if (session) {
+		ShowSessionMenu(
+			controller(),
+			_manager,
+			_menuToggle,
+			session->id(),
+			_menu);
+		return;
 	}
+	_menu = base::make_unique_q<::Ui::PopupMenu>(
+		_menuToggle,
+		st::popupMenuWithIcons);
+	const auto addAction = ::Ui::Menu::CreateAddActionCallback(_menu);
+	const auto filled = FillAgentChatMenu(
+		controller(),
+		Dialogs::EntryState{ .key = _history },
+		addAction);
+	if (!filled || _menu->empty()) {
+		_menu = nullptr;
+		return;
+	}
+	_menu->setForcedOrigin(::Ui::PanelAnimation::Origin::TopRight);
+	_menu->popup(_menuToggle->mapToGlobal(
+		QPoint(_menuToggle->width(), _menuToggle->height())));
+}
+
+void GeneralAgentSection::updateHeader() {
+	const auto agent = _manager->chat().name();
+	if (_mode == Mode::List) {
+		const auto activity = _manager->activity(Scope::Account());
+		const auto provider = DefaultProvider(_manager->providers());
+		const auto status = activity.pendingCards
+			? tr::lng_agent_waiting_card(tr::now)
+			: activity.working
+			? (tr::lng_typing(tr::now) + QString::fromUtf8("\xe2\x80\xa6"))
+			: provider
+			? ModelTitle(*provider)
+			: QString();
+		_title->setTexts(
+			agent,
+			status,
+			activity.pendingCards || activity.working);
+		return;
+	}
+	const auto session = _sessionView->session();
+	const auto title = !session
+		? tr::lng_agent_new_session(tr::now)
+		: session->record().info.title.isEmpty()
+		? tr::lng_agent_session_untitled(tr::now)
+		: session->record().info.title;
 	const auto &state = session ? session->state() : SessionState();
 	const auto working = (state.status == SessionStatus::Working)
 		|| (state.status == SessionStatus::Compacting);
-	if (!_listOpen.current() && state.pendingCards > 0) {
-		_title->setStatus(tr::lng_agent_waiting_card(tr::now), true);
-	} else if (!_listOpen.current() && working) {
-		_title->setStatus(tr::lng_agent_working(tr::now), true);
-	} else {
-		_title->setStatus(_titleText.current(), false);
-	}
-}
-
-void GeneralAgentSection::Inner::applyHandoff(HandoffDraft draft) {
-	showSession(nullptr);
-	_sessionView->startHandoff(std::move(draft));
-}
-
-void GeneralAgentSection::Inner::saveState(
-		not_null<GeneralAgentMemento*> memento) const {
-	const auto session = _sessionView->session();
-	memento->setSessionId(session ? session->id() : QString());
-	memento->setListOpen(_listOpen.current());
-	memento->setDraft(_sessionView->draft());
-	memento->setHistoryTab(_historyView->tab());
-}
-
-void GeneralAgentSection::Inner::restoreState(
-		not_null<GeneralAgentMemento*> memento) {
-	if (!memento->sessionId().isEmpty()) {
-		if (const auto session = _manager->open(memento->sessionId())) {
-			showSession(session);
-		}
-	}
-	if (!memento->draft().isEmpty()) {
-		_sessionView->setDraft(memento->draft());
-	}
-	_historyView->showTab(memento->historyTab());
-	showHistory(memento->listOpen());
-}
-
-void GeneralAgentSection::Inner::setInnerFocus() {
-	if (_listOpen.current()) {
-		_historyView->setInnerFocus();
-	} else {
-		_sessionView->setInnerFocus();
-	}
-}
-
-rpl::producer<QString> GeneralAgentSection::Inner::titleValue() const {
-	return _titleText.value();
-}
-
-rpl::producer<bool> GeneralAgentSection::Inner::listOpenValue() const {
-	return _listOpen.value();
-}
-
-int GeneralAgentSection::Inner::contentTop() const {
-	return st::infoTopBarHeight + st::lineWidth;
-}
-
-void GeneralAgentSection::Inner::resizeEvent(QResizeEvent *e) {
-	RpWidget::resizeEvent(e);
-	updateControlsGeometry();
-}
-
-QRect GeneralAgentSection::Inner::floatPlayerRect() const {
-	return _listOpen.current()
-		? _historyView->geometry()
-		: _sessionView->geometry();
-}
-
-bool GeneralAgentSection::Inner::floatPlayerWheel(QEvent *e) {
-	return false;
-}
-
-void GeneralAgentSection::Inner::updateControlsGeometry() {
-	updateBackVisibility();
-	_topBar->setGeometry(0, 0, width(), st::infoTopBarHeight);
-	_shadow->setGeometry(
-		0,
-		st::infoTopBarHeight,
-		width(),
-		st::lineWidth);
-
-	auto right = 0;
-	if (!_menu->isHidden()) {
-		_menu->moveToRight(right, 0, width());
-		right += _menu->width();
-	}
-	_history->moveToRight(right, 0, width());
-	right += _history->width();
-	_new->moveToRight(right, 0, width());
-	right += _new->width();
-	const auto left = (_back && !_back->isHidden())
-		? st::infoTopBar.back.width
-		: st::topBarArrowPadding.right();
-	const auto available = std::max(width() - right - left, 0);
-	_title->setGeometry(left, 0, available, st::infoTopBarHeight);
-
-	const auto content = QRect(
-		0,
-		contentTop(),
-		width(),
-		height() - contentTop());
-	_historyView->setGeometry(content);
-	_sessionView->setGeometry(content);
-}
-
-GeneralAgentSection::GeneralAgentSection(
-		QWidget *parent,
-		not_null<Window::SessionController*> controller)
-: Window::SectionWidget(parent, controller)
-, _inner(this, controller) {
-	SetGeneralAgentShown(controller, true);
-}
-
-GeneralAgentSection::~GeneralAgentSection() {
-	SetGeneralAgentShown(controller(), false);
+	const auto status = state.pendingCards
+		? tr::lng_agent_waiting_card(tr::now)
+		: working
+		? (tr::lng_typing(tr::now) + QString::fromUtf8("\xe2\x80\xa6"))
+		: agent;
+	_title->setTexts(title, status, state.pendingCards || working);
 }
 
 bool GeneralAgentSection::hasTopBarShadow() const {
@@ -562,15 +473,30 @@ bool GeneralAgentSection::hasTopBarShadow() const {
 }
 
 QRect GeneralAgentSection::floatPlayerAvailableRect() {
-	return mapToGlobal(_inner->floatPlayerRect());
+	return mapToGlobal((_mode == Mode::List)
+		? _listScroll->geometry()
+		: _sessionView->geometry());
 }
 
 bool GeneralAgentSection::floatPlayerHandleWheelEvent(QEvent *e) {
-	return _inner->floatPlayerWheel(e);
+	return false;
 }
 
-void GeneralAgentSection::applyHandoff(HandoffDraft draft) {
-	_inner->applyHandoff(std::move(draft));
+void GeneralAgentSection::applyMemento(
+		not_null<GeneralAgentMemento*> memento) {
+	if (memento->handoff) {
+		showSession(nullptr);
+		_sessionView->startHandoff(*memento->handoff);
+		return;
+	}
+	if (memento->mode == Mode::Session) {
+		const auto session = memento->sessionId.isEmpty()
+			? nullptr
+			: _manager->open(memento->sessionId);
+		showSession(session);
+	} else {
+		showList();
+	}
 }
 
 bool GeneralAgentSection::showInternal(
@@ -580,10 +506,7 @@ bool GeneralAgentSection::showInternal(
 	if (!my) {
 		return false;
 	}
-	_inner->restoreState(my);
-	if (const auto handoff = my->handoff()) {
-		_inner->applyHandoff(*handoff);
-	}
+	applyMemento(my);
 	return true;
 }
 
@@ -591,19 +514,23 @@ void GeneralAgentSection::setInternalState(
 		const QRect &geometry,
 		not_null<GeneralAgentMemento*> memento) {
 	setGeometry(geometry);
-	Ui::SendPendingMoveResizeEvents(this);
-	_inner->restoreState(memento);
+	::Ui::SendPendingMoveResizeEvents(this);
+	applyMemento(memento);
 }
 
 std::shared_ptr<Window::SectionMemento> GeneralAgentSection::createMemento() {
 	auto result = std::make_shared<GeneralAgentMemento>();
-	_inner->saveState(result.get());
+	result->mode = _mode;
+	if (_mode == Mode::Session) {
+		const auto session = _sessionView->session();
+		result->sessionId = session ? session->id() : QString();
+	}
 	return result;
 }
 
 void GeneralAgentSection::resizeEvent(QResizeEvent *e) {
 	SectionWidget::resizeEvent(e);
-	_inner->setGeometry(rect());
+	updateControlsGeometry();
 }
 
 void GeneralAgentSection::paintEvent(QPaintEvent *e) {
@@ -616,7 +543,47 @@ void GeneralAgentSection::paintEvent(QPaintEvent *e) {
 }
 
 void GeneralAgentSection::doSetInnerFocus() {
-	_inner->setInnerFocus();
+	if (_mode == Mode::Session) {
+		_sessionView->setInnerFocus();
+	} else {
+		_listScroll->setFocus();
+	}
+}
+
+void GeneralAgentSection::updateControlsGeometry() {
+	if (!_topBar) {
+		return;
+	}
+	const auto oneColumn = controller()->adaptive().isOneColumn();
+	const auto backShown = (_mode == Mode::Session)
+		|| oneColumn
+		|| !controller()->content()->stackIsEmpty();
+	_back->setVisible(backShown);
+
+	_topBar->setGeometry(0, 0, width(), st::topBarHeight);
+	_shadow->setGeometry(0, st::topBarHeight, width(), st::lineWidth);
+	auto left = 0;
+	if (backShown) {
+		_back->moveToLeft(0, 0);
+		left += _back->width();
+	} else {
+		left += st::topBarArrowPadding.right() - st::topBarInfoButtonInnerPosition.x();
+	}
+	_userpic->moveToLeft(left, 0);
+	left += _userpic->width();
+	_menuToggle->moveToRight(0, 0);
+	const auto right = _menuToggle->width();
+	_title->setGeometry(
+		left,
+		0,
+		std::max(width() - left - right, 0),
+		st::topBarHeight);
+
+	const auto top = st::topBarHeight + st::lineWidth;
+	const auto content = QRect(0, top, width(), std::max(height() - top, 0));
+	_listScroll->setGeometry(content);
+	_listContent->resizeToWidth(content.width());
+	_sessionView->setGeometry(content);
 }
 
 void ShowGeneralAgent(not_null<Window::SessionController*> controller) {
@@ -627,7 +594,15 @@ void ShowGeneralAgent(
 		not_null<Window::SessionController*> controller,
 		HandoffDraft draft) {
 	auto memento = std::make_shared<GeneralAgentMemento>();
-	memento->setHandoff(std::move(draft));
+	memento->mode = Mode::Session;
+	memento->handoff = std::move(draft);
+	controller->showSection(std::move(memento));
+}
+
+void ShowGeneralAgentNewSession(
+		not_null<Window::SessionController*> controller) {
+	auto memento = std::make_shared<GeneralAgentMemento>();
+	memento->mode = Mode::Session;
 	controller->showSection(std::move(memento));
 }
 
@@ -635,7 +610,8 @@ void ShowGeneralAgentSession(
 		not_null<Window::SessionController*> controller,
 		const QString &sessionId) {
 	auto memento = std::make_shared<GeneralAgentMemento>();
-	memento->setSessionId(sessionId);
+	memento->mode = Mode::Session;
+	memento->sessionId = sessionId;
 	controller->showSection(std::move(memento));
 }
 

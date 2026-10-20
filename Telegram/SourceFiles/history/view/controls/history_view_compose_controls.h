@@ -154,6 +154,11 @@ struct ComposeControlsDescriptor {
 	rpl::producer<bool> botKeyboardShownToggleShown;
 	rpl::producer<bool> botKeyboardHideToggleShown;
 	rpl::producer<bool> botCommandStartShownExtraGuard;
+
+	rpl::producer<QString> customMenuText;
+	Fn<void()> customMenuClicked;
+	rpl::producer<bool> customStopShown;
+	Fn<void()> customStopClicked;
 };
 
 class ComposeControls final {
@@ -591,6 +596,10 @@ private:
 	Ui::IconButton * const _botCommandStart = nullptr;
 	std::unique_ptr<BotMenuButton> _botMenu;
 	PeerId _botMenuPeer = 0;
+	rpl::variable<QString> _customMenuText;
+	Fn<void()> _customMenuClicked;
+	rpl::variable<bool> _customStopShown;
+	Fn<void()> _customStopClicked;
 	std::unique_ptr<Ui::SendAsButton> _sendAs;
 	rpl::variable<bool> _videoStreamAdmin;
 	std::unique_ptr<Ui::SilentToggle> _silent;

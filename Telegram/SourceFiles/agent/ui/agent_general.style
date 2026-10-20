@@ -46,6 +46,10 @@ agentPaletteHeaderHeight: 52px;
 agentPaletteUserpicSize: 32px;
 agentPaletteUserpicLeft: 14px;
 agentPaletteTitleLeft: 58px;
+agentPaletteUserpic: UserpicButton(defaultUserpicButton) {
+	size: size(32px, 32px);
+	photoSize: 32px;
+}
 agentPaletteTitle: FlatLabel(defaultFlatLabel) {
 	style: semiboldTextStyle;
 	textFg: windowBoldFg;
@@ -71,6 +75,36 @@ agentPaletteClose: IconButton(agentPaletteButton) {
 	iconOver: icon {{ "box_button_close", boxTitleCloseFgOver }};
 }
 agentMenuIconPass: icon {{ "menu/ai_prompt", menuIconColor }};
+
+agentSessionRowsAbout: FlatLabel(defaultFlatLabel) {
+	textFg: windowSubTextFg;
+	align: align(top);
+	minWidth: 100px;
+}
+agentSessionRowsAboutPadding: margins(16px, 20px, 16px, 20px);
+
+agentProfileCoverSkip: 20px;
+agentProfileNameSkip: 10px;
+agentProfileUserpic: UserpicButton(defaultUserpicButton) {
+	size: size(110px, 110px);
+	photoSize: 110px;
+}
+agentProfileName: FlatLabel(defaultFlatLabel) {
+	style: TextStyle(defaultTextStyle) {
+		font: font(17px semibold);
+	}
+	textFg: windowBoldFg;
+	align: align(top);
+	minWidth: 40px;
+	maxHeight: 24px;
+}
+agentProfileStatus: FlatLabel(defaultFlatLabel) {
+	textFg: windowSubTextFg;
+	align: align(top);
+	minWidth: 40px;
+	maxHeight: 20px;
+}
+agentProfileResetPadding: margins(22px, 8px, 22px, 12px);
 
 agentModelRowPadding: margins(22px, 9px, 22px, 9px);
 agentModelRowSkip: 2px;

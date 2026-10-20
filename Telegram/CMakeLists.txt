@@ -146,22 +146,18 @@ PRIVATE
     agent/tools/agent_tools_profile.cpp
     agent/tools/agent_tools_tasks.cpp
     agent/tools/agent_tools_telegram_ai.cpp
-    agent/ui/agent_chats_row.cpp
-    agent/ui/agent_chats_row.h
+    agent/ui/agent_chat_items.cpp
+    agent/ui/agent_chat_items.h
+    agent/ui/agent_chat_view.cpp
+    agent/ui/agent_chat_view.h
     agent/ui/agent_claude_boxes.cpp
     agent/ui/agent_claude_boxes.h
-    agent/ui/agent_composer.cpp
-    agent/ui/agent_composer.h
-    agent/ui/agent_feed_attachments.cpp
-    agent/ui/agent_feed_attachments.h
     agent/ui/agent_feed_cards.cpp
     agent/ui/agent_feed_cards.h
+    agent/ui/agent_feed_format.cpp
+    agent/ui/agent_feed_format.h
     agent/ui/agent_feed_items.cpp
     agent/ui/agent_feed_items.h
-    agent/ui/agent_feed_media.cpp
-    agent/ui/agent_feed_media.h
-    agent/ui/agent_feed_widget.cpp
-    agent/ui/agent_feed_widget.h
     agent/ui/agent_history_view.cpp
     agent/ui/agent_history_view.h
     agent/ui/agent_memory_list.cpp
@@ -177,12 +173,14 @@ PRIVATE
     agent/ui/agent_panel.h
     agent/ui/agent_panel_widget.cpp
     agent/ui/agent_panel_widget.h
+    agent/ui/agent_profile.cpp
+    agent/ui/agent_profile.h
     agent/ui/agent_queue.cpp
     agent/ui/agent_queue.h
     agent/ui/agent_section.cpp
     agent/ui/agent_section.h
-    agent/ui/agent_session_view.cpp
-    agent/ui/agent_session_view.h
+    agent/ui/agent_session_rows.cpp
+    agent/ui/agent_session_rows.h
     agent/ui/agent_sessions_list.cpp
     agent/ui/agent_sessions_list.h
     agent/ui/agent_spending_format.cpp
@@ -197,6 +195,8 @@ PRIVATE
     agent/agent_attachments.h
     agent/agent_check.cpp
     agent/agent_check.h
+    agent/agent_chat.cpp
+    agent/agent_chat.h
     agent/agent_claude.cpp
     agent/agent_claude.h
     agent/agent_exclusions.cpp

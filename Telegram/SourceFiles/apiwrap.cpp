@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "apiwrap.h"
 
+#include "agent/agent_chat.h"
 #include "api/api_authorizations.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_blocked_peers.h"
@@ -131,6 +132,9 @@ using UpdatedFileReferences = Data::UpdatedFileReferences;
 		not_null<Main::Session*> session,
 		not_null<Data::Thread*> thread) {
 	const auto history = thread->owningHistory();
+	if (Agent::IsAgentHistory(history)) {
+		return true;
+	}
 	const auto topicRootId = thread->topicRootId();
 	const auto monoforumPeerId = thread->monoforumPeerId();
 	const auto cloudDraft = history->cloudDraft(topicRootId, monoforumPeerId);
@@ -421,10 +425,11 @@ void ApiWrap::savePinnedOrder(Data::Folder *folder) {
 	};
 	auto peers = QVector<MTPInputDialogPeer>();
 	peers.reserve(order.size());
-	ranges::transform(
-		order,
-		ranges::back_inserter(peers),
-		input);
+	for (const auto &key : order) {
+		if (!Agent::IsAgentHistory(key.history())) {
+			peers.push_back(input(key));
+		}
+	}
 	request(MTPmessages_ReorderPinnedDialogs(
 		MTP_flags(MTPmessages_ReorderPinnedDialogs::Flag::f_force),
 		MTP_int(folder ? folder->id() : 0),
@@ -1204,7 +1209,7 @@ void ApiWrap::requestWallPaper(
 }
 
 void ApiWrap::requestFullPeer(not_null<PeerData*> peer) {
-	if (_fullPeerRequests.contains(peer)) {
+	if (_fullPeerRequests.contains(peer) || Agent::IsAgentPeer(peer)) {
 		return;
 	} else if (!peer->isUser() && !peer->barSettings().has_value()) {
 		requestPeerSettings(peer);
@@ -2377,6 +2382,9 @@ mtpRequestId ApiWrap::savePreparedDraftToCloud(
 		Fn<void(const MTP::Error &)> fail) {
 	const auto weak = base::make_weak(thread);
 	const auto history = thread->owningHistory();
+	if (Agent::IsAgentHistory(history)) {
+		return 0;
+	}
 	const auto topicRootId = thread->topicRootId();
 	const auto monoforumPeerId = thread->monoforumPeerId();
 	struct Callbacks {

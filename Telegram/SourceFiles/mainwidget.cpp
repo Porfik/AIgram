@@ -7,7 +7,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "mainwidget.h"
 
+#include "agent/agent_chat.h"
 #include "agent/ui/agent_panel.h"
+#include "agent/ui/agent_section.h"
 #include "api/api_updates.h"
 #include "api/api_views.h"
 #include "data/components/scheduled_messages.h"
@@ -1437,7 +1439,10 @@ void MainWidget::showHistory(
 		PeerId peerId,
 		const SectionShow &params,
 		MsgId showAtMsgId) {
-	if (peerId && _controller->window().locked()) {
+	if (Agent::IsAgentPeer(peerId) && !_controller->window().locked()) {
+		Agent::Ui::ShowGeneralAgent(_controller);
+		return;
+	} else if (peerId && _controller->window().locked()) {
 		if (params.activation != anim::activation::background) {
 			_controller->window().activate();
 		}

@@ -7,9 +7,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_menus.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
+#include "agent/ui/agent_section.h"
 #include "data/data_peer.h"
+#include "data/data_user.h"
+#include "dialogs/dialogs_key.h"
+#include "history/history.h"
+#include "settings/sections/settings_agent.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "ui/widgets/menu/menu_add_action_callback.h"
@@ -44,6 +50,33 @@ void FillPeerMenu(
 			}
 		},
 		listed ? &st::menuIconRestore : &st::menuIconRemove);
+}
+
+bool FillAgentChatMenu(
+		not_null<Window::SessionController*> controller,
+		const Dialogs::EntryState &request,
+		const ::Ui::Menu::MenuCallback &addAction) {
+	if (!IsAgentHistory(request.key.history())) {
+		return false;
+	}
+	const auto chat = &controller->session().agent().chat();
+	addAction(tr::lng_agent_new_session(tr::now), [=] {
+		ShowGeneralAgentNewSession(controller);
+	}, &st::menuIconEdit);
+	const auto pinned = chat->pinned();
+	addAction(
+		(pinned
+			? tr::lng_context_unpin_from_top(tr::now)
+			: tr::lng_context_pin_to_top(tr::now)),
+		[=] { chat->setPinned(!pinned); },
+		pinned ? &st::menuIconUnpin : &st::menuIconPin);
+	addAction(tr::lng_context_view_profile(tr::now), [=] {
+		controller->showPeerInfo(chat->user());
+	}, &st::menuIconProfile);
+	addAction(tr::lng_agent_profile_settings(tr::now), [=] {
+		controller->showSettings(Settings::AgentId());
+	}, &st::menuIconSettings);
+	return true;
 }
 
 void FillFolderMenu(

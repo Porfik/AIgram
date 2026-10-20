@@ -7,9 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_panel.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
 #include "agent/ui/agent_panel_widget.h"
+#include "agent/ui/agent_profile.h"
 #include "core/application.h"
 #include "core/core_settings.h"
 #include "data/data_peer.h"
@@ -28,6 +30,9 @@ namespace Agent::Ui {
 
 std::shared_ptr<Info::ContentMemento> MakePanelMemento(
 		not_null<PeerData*> peer) {
+	if (IsAgentPeer(peer)) {
+		return std::make_shared<ProfileMemento>(peer, ProfileMode::Main);
+	}
 	return std::make_shared<PanelMemento>(peer);
 }
 
@@ -91,6 +96,9 @@ void SetupPanelTopBar(
 		Info::Wrap wrap) {
 	if (const auto panel = dynamic_cast<PanelWidget*>(content.get())) {
 		panel->setupTopBar(topBar, wrap);
+	} else if (const auto profile = dynamic_cast<ProfileWidget*>(
+			content.get())) {
+		profile->setupTopBar(topBar, wrap);
 	}
 }
 

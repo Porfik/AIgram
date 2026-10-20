@@ -9,9 +9,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
+#include "agent/ui/agent_chat_view.h"
 #include "agent/ui/agent_history_view.h"
 #include "agent/ui/agent_panel.h"
-#include "agent/ui/agent_session_view.h"
 #include "agent/ui/agent_sessions_list.h"
 #include "data/data_channel.h"
 #include "data/data_forum_topic.h"
@@ -169,7 +169,7 @@ private:
 	const not_null<PeerData*> _peer;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
-	SessionView *_sessionView = nullptr;
+	ChatView *_sessionView = nullptr;
 	HistoryView *_history = nullptr;
 	Fn<QString()> _hintProvider;
 	rpl::variable<bool> _listOpen = false;
@@ -208,7 +208,7 @@ PanelWidget::Inner::Inner(
 		};
 	}
 
-	_sessionView = Ui::CreateChild<SessionView>(
+	_sessionView = Ui::CreateChild<ChatView>(
 		this,
 		_controller,
 		_manager,
@@ -326,7 +326,6 @@ void PanelWidget::Inner::saveState(not_null<PanelMemento*> memento) const {
 	const auto session = _sessionView->session();
 	memento->setSessionId(session ? session->id() : QString());
 	memento->setListOpen(_listOpen.current());
-	memento->setDraft(_sessionView->draft());
 	memento->setHistoryTab(_history->tab());
 }
 
@@ -335,9 +334,6 @@ void PanelWidget::Inner::restoreState(not_null<PanelMemento*> memento) {
 		if (const auto session = _manager->open(memento->sessionId())) {
 			showSession(session);
 		}
-	}
-	if (!memento->draft().isEmpty()) {
-		_sessionView->setDraft(memento->draft());
 	}
 	_history->showTab(memento->historyTab());
 	showHistory(memento->listOpen());

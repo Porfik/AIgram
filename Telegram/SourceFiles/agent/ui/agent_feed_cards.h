@@ -80,34 +80,4 @@ private:
 
 };
 
-class FeedActionsWidget final : public FeedItemWidget {
-public:
-	FeedActionsWidget(
-		QWidget *parent,
-		FeedContext context,
-		const FeedActions &data);
-
-	void updatePayload(const FeedItem &item) override;
-
-protected:
-	int resizeGetHeight(int newWidth) override;
-
-private:
-	class ActionRow;
-
-	[[nodiscard]] bool undoable(int index) const;
-	[[nodiscard]] int undoableCount() const;
-	void build();
-	void refreshRows();
-	void undoOne(int index);
-	void undoAll();
-
-	FeedContext _context;
-	FeedActions _actions;
-	object_ptr<VerticalLayout> _inner = { nullptr };
-	std::vector<ActionRow*> _rows;
-	::Ui::LinkButton *_undoAll = nullptr;
-
-};
-
 } // namespace Agent::Ui

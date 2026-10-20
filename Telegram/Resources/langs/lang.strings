@@ -1619,6 +1619,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_handoff_from" = "Continues the session from {chat}";
 "lng_agent_row_title" = "Agent";
 "lng_agent_row_about" = "Ask the agent anything";
+"lng_agent_profile_title" = "Agent Info";
+"lng_agent_profile_status" = "AI agent";
+"lng_agent_profile_edit_title" = "Edit Agent";
+"lng_agent_profile_name" = "Name";
+"lng_agent_profile_photo_reset" = "Use the default photo";
+"lng_agent_profile_about" = "The agent's name and photo are only visible to you, in every account of this app.";
+"lng_agent_profile_button" = "Agent name and photo";
+"lng_agent_profile_settings" = "Agent Settings";
+"lng_agent_chat_card_edit" = "Edit...";
+"lng_agent_chat_card_details" = "Details...";
 "lng_agent_row_working" = "Working...";
 "lng_agent_row_pending#one" = "{count} action waiting";
 "lng_agent_row_pending#other" = "{count} actions waiting";

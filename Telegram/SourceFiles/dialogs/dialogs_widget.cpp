@@ -10,7 +10,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/call_delayed.h"
 #include "base/qt/qt_key_modifiers.h"
 #include "base/options.h"
-#include "agent/ui/agent_chats_row.h"
 #include "dialogs/ui/chat_search_in.h"
 #include "dialogs/ui/dialogs_stories_content.h"
 #include "dialogs/ui/dialogs_stories_list.h"
@@ -449,29 +448,6 @@ Widget::Widget(
 			_childListPeerId.value(),
 			_childListShown.value(),
 			makeChildListShown)));
-	if (_layout == Layout::Main && controller->windowId().primary()) {
-		Agent::Ui::SetupChatsListRow(
-			controller,
-			_innerList,
-			rpl::combine(
-				controller->activeChatsFilter(),
-				_openedFolderOrForum.value(),
-				_searchStateForTopBarSuggestion.events_starting_with(
-					!_searchState.query.isEmpty()),
-				_jumpToDate->toggledValue()
-			) | rpl::map([=](
-					FilterId id,
-					bool folderOrForum,
-					bool search,
-					bool searchInPeer) {
-				return !folderOrForum
-					&& !search
-					&& !searchInPeer
-					&& (id == controller->session().data()
-						.chatsFilters()
-						.defaultId());
-			}));
-	}
 	controller->activeChatsFilter(
 	) | rpl::on_next([=](FilterId id) {
 		switchToChatsFilter(id);

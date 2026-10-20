@@ -1297,6 +1297,22 @@ ComposeControls::ComposeControls(
 , _unavailableEmojiPasted(std::move(descriptor.unavailableEmojiPasted))
 , _saveDraftTimer([=] { saveDraft(); })
 , _saveCloudDraftTimer([=] { saveCloudDraft(); }) {
+	if (descriptor.customMenuClicked) {
+		_customMenuClicked = std::move(descriptor.customMenuClicked);
+		_customMenuText = std::move(descriptor.customMenuText);
+		_customMenuText.changes() | rpl::on_next([=] {
+			if (refreshBotMenuButton()) {
+				updateControlsGeometry(_wrap->size());
+			}
+		}, _wrap->lifetime());
+	}
+	if (descriptor.customStopClicked) {
+		_customStopClicked = std::move(descriptor.customStopClicked);
+		_customStopShown = std::move(descriptor.customStopShown);
+		_customStopShown.changes() | rpl::on_next([=] {
+			updateSendButtonType();
+		}, _wrap->lifetime());
+	}
 	if (_st.radius > 0) {
 		_backgroundRect.emplace(_st.radius, _st.bg);
 	}
@@ -4209,6 +4225,10 @@ void ComposeControls::cancelInlineBot() {
 }
 
 void ComposeControls::stopStreamedDraft() {
+	if (_customStopClicked) {
+		_customStopClicked();
+		return;
+	}
 	if (const auto streamed = _history
 			? _history->streamedDraftsIfExists()
 			: nullptr) {
@@ -4909,6 +4929,8 @@ bool ComposeControls::showStopButton() const {
 		|| type == Type::Save
 		|| type == Type::Cancel) {
 		return false;
+	} else if (_customStopClicked) {
+		return _customStopShown.current() && !HasSendText(_field);
 	}
 	const auto streamed = _history
 		? _history->streamedDraftsIfExists()
@@ -5518,6 +5540,24 @@ bool ComposeControls::hideExtraButtons() const {
 
 bool ComposeControls::refreshBotMenuButton() {
 	constexpr auto kSmallMenuAfter = 10;
+	if (_customMenuClicked) {
+		const auto text = _customMenuText.current();
+		const auto small = fieldCharacterCount() > kSmallMenuAfter;
+		if (text.isEmpty()) {
+			return (base::take(_botMenu) != nullptr);
+		} else if (_botMenu) {
+			return _botMenu->refresh(text, small);
+		}
+		_botMenu = std::make_unique<BotMenuButton>(
+			_wrap.get(),
+			text,
+			small,
+			[=] { _customMenuClicked(); },
+			[=] { updateControlsGeometry(_wrap->size()); },
+			session().data().customEmojiManager().factory());
+		orderControls();
+		return true;
+	}
 	const auto user = _history ? _history->peer->asUser() : nullptr;
 	const auto bot = (user && user->isBot()) ? user : nullptr;
 	if (!_regularWindow) {

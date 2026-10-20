@@ -7,20 +7,22 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_palette.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
+#include "agent/ui/agent_chat_view.h"
 #include "agent/ui/agent_section.h"
-#include "agent/ui/agent_session_view.h"
-#include "agent/ui/agent_userpic.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_thread.h"
+#include "data/data_user.h"
 #include "history/history.h"
 #include "history/history_item.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mainwindow.h"
+#include "ui/controls/userpic_button.h"
 #include "ui/layers/layer_widget.h"
 #include "ui/round_rect.h"
 #include "ui/widgets/popup_menu.h"
@@ -60,12 +62,12 @@ private:
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	PeerData *_openPeer = nullptr;
-	object_ptr<RpWidget> _userpic;
+	object_ptr<::Ui::UserpicButton> _userpic;
 	object_ptr<FlatLabel> _title;
 	object_ptr<IconButton> _new;
 	object_ptr<IconButton> _open;
 	object_ptr<IconButton> _close;
-	object_ptr<SessionView> _view;
+	object_ptr<ChatView> _view;
 	::Ui::RoundRect _bg;
 	bool _updating = false;
 	bool _updateAgain = false;
@@ -80,7 +82,10 @@ PaletteLayer::PaletteLayer(
 : LayerWidget(parent)
 , _controller(controller)
 , _manager(&controller->session().agent())
-, _userpic(this)
+, _userpic(
+	this,
+	not_null<PeerData*>(_manager->chat().user().get()),
+	st::agentPaletteUserpic)
 , _title(this, QString(), st::agentPaletteTitle)
 , _new(this, st::agentPaletteNew)
 , _open(this, st::agentPaletteOpen)
@@ -91,18 +96,7 @@ PaletteLayer::PaletteLayer(
 	if (peer && !_manager->exclusions().excluded(peer->id.value)) {
 		_openPeer = peer;
 	}
-	_userpic->resize(st::agentPaletteUserpicSize, st::agentPaletteUserpicSize);
 	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
-	_userpic->paintRequest(
-	) | rpl::on_next([=] {
-		auto p = QPainter(_userpic.data());
-		PaintAgentUserpic(
-			p,
-			0,
-			0,
-			_userpic->width(),
-			st::agentPaletteUserpicSize);
-	}, _userpic->lifetime());
 	_view->setComposerOnTop(true);
 	_view->setHintProvider([=] {
 		return openChatHint();
@@ -153,7 +147,7 @@ void PaletteLayer::refreshTitle() {
 	const auto session = _view->session();
 	_open->setVisible(session != nullptr);
 	if (!session) {
-		_title->setText(tr::lng_agent_row_title(tr::now));
+		_title->setText(_manager->chat().name());
 		layoutHeader();
 		return;
 	}
@@ -161,7 +155,7 @@ void PaletteLayer::refreshTitle() {
 	) | rpl::on_next_error_done([=] {
 		const auto &info = session->record().info;
 		_title->setText(info.title.isEmpty()
-			? tr::lng_agent_row_title(tr::now)
+			? _manager->chat().name()
 			: info.title);
 		layoutHeader();
 	}, [](rpl::no_error) {
@@ -169,7 +163,7 @@ void PaletteLayer::refreshTitle() {
 	}, _titleLifetime);
 	const auto &info = session->record().info;
 	_title->setText(info.title.isEmpty()
-		? tr::lng_agent_row_title(tr::now)
+		? _manager->chat().name()
 		: info.title);
 	layoutHeader();
 }

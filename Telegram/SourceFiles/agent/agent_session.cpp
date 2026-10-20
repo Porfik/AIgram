@@ -445,6 +445,7 @@ void Session::dispatch(SendRequest request) {
 	_state.lastEnd.reset();
 
 	const auto weak = base::make_weak(this);
+	message.date = base::unixtime::now();
 	_record.messages.push_back(std::move(message));
 	_recordChanges.fire({});
 	if (!weak) {
@@ -804,10 +805,19 @@ void Session::copyLoopMessages() {
 	}
 	const auto &history = _loop->history();
 	Expects(int(history.size()) >= _loopContext);
+	auto dates = std::vector<qint64>();
+	for (auto i = _loopBase; i < int(_record.messages.size()); ++i) {
+		dates.push_back(_record.messages[i].date);
+	}
+	const auto now = qint64(base::unixtime::now());
 	_record.messages.resize(_loopBase);
 	_record.messages.reserve(_loopBase + history.size() - _loopContext);
 	for (auto i = _loopContext; i < int(history.size()); ++i) {
-		_record.messages.push_back(history[i]);
+		auto &message = _record.messages.emplace_back(history[i]);
+		const auto known = (i - _loopContext);
+		message.date = (known < int(dates.size()) && dates[known])
+			? dates[known]
+			: now;
 	}
 }
 

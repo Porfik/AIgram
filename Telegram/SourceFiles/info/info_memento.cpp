@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "info/info_memento.h"
 
+#include "agent/agent_chat.h"
 #include "agent/ui/agent_panel.h"
 #include "info/global_media/info_global_media_widget.h"
 #include "info/profile/info_profile_widget.h"
@@ -44,6 +45,8 @@ Memento::Memento(not_null<PeerData*> peer)
 	const auto channel = peer->asChannel();
 	return (channel && channel->isCommunity())
 		? Section::Type::Community
+		: Agent::IsAgentPeer(peer)
+		? Section::Type::Agent
 		: Section::Type::Profile;
 }()) {
 }
@@ -192,7 +195,9 @@ std::vector<std::shared_ptr<ContentMemento>> Memento::DefaultStack(
 }
 
 Section Memento::DefaultSection(not_null<PeerData*> peer) {
-	if (peer->savedSublistsInfo()) {
+	if (Agent::IsAgentPeer(peer)) {
+		return Section(Section::Type::Agent);
+	} else if (peer->savedSublistsInfo()) {
 		return Section(Section::Type::SavedSublists);
 	} else if (peer->sharedMediaInfo()) {
 		return Section(Section::MediaType::Photo);

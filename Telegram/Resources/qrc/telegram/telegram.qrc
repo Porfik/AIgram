@@ -26,6 +26,7 @@
     <file alias="ttl/video_message_icon.svg">../../art/ttl/video_message_icon.svg</file>
     <file alias="icons/settings/dino.svg">../../icons/settings/dino.svg</file>
     <file alias="icons/settings/star.svg">../../icons/settings/star.svg</file>
+    <file alias="icons/menu/ai_prompt.svg">../../icons/menu/ai_prompt.svg</file>
     <file alias="icons/settings/starmini.svg">../../icons/settings/starmini.svg</file>
     <file alias="icons/settings/premium_dollar.svg">../../icons/settings/premium_dollar.svg</file>
     <file alias="icons/premium/folder.svg">../../icons/premium/folder.svg</file>
