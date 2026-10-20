@@ -432,6 +432,54 @@ QString FormatTaskTool(const QString &tool) {
 		return tr::lng_agent_task_tool_save_files(tr::now);
 	} else if (tool == u"send_files"_q) {
 		return tr::lng_agent_task_tool_send_files(tr::now);
+	} else if (tool == u"add_members"_q) {
+		return tr::lng_agent_task_tool_add_members(tr::now);
+	} else if (tool == u"remove_members"_q) {
+		return tr::lng_agent_task_tool_remove_members(tr::now);
+	} else if (tool == u"unban_members"_q) {
+		return tr::lng_agent_task_tool_unban_members(tr::now);
+	} else if (tool == u"restrict_members"_q) {
+		return tr::lng_agent_task_tool_restrict_members(tr::now);
+	} else if (tool == u"promote_admins"_q) {
+		return tr::lng_agent_task_tool_promote_admins(tr::now);
+	} else if (tool == u"demote_admins"_q) {
+		return tr::lng_agent_task_tool_demote_admins(tr::now);
+	} else if (tool == u"delete_chat_messages"_q) {
+		return tr::lng_agent_task_tool_delete_chat_messages(tr::now);
+	} else if (tool == u"delete_member_history"_q) {
+		return tr::lng_agent_task_tool_delete_member_history(tr::now);
+	} else if (tool == u"answer_join_requests"_q) {
+		return tr::lng_agent_task_tool_answer_join_requests(tr::now);
+	} else if (tool == u"edit_chat_info"_q) {
+		return tr::lng_agent_task_tool_edit_chat_info(tr::now);
+	} else if (tool == u"set_chat_photo"_q) {
+		return tr::lng_agent_task_tool_set_chat_photo(tr::now);
+	} else if (tool == u"set_chat_permissions"_q) {
+		return tr::lng_agent_task_tool_set_chat_permissions(tr::now);
+	} else if (tool == u"create_chat"_q) {
+		return tr::lng_agent_task_tool_create_chat(tr::now);
+	} else if (tool == u"join_chat"_q) {
+		return tr::lng_agent_task_tool_join_chat(tr::now);
+	} else if (tool == u"leave_chat"_q) {
+		return tr::lng_agent_task_tool_leave_chat(tr::now);
+	} else if (tool == u"add_contact"_q) {
+		return tr::lng_agent_task_tool_add_contact(tr::now);
+	} else if (tool == u"rename_contact"_q) {
+		return tr::lng_agent_task_tool_rename_contact(tr::now);
+	} else if (tool == u"delete_contacts"_q) {
+		return tr::lng_agent_task_tool_delete_contacts(tr::now);
+	} else if (tool == u"set_blocked"_q) {
+		return tr::lng_agent_task_tool_set_blocked(tr::now);
+	} else if (tool == u"update_profile"_q) {
+		return tr::lng_agent_task_tool_update_profile(tr::now);
+	} else if (tool == u"set_profile_photo"_q) {
+		return tr::lng_agent_task_tool_set_profile_photo(tr::now);
+	} else if (tool == u"set_emoji_status"_q) {
+		return tr::lng_agent_task_tool_set_emoji_status(tr::now);
+	} else if (tool == u"create_invite_link"_q
+		|| tool == u"edit_invite_link"_q
+		|| tool == u"revoke_invite_links"_q) {
+		return tr::lng_agent_task_tool_invite_links(tr::now);
 	}
 	return tool;
 }

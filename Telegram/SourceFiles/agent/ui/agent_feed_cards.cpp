@@ -641,12 +641,41 @@ void FeedCardWidget::build() {
 	};
 	_inner->add(object_ptr<Ui::FlatLabel>(
 		_inner,
-		CardTitleText(_card.kind),
+		(_card.kind == CardKind::Change)
+			? _card.text
+			: CardTitleText(_card.kind),
 		st::agentFeedCardTitleLabel));
 	const auto pendingNow = pending();
 	if (_card.kind == CardKind::CreateTask
 		|| _card.kind == CardKind::UpdateTask) {
 		buildTaskRows(pendingNow);
+	}
+	if (_card.kind == CardKind::Change) {
+		const auto wasText = [](const QString &text) {
+			return tr::lng_agent_card_task_was(tr::now, lt_text, text);
+		};
+		for (const auto &row : _card.rows) {
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					row.label,
+					st::agentFeedCardDetailLabel),
+				addGap(gap));
+			_inner->add(
+				object_ptr<Ui::FlatLabel>(
+					_inner,
+					row.value,
+					st::agentFeedTextLabel),
+				addGap(0));
+			if (!row.previous.isEmpty()) {
+				_inner->add(
+					object_ptr<Ui::FlatLabel>(
+						_inner,
+						wasText(row.previous),
+						st::agentFeedCardDetailLabel),
+					addGap(0));
+			}
+		}
 	}
 	if ((_card.kind == CardKind::Forward || _card.kind == CardKind::Action)
 		&& !_card.text.isEmpty()) {
@@ -865,6 +894,9 @@ void FeedCardWidget::build() {
 	}
 	if (pendingNow) {
 		if (_card.kind == CardKind::SendFiles) {
+			buildSendFilesPreview();
+		} else if (_card.kind == CardKind::Change
+			&& !_card.files.empty()) {
 			buildSendFilesPreview();
 		}
 		if (editable()
@@ -1250,6 +1282,7 @@ struct ParsedAction {
 	QString savedPath;
 	QString taskTitle;
 	QString taskState;
+	QString name;
 
 	[[nodiscard]] QString chats() const {
 		return (done.isEmpty() ? failedTitles : done).join(u", "_q);
@@ -1275,6 +1308,7 @@ struct ParsedAction {
 	parsed.taskTitle = object.value("task").toObject()
 		.value("title").toString();
 	parsed.taskState = object.value("state").toString();
+	parsed.name = object.value("name").toString();
 	for (const auto value : object.value("done").toArray()) {
 		const auto entry = value.toObject();
 		const auto title = entry.value("title").toString();
@@ -1390,6 +1424,11 @@ struct ParsedAction {
 			parsed.taskTitle.isEmpty()
 				? input.value("task").toString()
 				: parsed.taskTitle);
+	} else if (name == u"rename_contact"_q) {
+		return tr::lng_agent_action_rename_contact(
+			tr::now,
+			lt_name,
+			parsed.name);
 	}
 	return name;
 }

@@ -140,6 +140,13 @@ constexpr auto kMaxResultChars = 3000;
 	} else if (name == u"get_peer_info"_q) {
 		return tr::lng_agent_tool_get_peer_info(tr::now);
 	} else if (name == u"list_members"_q) {
+		const auto filter = call.input.value(u"filter"_q).toString();
+		if (filter == u"admins"_q) {
+			return tr::lng_agent_tool_list_admins(tr::now);
+		} else if (filter == u"banned"_q
+			|| filter == u"restricted"_q) {
+			return tr::lng_agent_tool_list_banned(tr::now);
+		}
 		return tr::lng_agent_tool_list_members(tr::now);
 	} else if (name == u"list_chats"_q) {
 		return tr::lng_agent_tool_list_chats(tr::now);
@@ -197,6 +204,22 @@ constexpr auto kMaxResultChars = 3000;
 		return tr::lng_agent_tool_list_tasks(tr::now);
 	} else if (name == u"notify"_q) {
 		return tr::lng_agent_tool_notify(tr::now);
+	} else if (name == u"list_invite_links"_q) {
+		return tr::lng_agent_tool_list_invite_links(tr::now);
+	} else if (name == u"list_join_requests"_q) {
+		return tr::lng_agent_tool_list_join_requests(tr::now);
+	} else if (name == u"list_contacts"_q) {
+		return tr::lng_agent_tool_list_contacts(tr::now);
+	} else if (name == u"list_blocked"_q) {
+		return tr::lng_agent_tool_list_blocked(tr::now);
+	} else if (name == u"list_emoji_statuses"_q) {
+		return tr::lng_agent_tool_list_emoji_statuses(tr::now);
+	} else if (name == u"summarize_message"_q) {
+		return tr::lng_agent_tool_summarize(tr::now);
+	} else if (name == u"translate"_q) {
+		return tr::lng_agent_tool_translate(tr::now);
+	} else if (name == u"ai_compose"_q) {
+		return tr::lng_agent_tool_ai_compose(tr::now);
 	}
 	return tr::lng_agent_tool_other(tr::now, lt_name, name);
 }
