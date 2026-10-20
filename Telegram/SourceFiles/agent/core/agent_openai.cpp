@@ -264,6 +264,29 @@ constexpr auto kErrorBodyLimit = 500;
 	return result;
 }
 
+[[nodiscard]] QJsonObject EphemeralCacheControl() {
+	return QJsonObject{ { u"type"_q, u"ephemeral"_q } };
+}
+
+void ApplyClaudeCacheMarks(QJsonObject &root) {
+	root.insert(u"cache_control"_q, EphemeralCacheControl());
+	auto messages = root.value(u"messages"_q).toArray();
+	if (messages.isEmpty()) {
+		return;
+	}
+	auto system = messages[0].toObject();
+	if (system.value(u"role"_q) != u"system"_q) {
+		return;
+	}
+	auto part = QJsonObject();
+	part.insert(u"type"_q, u"text"_q);
+	part.insert(u"text"_q, system.value(u"content"_q).toString());
+	part.insert(u"cache_control"_q, EphemeralCacheControl());
+	system.insert(u"content"_q, QJsonArray{ part });
+	messages[0] = system;
+	root.insert(u"messages"_q, messages);
+}
+
 [[nodiscard]] StopReason StopReasonFor(const QString &reason) {
 	if (reason == u"tool_calls") {
 		return StopReason::ToolUse;
@@ -433,6 +456,10 @@ void Parser::processData(const QByteArray &data) {
 				_usage.cachedInputTokens = details
 					.value(u"cached_tokens"_q).toInt();
 			}
+			if (details.contains(u"cache_write_tokens"_q)) {
+				_usage.cacheWriteTokens = details
+					.value(u"cache_write_tokens"_q).toInt();
+			}
 		}
 		if (const auto cost = object.value(u"cost"_q); cost.isDouble()) {
 			_usage.cost = cost.toDouble();
@@ -549,9 +576,14 @@ HttpRequest Adapter::prepare(const Request &request) const {
 		&& !openRouter
 		&& (QUrl(_settings.baseUrl).host().toLower()
 			== u"api.openai.com"_q);
-	auto body = openAi
-		? SerializeRequestWithCacheKey(adjusted)
-		: SerializeRequest(adjusted);
+	auto root = RequestObject(adjusted);
+	if (openAi) {
+		root.insert(u"prompt_cache_key"_q, adjusted.cacheKey);
+	}
+	if (IsClaudeOnOpenRouter(_settings)) {
+		ApplyClaudeCacheMarks(root);
+	}
+	auto body = QJsonDocument(root).toJson(QJsonDocument::Compact);
 	auto url = SlashJoinedUrl(_settings.baseUrl, u"chat/completions"_q);
 	auto result = HttpRequest();
 	result.url = std::move(url);

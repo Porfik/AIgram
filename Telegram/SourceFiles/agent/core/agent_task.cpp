@@ -180,7 +180,7 @@ qint64 NextFireTime(
 
 namespace {
 
-constexpr auto kTaskVersion = quint32(1);
+constexpr auto kTaskVersion = quint32(2);
 constexpr auto kMaxInnerList = 1'000;
 constexpr auto kMaxSerializedTasks = int(kTaskMaxTasks);
 constexpr auto kMaxSerializedRuns = int(kTaskMaxRuns) * 2;
@@ -456,9 +456,10 @@ void WriteTask(QDataStream &stream, const Task &task) {
 		<< qint64(task.lastSeen)
 		<< qint32(task.spendingDay);
 	WriteTotals(stream, task.spentToday);
+	stream << qint64(task.spentToday.cacheWriteTokens);
 }
 
-std::optional<Task> ReadTask(QDataStream &stream) {
+std::optional<Task> ReadTask(QDataStream &stream, quint32 version) {
 	auto task = Task();
 	auto scopeKind = qint32(0);
 	stream >> task.id >> scopeKind >> task.scope.peer;
@@ -523,6 +524,14 @@ std::optional<Task> ReadTask(QDataStream &stream) {
 	stream >> task.lastSeen >> task.spendingDay;
 	if (!ReadTotals(stream, task.spentToday)) {
 		return std::nullopt;
+	}
+	if (version >= 2) {
+		auto cacheWrites = qint64(0);
+		stream >> cacheWrites;
+		if (stream.status() != QDataStream::Ok || cacheWrites < 0) {
+			return std::nullopt;
+		}
+		task.spentToday.cacheWriteTokens = cacheWrites;
 	}
 	return task;
 }
@@ -1260,10 +1269,11 @@ std::optional<Task> DeserializeTask(const QByteArray &bytes) {
 	auto version = quint32(0);
 	stream >> version;
 	if (stream.status() != QDataStream::Ok
-		|| version != kTaskVersion) {
+		|| version < 1
+		|| version > kTaskVersion) {
 		return std::nullopt;
 	}
-	auto result = ReadTask(stream);
+	auto result = ReadTask(stream, version);
 	if (!result || !stream.atEnd()) {
 		return std::nullopt;
 	}
@@ -1288,7 +1298,8 @@ std::optional<std::vector<Task>> DeserializeTasks(
 	auto version = quint32(0);
 	stream >> version;
 	if (stream.status() != QDataStream::Ok
-		|| version != kTaskVersion) {
+		|| version < 1
+		|| version > kTaskVersion) {
 		return std::nullopt;
 	}
 	const auto count = ReadCount(stream, kMaxSerializedTasks);
@@ -1298,7 +1309,7 @@ std::optional<std::vector<Task>> DeserializeTasks(
 	auto tasks = std::vector<Task>();
 	tasks.reserve(*count);
 	for (auto i = 0; i != *count; ++i) {
-		auto task = ReadTask(stream);
+		auto task = ReadTask(stream, version);
 		if (!task) {
 			return std::nullopt;
 		}
@@ -1323,9 +1334,10 @@ void WriteRun(QDataStream &stream, const TaskRun &run) {
 		<< run.usage.cost
 		<< qint32(run.usage.hasCost ? 1 : 0);
 	stream << run.error;
+	stream << qint32(run.usage.cacheWriteTokens);
 }
 
-std::optional<TaskRun> ReadRun(QDataStream &stream) {
+std::optional<TaskRun> ReadRun(QDataStream &stream, quint32 version) {
 	auto run = TaskRun();
 	auto kind = qint32(0);
 	auto missed = qint32(0);
@@ -1361,6 +1373,14 @@ std::optional<TaskRun> ReadRun(QDataStream &stream) {
 	run.usage = Usage{ input, output, cached };
 	run.usage.cost = cost;
 	run.usage.hasCost = (hasCost != 0);
+	if (version >= 2) {
+		auto cacheWrites = qint32(0);
+		stream >> cacheWrites;
+		if (stream.status() != QDataStream::Ok || cacheWrites < 0) {
+			return std::nullopt;
+		}
+		run.usage.cacheWriteTokens = cacheWrites;
+	}
 	return run;
 }
 
@@ -1382,7 +1402,8 @@ std::optional<std::vector<TaskRun>> DeserializeRuns(
 	auto version = quint32(0);
 	stream >> version;
 	if (stream.status() != QDataStream::Ok
-		|| version != kTaskVersion) {
+		|| version < 1
+		|| version > kTaskVersion) {
 		return std::nullopt;
 	}
 	const auto count = ReadCount(stream, kMaxSerializedRuns);
@@ -1392,7 +1413,7 @@ std::optional<std::vector<TaskRun>> DeserializeRuns(
 	auto runs = std::vector<TaskRun>();
 	runs.reserve(*count);
 	for (auto i = 0; i != *count; ++i) {
-		auto run = ReadRun(stream);
+		auto run = ReadRun(stream, version);
 		if (!run) {
 			return std::nullopt;
 		}

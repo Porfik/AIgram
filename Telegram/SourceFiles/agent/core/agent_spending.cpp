@@ -13,11 +13,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QIODevice>
 
 #include <algorithm>
+#include <cmath>
 
 namespace Agent {
 namespace {
 
-constexpr auto kSpendingVersion = quint32(1);
+constexpr auto kSpendingVersion = quint32(2);
 constexpr auto kMaxDays = 1'000'000;
 
 constexpr auto kTokensPerMillion = 1'000'000.;
@@ -26,6 +27,7 @@ void AddTotals(SpendingTotals &to, const SpendingTotals &from) {
 	to.inputTokens += from.inputTokens;
 	to.outputTokens += from.outputTokens;
 	to.cachedInputTokens += from.cachedInputTokens;
+	to.cacheWriteTokens += from.cacheWriteTokens;
 	to.cost += from.cost;
 	to.hasCost = to.hasCost || from.hasCost;
 	to.requests += from.requests;
@@ -50,7 +52,10 @@ void MoveOldDays(SpendingStats &stats) {
 	}
 }
 
-void WriteTotals(QDataStream &stream, const SpendingTotals &totals) {
+void WriteTotals(
+		QDataStream &stream,
+		const SpendingTotals &totals,
+		quint32 version) {
 	stream
 		<< qint64(totals.inputTokens)
 		<< qint64(totals.outputTokens)
@@ -58,9 +63,15 @@ void WriteTotals(QDataStream &stream, const SpendingTotals &totals) {
 		<< totals.cost
 		<< qint32(totals.hasCost ? 1 : 0)
 		<< qint32(totals.requests);
+	if (version >= 2) {
+		stream << qint64(totals.cacheWriteTokens);
+	}
 }
 
-[[nodiscard]] bool ReadTotals(QDataStream &stream, SpendingTotals &totals) {
+[[nodiscard]] bool ReadTotals(
+		QDataStream &stream,
+		SpendingTotals &totals,
+		quint32 version) {
 	auto input = qint64(0);
 	auto output = qint64(0);
 	auto cached = qint64(0);
@@ -81,6 +92,14 @@ void WriteTotals(QDataStream &stream, const SpendingTotals &totals) {
 	totals.cachedInputTokens = cached;
 	totals.hasCost = (hasCost != 0);
 	totals.requests = requests;
+	if (version >= 2) {
+		auto cacheWrites = qint64(0);
+		stream >> cacheWrites;
+		if (stream.status() != QDataStream::Ok || cacheWrites < 0) {
+			return false;
+		}
+		totals.cacheWriteTokens = cacheWrites;
+	}
 	return true;
 }
 
@@ -90,6 +109,7 @@ void SpendingTotals::add(const Usage &usage) {
 	inputTokens += usage.inputTokens;
 	outputTokens += usage.outputTokens;
 	cachedInputTokens += usage.cachedInputTokens;
+	cacheWriteTokens += usage.cacheWriteTokens;
 	if (usage.hasCost) {
 		cost += usage.cost;
 		hasCost = true;
@@ -114,17 +134,24 @@ Usage PriceUsage(Usage usage, const ProviderSettings &provider) {
 		return usage;
 	} else if (provider.priceInput <= 0.
 		&& provider.priceOutput <= 0.
-		&& provider.priceCached <= 0.) {
+		&& provider.priceCached <= 0.
+		&& provider.priceCacheWrite <= 0.) {
 		return usage;
 	}
 	const auto uncached = std::max(
-		usage.inputTokens - usage.cachedInputTokens,
+		usage.inputTokens
+			- usage.cachedInputTokens
+			- usage.cacheWriteTokens,
 		0);
 	const auto cachedPrice = provider.priceCached > 0.
 		? provider.priceCached
 		: provider.priceInput;
+	const auto cacheWritePrice = provider.priceCacheWrite > 0.
+		? provider.priceCacheWrite
+		: provider.priceInput;
 	auto cost = (double(uncached) * provider.priceInput
 		+ double(usage.cachedInputTokens) * cachedPrice
+		+ double(usage.cacheWriteTokens) * cacheWritePrice
 		+ double(usage.outputTokens) * provider.priceOutput)
 		/ kTokensPerMillion;
 	usage.cost = cost;
@@ -133,7 +160,11 @@ Usage PriceUsage(Usage usage, const ProviderSettings &provider) {
 }
 
 int CachedPercent(const SpendingTotals &totals) {
-	return 0;
+	if (totals.inputTokens <= 0) {
+		return 0;
+	}
+	return int(std::lround(
+		totals.cachedInputTokens * 100. / totals.inputTokens));
 }
 
 void AddSpending(SpendingStats &stats, int day, const Usage &usage) {
@@ -179,11 +210,11 @@ QByteArray SerializeSpending(const SpendingStats &stats) {
 	QDataStream stream(&result, QIODevice::WriteOnly);
 	stream.setVersion(QDataStream::Qt_5_1);
 	stream << kSpendingVersion;
-	WriteTotals(stream, stats.older);
+	WriteTotals(stream, stats.older, kSpendingVersion);
 	stream << qint32(stats.days.size());
 	for (const auto &bucket : stats.days) {
 		stream << qint32(bucket.day);
-		WriteTotals(stream, bucket.totals);
+		WriteTotals(stream, bucket.totals, kSpendingVersion);
 	}
 	return result;
 }
@@ -194,11 +225,12 @@ std::optional<SpendingStats> DeserializeSpending(const QByteArray &bytes) {
 	auto version = quint32(0);
 	stream >> version;
 	if (stream.status() != QDataStream::Ok
-		|| version != kSpendingVersion) {
+		|| version < 1
+		|| version > kSpendingVersion) {
 		return std::nullopt;
 	}
 	auto stats = SpendingStats();
-	if (!ReadTotals(stream, stats.older)) {
+	if (!ReadTotals(stream, stats.older, version)) {
 		return std::nullopt;
 	}
 	auto dayCount = qint32(0);
@@ -215,7 +247,7 @@ std::optional<SpendingStats> DeserializeSpending(const QByteArray &bytes) {
 		auto bucket = SpendingDay();
 		stream >> day;
 		if (stream.status() != QDataStream::Ok
-			|| !ReadTotals(stream, bucket.totals)
+			|| !ReadTotals(stream, bucket.totals, version)
 			|| (i > 0 && day <= previousDay)) {
 			return std::nullopt;
 		}

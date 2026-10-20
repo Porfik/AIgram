@@ -17,8 +17,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(7);
-constexpr auto kIndexVersion = qint32(5);
+constexpr auto kSessionVersion = qint32(8);
+constexpr auto kIndexVersion = qint32(6);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
 constexpr auto kMaxBlocks = 1'000'000;
@@ -60,7 +60,11 @@ void WriteBlock(QDataStream &stream, const MediaBlock &block) {
 }
 
 void WriteBlock(QDataStream &stream, const ThinkingBlock &block) {
-	stream << quint8(BlockTag::Thinking) << block.text << block.signature;
+	stream
+		<< quint8(BlockTag::Thinking)
+		<< block.text
+		<< block.signature
+		<< qint32(block.redacted ? 1 : 0);
 }
 
 void WriteBlock(QDataStream &stream, const ToolUseBlock &block) {
@@ -162,7 +166,18 @@ std::optional<Block> ReadBlock(QDataStream &stream, qint32 version) {
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
 		}
-		return ThinkingBlock{ text, signature };
+		auto block = ThinkingBlock{ text, signature };
+		if (version >= 8) {
+			auto redacted = qint32(0);
+			stream >> redacted;
+			if (stream.status() != QDataStream::Ok
+				|| redacted < 0
+				|| redacted > 1) {
+				return std::nullopt;
+			}
+			block.redacted = (redacted != 0);
+		}
+		return block;
 	}
 	case BlockTag::ToolUse: {
 		auto bytes = QByteArray();
@@ -558,6 +573,7 @@ QByteArray SerializeSession(const SessionRecord &record) {
 		}
 	}
 	stream << record.info.profileId;
+	stream << qint32(record.info.usage.cacheWriteTokens);
 	return result;
 }
 
@@ -676,6 +692,14 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 			return std::nullopt;
 		}
 	}
+	if (version >= 8) {
+		auto cacheWrites = qint32(0);
+		stream >> cacheWrites;
+		if (stream.status() != QDataStream::Ok || cacheWrites < 0) {
+			return std::nullopt;
+		}
+		record.info.usage.cacheWriteTokens = cacheWrites;
+	}
 	if (!stream.atEnd()) {
 		return std::nullopt;
 	}
@@ -694,7 +718,8 @@ QByteArray SerializeIndex(const std::vector<SessionInfo> &list) {
 			<< info.preview
 			<< qint32(info.previewOutgoing ? 1 : 0)
 			<< qint32(info.attachments)
-			<< info.profileId;
+			<< info.profileId
+			<< qint32(info.usage.cacheWriteTokens);
 	}
 	return result;
 }
@@ -754,6 +779,14 @@ std::optional<std::vector<SessionInfo>> DeserializeIndex(
 			if (stream.status() != QDataStream::Ok) {
 				return std::nullopt;
 			}
+		}
+		if (version >= 6) {
+			auto cacheWrites = qint32(0);
+			stream >> cacheWrites;
+			if (stream.status() != QDataStream::Ok || cacheWrites < 0) {
+				return std::nullopt;
+			}
+			info->usage.cacheWriteTokens = cacheWrites;
 		}
 		list.push_back(std::move(*info));
 	}
