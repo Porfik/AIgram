@@ -540,6 +540,9 @@ HttpRequest Adapter::prepare(const Request &request) const {
 	if (adjusted.model.isEmpty()) {
 		adjusted.model = _settings.model;
 	}
+	if (IsOpenRouter(_settings)) {
+		adjusted.ignoredRoutes = _settings.ignoredRoutes;
+	}
 	const auto key = adjusted.cacheKey;
 	const auto openRouter = !key.isEmpty() && IsOpenRouter(_settings);
 	const auto openAi = !key.isEmpty()
@@ -588,6 +591,15 @@ QJsonObject RequestObject(const Request &request) {
 	auto streamOptions = QJsonObject();
 	streamOptions.insert(u"include_usage"_q, true);
 	root.insert(u"stream_options"_q, streamOptions);
+	if (!request.ignoredRoutes.empty()) {
+		auto ignore = QJsonArray();
+		for (const auto &route : request.ignoredRoutes) {
+			ignore.append(route);
+		}
+		auto provider = QJsonObject();
+		provider.insert(u"ignore"_q, ignore);
+		root.insert(u"provider"_q, provider);
+	}
 	if (request.maxOutputTokens > 0) {
 		root.insert(u"max_tokens"_q, request.maxOutputTokens);
 	}

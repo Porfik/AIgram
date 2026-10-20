@@ -952,7 +952,39 @@ namespace {
 			}
 			return QString();
 		} },
-		{ u"openai_serialize_request_media_kinds"_q, [] {
+		{ u"openai_prepare_ignored_routes"_q, [] {
+		auto request = Request();
+		request.cacheKey = u"0123456789abcdef"_q;
+		auto settings = ProviderSettings();
+		settings.baseUrl = u"https://openrouter.ai/api/v1"_q;
+		settings.ignoredRoutes = { u"InferenceNet"_q, u"Novita"_q };
+		const auto document = QJsonDocument::fromJson(
+			OpenAi::Adapter(settings).prepare(request).body);
+		const auto ignore = document.object()
+			.value("provider").toObject()
+			.value("ignore").toArray();
+		if (ignore.size() != 2
+			|| ignore[0].toString() != u"InferenceNet"_q
+			|| ignore[1].toString() != u"Novita"_q) {
+			return u"expected provider.ignore InferenceNet, Novita"_q;
+		}
+		auto plain = settings;
+		plain.ignoredRoutes.clear();
+		const auto without = QJsonDocument::fromJson(
+			OpenAi::Adapter(plain).prepare(request).body).object();
+		if (without.contains("provider")) {
+			return u"no routes must mean no provider key"_q;
+		}
+		plain.ignoredRoutes = { u"InferenceNet"_q };
+		plain.baseUrl = u"https://api.openai.com/v1"_q;
+		const auto other = QJsonDocument::fromJson(
+			OpenAi::Adapter(plain).prepare(request).body).object();
+		if (other.contains("provider")) {
+			return u"a non-OpenRouter provider must not send routes"_q;
+		}
+		return QString();
+	} },
+	{ u"openai_serialize_request_media_kinds"_q, [] {
 			auto request = Request();
 			request.model = u"m"_q;
 			request.messages.push_back(Message{
