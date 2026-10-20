@@ -1515,6 +1515,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_failed" = "Failed";
 "lng_agent_card_not_done" = "Not done: the app was closed";
 "lng_agent_card_auto" = "Allowed for this request";
+"lng_agent_card_auto_task" = "Allowed by the task";
 "lng_agent_card_edited" = "Edited by you";
 "lng_agent_card_handoff_about" = "The general agent will get this session as context.";
 "lng_agent_card_handoff_button" = "Continue in the general agent";
