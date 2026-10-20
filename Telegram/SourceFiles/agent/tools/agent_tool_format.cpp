@@ -160,8 +160,14 @@ QString MediaDescription(not_null<HistoryItem*> item) {
 		const auto withDuration = duration
 			? u" %1"_q.arg(FormatDuration(duration))
 			: QString();
-		if (document->isVoiceMessage()) {
+		if (document->isVideoMessage()) {
+			return u"round video%1"_q.arg(withDuration);
+		} else if (document->isVoiceMessage()) {
 			return u"voice message%1"_q.arg(withDuration);
+		} else if (document->isAudioFile()) {
+			return u"audio %1%2"_q.arg(document->filename(), withDuration);
+		} else if (document->isImage()) {
+			return u"image file %1"_q.arg(document->filename());
 		} else if (document->isAnimation()) {
 			return u"GIF%1"_q.arg(withDuration);
 		} else if (document->isVideoFile()) {

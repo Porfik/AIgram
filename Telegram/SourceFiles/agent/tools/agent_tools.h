@@ -79,15 +79,23 @@ private:
 	void deliver(
 		const QString &toolUseId,
 		QString content,
-		bool error);
+		bool error,
+		std::vector<MediaBlock> media = {});
 	void deliver(
 		const QString &toolUseId,
 		QString content,
 		bool error,
-		bool untrusted);
+		bool untrusted,
+		std::vector<MediaBlock> media = {});
 	void deliverJson(
 		const QString &toolUseId,
-		QJsonObject json);
+		QJsonObject json,
+		std::vector<MediaBlock> media = {});
+	void askMediaModel(
+		not_null<PendingCall*> call,
+		MediaBlock media,
+		QString question,
+		Fn<void(QString text, QString error)> done);
 
 	const not_null<Main::Session*> _session;
 	const not_null<PolicyGate*> _gate;

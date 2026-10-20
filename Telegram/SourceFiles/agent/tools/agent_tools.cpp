@@ -7,7 +7,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/tools/agent_tools.h"
 
+#include "agent/agent_attachments.h"
+#include "agent/agent_manager.h"
 #include "agent/core/agent_context.h"
+#include "agent/core/agent_media.h"
+#include "agent/core/agent_request.h"
 #include "agent/tools/agent_tool_table.h"
 #include "base/algorithm.h"
 #include "crl/crl_on_main.h"
@@ -24,6 +28,57 @@ namespace Agent {
 namespace {
 
 const auto kFoldersGroup = u"folders"_q;
+const auto kFilesGroup = u"files"_q;
+
+struct CallAbilities {
+	MediaAbilities main;
+	std::optional<MediaAbilities> helper;
+};
+
+[[nodiscard]] CallAbilities ComputeAbilities(
+		not_null<Main::Session*> session) {
+	const auto &manager = session->agent();
+	auto result = CallAbilities();
+	if (const auto provider = ActiveProvider(manager.providers())) {
+		result.main = manager.abilities(*provider);
+		result.main.files = result.main.files || IsOpenRouter(*provider);
+	}
+	if (const auto provider = manager.mediaProvider()) {
+		result.helper = manager.abilities(*provider);
+	}
+	return result;
+}
+
+[[nodiscard]] bool NeedsMet(MediaNeed needs, const CallAbilities &abilities) {
+	switch (needs) {
+	case MediaNeed::None: return true;
+	case MediaNeed::Images:
+		return ChooseMediaRoute(
+			MediaKind::Image,
+			abilities.main,
+			abilities.helper) != MediaRoute::None;
+	case MediaNeed::Audio:
+		return ChooseMediaRoute(
+			MediaKind::Audio,
+			abilities.main,
+			abilities.helper) != MediaRoute::None;
+	}
+	Unexpected("MediaNeed in NeedsMet.");
+}
+
+[[nodiscard]] QString GroupToolNames(const QString &group) {
+	auto names = QStringList();
+	const auto collect = [&](const std::vector<ToolEntry> &entries) {
+		for (const auto &entry : entries) {
+			if (entry.group == group) {
+				names.push_back(entry.name);
+			}
+		}
+	};
+	collect(FolderTools::Entries());
+	collect(FileTools::Entries());
+	return names.join(u", "_q);
+}
 
 QString DenyText(Decision decision) {
 	if (decision.verdict == Verdict::Confirm) {
@@ -87,11 +142,11 @@ QString DenyText(Decision decision) {
 ToolEntry LoadToolsEntry() {
 	auto properties = QJsonObject();
 	properties.insert("group", StringProperty(
-		u"The tool group to load. The only group is \"folders\"."_q));
-	auto description = u"Load an additional group of tools. The only"
-		" group is \"folders\": list_folders, create_folder,"
-		" rename_folder, set_folder_chats, reorder_folders and"
-		" delete_folder."_q;
+		u"The tool group to load: \"folders\" or \"files\"."_q));
+	auto description = u"Load an additional group of tools."
+		" \"folders\": %1. \"files\": %2."_q.arg(
+			GroupToolNames(kFoldersGroup),
+			GroupToolNames(kFilesGroup));
 	return ToolEntry{
 		.name = u"load_tools"_q,
 		.description = description,
@@ -176,9 +231,11 @@ ToolRegistry::~ToolRegistry() {
 std::vector<ToolSpec> ToolRegistry::tools() const {
 	const auto account = (_gate->scope().kind == ScopeKind::Account);
 	const auto &table = ToolsTable();
+	const auto abilities = ComputeAbilities(_session);
 	auto result = std::vector<ToolSpec>();
 	const auto add = [&](const ToolEntry &entry) {
-		if (!_gate->available(entry.policy)) {
+		if (!_gate->available(entry.policy)
+			|| !NeedsMet(entry.needs, abilities)) {
 			return;
 		}
 		result.push_back(ToolSpec{
@@ -261,7 +318,30 @@ void ToolRegistry::execute(
 	pending->loadGroup = [this, id = call.id](QString group) {
 		loadGroup(id, std::move(group));
 	};
+	pending->sessionId = _sessionId;
+	const auto abilities = ComputeAbilities(_session);
+	pending->mainAbilities = abilities.main;
+	pending->helperAbilities = abilities.helper;
+	pending->doneMedia = [this, id = call.id](
+			QJsonObject json,
+			std::vector<MediaBlock> media) {
+		deliverJson(id, std::move(json), std::move(media));
+	};
+	pending->readAttachment = [session = _session, sessionId = _sessionId](
+			QString id) {
+		return session->agent().attachments().read(sessionId, id);
+	};
 	const auto raw = pending.get();
+	pending->askMediaModel = [this, raw](
+			MediaBlock media,
+			QString question,
+			Fn<void(QString text, QString error)> done) {
+		askMediaModel(
+			raw,
+			std::move(media),
+			std::move(question),
+			std::move(done));
+	};
 	_pending.emplace(call.id, std::move(pending));
 	auto &meta = _calls[call.id];
 	meta.tool = entry.name;
@@ -383,12 +463,12 @@ void ToolRegistry::confirmCall(
 	call.execute = std::move(execute);
 	card.toolUseId = toolUseId;
 	card.status = CardStatus::Pending;
-	if (card.kind == CardKind::Draft) {
+	if (CardAlwaysAsks(card.kind)) {
 		call.canAllowForTurn = false;
 	}
 	card.canAllowForTurn = call.canAllowForTurn;
 	const auto autoApproved = (call.verdict == Verdict::Allow)
-		&& (card.kind != CardKind::Draft);
+		&& !CardAlwaysAsks(card.kind);
 	if (autoApproved) {
 		card.autoApproved = true;
 		card.status = CardStatus::Running;
@@ -441,11 +521,11 @@ void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
 	if (!_pending.contains(toolUseId)) {
 		return;
 	}
-	if (group.isEmpty() || group != kFoldersGroup) {
+	if (group != kFoldersGroup && group != kFilesGroup) {
 		deliver(
 			toolUseId,
-			u"Unknown tool group: %1. The only group is \"folders\"."_q
-				.arg(group.isEmpty() ? u"(empty)"_q : group),
+			u"Unknown tool group: %1. The groups are \"folders\" and"
+			" \"files\"."_q.arg(group.isEmpty() ? u"(empty)"_q : group),
 			true);
 		return;
 	}
@@ -586,7 +666,8 @@ void ToolRegistry::cancel(const QString &toolUseId) {
 void ToolRegistry::deliver(
 		const QString &toolUseId,
 		QString content,
-		bool error) {
+		bool error,
+		std::vector<MediaBlock> media) {
 	if (!_pending.contains(toolUseId)) {
 		return;
 	}
@@ -595,26 +676,37 @@ void ToolRegistry::deliver(
 	if (c != _calls.end()) {
 		_calls.erase(c);
 	}
-	if (call.hasCard
-		&& (call.card.status == CardStatus::Pending
-			|| call.card.status == CardStatus::Running)) {
-		auto card = call.card;
-		card.status = CardStatus::Failed;
-		_cardUpdates.fire_copy(card);
-	}
-	if (!error && (call.verdict == Verdict::Confirm || call.hasCard)) {
+	if (!error && !call.approved
+		&& (call.verdict == Verdict::Confirm || call.hasCard)) {
 		LOG(("Agent Warning: tool %1 finished the call %2 not through an"
 			" approved card.").arg(call.tool, toolUseId));
 		error = true;
 	}
-	deliver(toolUseId, std::move(content), error, call.untrusted);
+	if (call.hasCard && !CardFinal(call.card.status)) {
+		auto card = call.card;
+		card.status = (call.approved && !error)
+			? CardStatus::Done
+			: CardStatus::Failed;
+		const auto weak = base::make_weak(this);
+		_cardUpdates.fire_copy(card);
+		if (!weak) {
+			return;
+		}
+	}
+	deliver(
+		toolUseId,
+		std::move(content),
+		error,
+		call.untrusted,
+		std::move(media));
 }
 
 void ToolRegistry::deliver(
 		const QString &toolUseId,
 		QString content,
 		bool error,
-		bool untrusted) {
+		bool untrusted,
+		std::vector<MediaBlock> media) {
 	const auto i = _pending.find(toolUseId);
 	if (i == _pending.end()) {
 		return;
@@ -631,6 +723,7 @@ void ToolRegistry::deliver(
 		.toolUseId = toolUseId,
 		.content = std::move(content),
 		.error = error,
+		.media = error ? std::vector<MediaBlock>() : std::move(media),
 	});
 	if (_undo.contains(toolUseId)) {
 		_finished.emplace(toolUseId, std::move(entry));
@@ -641,12 +734,58 @@ void ToolRegistry::deliver(
 
 void ToolRegistry::deliverJson(
 		const QString &toolUseId,
-		QJsonObject json) {
+		QJsonObject json,
+		std::vector<MediaBlock> media) {
 	deliver(
 		toolUseId,
 		QString::fromUtf8(
 			QJsonDocument(std::move(json)).toJson(QJsonDocument::Compact)),
-		false);
+		false,
+		std::move(media));
+}
+
+void ToolRegistry::askMediaModel(
+		not_null<PendingCall*> call,
+		MediaBlock media,
+		QString question,
+		Fn<void(QString text, QString error)> done) {
+	const auto provider = _session->agent().mediaProvider();
+	auto adapter = provider ? CreateAdapter(*provider) : nullptr;
+	if (!adapter) {
+		done(QString(), u"No media model is set up."_q);
+		return;
+	}
+	const auto settings = *provider;
+	const auto weak = base::make_weak(this);
+	const auto holder = call->lifetime.make_state<
+		std::unique_ptr<SingleRequest>>();
+	*holder = std::make_unique<SingleRequest>(
+		std::move(adapter),
+		&_session->agent().transport(),
+		HelperRequest(settings.model, std::move(media), question),
+		[=, done = std::move(done)](Response response) {
+			if (!weak) {
+				return;
+			}
+			_helperUsage.fire({ response.usage, settings });
+			if (!weak) {
+				return;
+			} else if (response.error) {
+				done(
+					QString(),
+					u"The media model failed: %1"_q.arg(
+						response.error->text.isEmpty()
+							? ErrorKindName(response.error->kind)
+							: response.error->text));
+				return;
+			}
+			const auto text = ResponseText(response.message).trimmed();
+			if (text.isEmpty()) {
+				done(QString(), u"The media model gave no answer."_q);
+			} else {
+				done(text, QString());
+			}
+		});
 }
 
 } // namespace Agent
