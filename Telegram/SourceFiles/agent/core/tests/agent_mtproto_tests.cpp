@@ -279,6 +279,51 @@ std::vector<Check> MtprotoChecks() {
 			}
 			return QString();
 		} },
+		{ u"mtproto_describe_caps"_q, [] {
+			auto text = QString(u"---types---\n"_q);
+			for (auto i = 0; i != 21; ++i) {
+				text += u"t%1#%2 = T%3;\n"_q.arg(
+					QString::number(i),
+					QString::number(0x0a000001 + i, 16),
+					QString::number(i));
+			}
+			for (auto i = 0; i != 13; ++i) {
+				text += u"c%1#%2 x:int = C;\n"_q.arg(
+					QString::number(i),
+					QString::number(0x0b000001 + i, 16));
+			}
+			text += u"---functions---\ncap.call#0c000001 c:C "_q;
+			for (auto i = 0; i != 21; ++i) {
+				text += u"p%1:T%2 "_q.arg(
+					QString::number(i),
+					QString::number(i));
+			}
+			text += u"= Ok;\n"_q;
+			const auto parsed = Parse(text.toUtf8());
+			if (!parsed.schema) {
+				return u"a caps schema must parse: "_q + parsed.error;
+			}
+			auto error = QString();
+			auto result = DescribeTl(*parsed.schema, u"C"_q, error);
+			if (!result) {
+				return error;
+			} else if (!result->contains(u"c11{x: int} | ..."_q)) {
+				return u"a type line must stop at 12 constructors:\n"_q
+					+ *result;
+			}
+			result = DescribeTl(*parsed.schema, u"cap.call"_q, error);
+			if (!result) {
+				return error;
+			} else if (!result->contains(
+				u"More types are involved: describe a type to see them."_q)) {
+				return u"a description must stop at 20 types:\n"_q + *result;
+			} else if (result->contains(u"T19: "_q)) {
+				return u"only 20 types must be shown:\n"_q + *result;
+			} else if (!result->contains(u"C: c0{x: int}"_q)) {
+				return u"the first type must be shown:\n"_q + *result;
+			}
+			return QString();
+		} },
 	};
 }
 

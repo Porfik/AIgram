@@ -55,6 +55,8 @@ struct Parsed {
 		"test.bool#a2b2c3d4 b:Bool = Ok;\n"
 		"test.only#b2b2c3d4 o:Only = Ok;\n"
 		"test.peers#c2b2c3d4 p:Vector<InputPeer> = Ok;\n"
+		"test.dbl#e2b2c3d4 d:double = Ok;\n"
+		"test.hex#c3b2c3d4 i256:int256 = Ok;\n"
 		"test.gen#d2b2c3d4 {X:Type} q:!X = X;\n"));
 }
 
@@ -1095,6 +1097,126 @@ std::vector<Check> TlChecks() {
 				return u"a visible peer must stay"_q;
 			}
 			return QString();
+		} },
+		{ u"tl_schema_utilities"_q, [] {
+			if (!TlIsBuiltinType(u"int"_q) || !TlIsBuiltinType(u"long"_q)
+				|| !TlIsBuiltinType(u"double"_q)
+				|| !TlIsBuiltinType(u"string"_q)
+				|| !TlIsBuiltinType(u"bytes"_q)
+				|| !TlIsBuiltinType(u"int128"_q)
+				|| !TlIsBuiltinType(u"int256"_q)
+				|| !TlIsBuiltinType(u"Bool"_q)
+				|| !TlIsBuiltinType(u"true"_q)
+				|| !TlIsBuiltinType(u"#"_q)
+				|| TlIsBuiltinType(u"InputPeer"_q)) {
+				return u"unexpected builtin types"_q;
+			}
+			if (TlVectorItem(u"Vector<User>"_q) != u"User"_q
+				|| TlVectorItem(u"vector<int>"_q) != u"int"_q
+				|| TlVectorItem(u"InputPeer"_q)) {
+				return u"unexpected vector items"_q;
+			}
+			if (!TlIsBareType(u"int"_q) || TlIsBareType(u"Bool"_q)
+				|| !TlIsBareType(u"vector<int>"_q)
+				|| TlIsBareType(u"Vector<int>"_q)
+				|| TlIsBareType(u"updates.State"_q)
+				|| !TlIsBareType(u"peerUser"_q)) {
+				return u"unexpected bare types"_q;
+			}
+			return QString();
+		} },
+		{ u"tl_duplicate_wins"_q, [] {
+			const auto parsed = Parse(QByteArray(
+				"---types---\n"
+				"dup.a#00000001 x:int = Dup;\n"
+				"dup.b#00000002 = Dup;\n"
+				"dup.a#00000001 y:int = Dup;\n"));
+			if (!parsed.schema) {
+				return u"a schema must parse: "_q + parsed.error;
+			}
+			const auto first = parsed.schema->constructor(u"dup.a"_q);
+			if (!first || first->params.size() != 1
+				|| first->params[0].name != u"y"_q) {
+				return u"the later name must win"_q;
+			} else if (parsed.schema->constructor(0x00000001) != first) {
+				return u"the later id must win"_q;
+			} else if (parsed.schema->constructorsOf(u"Dup"_q).size() != 3) {
+				return u"both constructors must be listed"_q;
+			}
+			return QString();
+		} },
+		{ u"tl_encode_double_and_int256"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			auto check = EncodeBytes(
+				*parsed.schema,
+				u"test.dbl"_q,
+				QJsonObject{ { u"d"_q, 1.5 } },
+				TlRefs(),
+				QByteArray::fromHex("d4c3b2e2" "000000000000f83f"));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = DecodeOk(
+				*parsed.schema,
+				u"double"_q,
+				QByteArray::fromHex("000000000000f83f"),
+				QJsonValue(1.5));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = EncodeBytes(
+				*parsed.schema,
+				u"test.hex"_q,
+				QJsonObject{ { u"i256"_q,
+					u"00112233445566778899aabbccddeeff"_q
+						+ u"00112233445566778899aabbccddeeff"_q } },
+				TlRefs(),
+				QByteArray::fromHex("d4c3b2c3"
+					"00112233445566778899aabbccddeeff"
+					"00112233445566778899aabbccddeeff"));
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeOk(
+				*parsed.schema,
+				u"int256"_q,
+				QByteArray::fromHex("00112233445566778899aabbccddeeff"
+					"00112233445566778899aabbccddeeff"),
+				QJsonValue(u"00112233445566778899aabbccddeeff"
+					"00112233445566778899aabbccddeeff"_q));
+		} },
+		{ u"tl_encode_more_errors"_q, [] {
+			const auto parsed = CodecSchema();
+			if (!parsed.schema) {
+				return u"codec schema must parse: "_q + parsed.error;
+			}
+			auto check = EncodeFail(
+				*parsed.schema,
+				u"test.raw"_q,
+				QJsonObject{ { u"l"_q, 1.5 },
+					{ u"by"_q, u""_q }, { u"h"_q, u""_q } },
+				TlRefs(),
+				u"params.l: expected an integer"_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			check = EncodeFail(
+				*parsed.schema,
+				u"test.hex"_q,
+				QJsonObject{ { u"i256"_q, QString(64, 'z') } },
+				TlRefs(),
+				u"params.i256: invalid hex"_q);
+			if (!check.isEmpty()) {
+				return check;
+			}
+			return DecodeFail(
+				*parsed.schema,
+				u"Obj"_q,
+				QByteArray::fromHex("a1cf7230" "00000000"),
+				u"Unknown constructor 0x3072cfa1."_q);
 		} },
 	};
 }
