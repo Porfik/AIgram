@@ -119,6 +119,7 @@ private:
 	[[nodiscard]] QString spendingText() const;
 	[[nodiscard]] QString noteText() const;
 	[[nodiscard]] TimeId messageDate(int index) const;
+	[[nodiscard]] std::vector<FullMsgId> passedMessages(int index);
 	void updateControlsGeometry();
 	void updateInnerVisibleArea();
 	void refreshNaturalHeight();
@@ -213,6 +214,7 @@ private:
 	std::unique_ptr<ChatItems> _items;
 	LiveTail _tail;
 	std::vector<ChatMessage> _messages;
+	base::flat_set<FullMsgId> _requestedPassed;
 	object_ptr<QueueStrip> _queueStrip;
 	object_ptr<::Ui::ElasticScroll> _scroll;
 	QPointer<::HistoryView::ListWidget> _inner;

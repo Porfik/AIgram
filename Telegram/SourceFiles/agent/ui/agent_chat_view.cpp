@@ -28,6 +28,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_section.h"
 #include "agent/ui/agent_spending_format.h"
 #include "api/api_common.h"
+#include "apiwrap.h"
 #include "base/unixtime.h"
 #include "boxes/send_files_box.h"
 #include "core/file_utilities.h"
@@ -159,6 +160,9 @@ ChatView::ChatView(
 		},
 		.date = [=](int index) {
 			return messageDate(index);
+		},
+		.passed = [=](int index) {
+			return passedMessages(index);
 		},
 		.attachment = [=](const QString &id) -> std::optional<MediaBlock> {
 			return _session
@@ -443,6 +447,7 @@ void ChatView::showSession(Session *session) {
 	_slices.fire({});
 	rebuildMessages();
 	refreshModel();
+	_composeControls->updateForwarding();
 	_inner->showAtPosition(Data::MaxMessagePosition, {});
 	_sessionChanges.fire_copy(_session);
 }
@@ -598,6 +603,50 @@ TimeId ChatView::messageDate(int index) const {
 	return base::unixtime::now();
 }
 
+std::vector<FullMsgId> ChatView::passedMessages(int index) {
+	auto result = std::vector<FullMsgId>();
+	if (!_session || index < 0) {
+		return result;
+	}
+	const auto &record = _session->record();
+	if (index >= int(record.messages.size())) {
+		return result;
+	}
+	static const auto marker = u"Messages the user passed to you:\n"_q;
+	for (const auto &block : record.messages[index].blocks) {
+		const auto text = std::get_if<TextBlock>(&block);
+		if (!text || !text->hidden) {
+			continue;
+		}
+		const auto unwrapped = UnwrapUntrusted(text->text);
+		const auto position = unwrapped.indexOf(marker);
+		if (position < 0) {
+			continue;
+		}
+		const auto json = QJsonDocument::fromJson(
+			unwrapped.mid(position + marker.size()).toUtf8()).object();
+		const auto peerId = PeerId(uint64(
+			json.value(u"chat"_q).toObject().value(u"id"_q).toDouble()));
+		if (!peerId) {
+			continue;
+		}
+		for (const auto value : json.value(u"messages"_q).toArray()) {
+			const auto id = FullMsgId(
+				peerId,
+				MsgId(int64(value.toObject().value(u"id"_q).toDouble())));
+			result.push_back(id);
+			const auto owner = &_controller->session().data();
+			if (!owner->message(id) && _requestedPassed.emplace(id).second) {
+				_controller->session().api().requestMessageData(
+					owner->peer(peerId),
+					id.msg,
+					crl::guard(this, [=] { scheduleRebuild(); }));
+			}
+		}
+	}
+	return result;
+}
+
 QString ChatView::errorText() const {
 	if (!_session) {
 		return QString();
@@ -656,6 +705,26 @@ void ChatView::rebuildMessages() {
 		summaryUntil,
 		cards,
 		ActionToolNames()));
+	for (auto i = 0; i != int(messages.size()); ++i) {
+		const auto user = (messages[i].role == Role::User);
+		if (!user || passedMessages(i).empty()) {
+			continue;
+		}
+		const auto has = ranges::any_of(_messages, [&](const ChatMessage &m) {
+			return (m.kind == ChatMessageKind::User) && (m.index == i);
+		});
+		if (!has) {
+			const auto position = ranges::find_if(_messages, [&](
+					const ChatMessage &m) {
+				return m.index > i;
+			});
+			_messages.insert(position, ChatMessage{
+				.kind = ChatMessageKind::User,
+				.key = u"u"_q + QString::number(i),
+				.index = i,
+			});
+		}
+	}
 	auto extras = ChatExtras{
 		.note = noteText(),
 		.spending = spendingText(),

@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "boxes/share_box.h"
 
+#include "agent/ui/agent_palette.h"
+
 #include "api/api_premium.h"
 #include "base/call_delayed.h"
 #include "base/random.h"
@@ -1836,6 +1838,10 @@ ShareBox::SubmitCallback ShareBox::DefaultForwardCallback(
 			return; // Share clicked already.
 		}
 		state->failed = false;
+		if (Agent::Ui::TakeAgentTargets(result, &history->session(), msgIds)
+			&& result.empty()) {
+			return;
+		}
 
 		const auto items = history->owner().idsToItems(msgIds);
 		const auto existingIds = history->owner().itemsToIds(items);

@@ -590,6 +590,15 @@ void ShowGeneralAgent(not_null<Window::SessionController*> controller) {
 	controller->showSection(std::make_shared<GeneralAgentMemento>());
 }
 
+void ShowAgentChat(not_null<Window::SessionController*> controller) {
+	const auto history = controller->session().agent().chat().history();
+	if (history->forwardDraft(MsgId(), PeerId()).ids.empty()) {
+		ShowGeneralAgent(controller);
+	} else {
+		ShowGeneralAgentNewSession(controller);
+	}
+}
+
 void ShowGeneralAgent(
 		not_null<Window::SessionController*> controller,
 		HandoffDraft draft) {

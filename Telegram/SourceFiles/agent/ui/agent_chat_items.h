@@ -52,6 +52,7 @@ struct ChatItemsDelegate {
 	Fn<bool(const QString &toolUseId)> isUndone;
 	Fn<bool()> isRun;
 	Fn<TimeId(int index)> date;
+	Fn<std::vector<FullMsgId>(int index)> passed;
 	Fn<std::optional<MediaBlock>(const QString &attachment)> attachment;
 };
 

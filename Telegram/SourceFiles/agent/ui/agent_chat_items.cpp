@@ -542,6 +542,7 @@ struct ChatItems::Prepared {
 	HistoryMessageMarkupData markup;
 	std::vector<QString> undoAll;
 	PhotoData *photo = nullptr;
+	HistoryItem *forward = nullptr;
 };
 
 ChatItems::ChatItems(not_null<History*> history, ChatItemsDelegate delegate)
@@ -597,6 +598,25 @@ bool ChatItems::apply(
 			.key = message.key,
 			.date = dateFor(message.index),
 		};
+		auto missing = 0;
+		auto forwards = std::vector<Prepared>();
+		if (message.kind == ChatMessageKind::User && _delegate.passed) {
+			auto k = 0;
+			for (const auto &id : _delegate.passed(message.index)) {
+				const auto original = _history->owner().message(id);
+				if (!original) {
+					++missing;
+					continue;
+				}
+				forwards.push_back({
+					.key = message.key + u".p"_q + QString::number(k++),
+					.signature = u"p"_q + QString::number(id.msg.bare),
+					.out = true,
+					.date = entry.date,
+					.forward = original,
+				});
+			}
+		}
 		const auto lastLive = extras.live && (i + 1 == count);
 		switch (message.kind) {
 		case ChatMessageKind::User: {
@@ -630,6 +650,10 @@ bool ChatItems::apply(
 							? (u" · "_q + FormatByteSize(attachment.size))
 							: QString()));
 				}
+			}
+			if (missing) {
+				files.push_front(QString(QChar(0x21AA)) + ' '
+					+ tr::lng_forward_messages(tr::now, lt_count, missing));
 			}
 			if (!files.isEmpty()) {
 				auto lines = TextWithEntities{ files.join('\n') };
@@ -756,7 +780,15 @@ bool ChatItems::apply(
 			}
 		} break;
 		}
-		prepared.push_back(std::move(entry));
+		if (message.kind != ChatMessageKind::User
+			|| !message.text.isEmpty()
+			|| !message.attachments.empty()
+			|| missing) {
+			prepared.push_back(std::move(entry));
+		}
+		for (auto &forward : forwards) {
+			prepared.push_back(std::move(forward));
+		}
 	}
 	if (extras.compacting) {
 		prepared.push_back({
@@ -890,7 +922,11 @@ HistoryItem *ChatItems::create(const Prepared &prepared) {
 		.date = prepared.date,
 		.markup = std::move(markup),
 	};
-	const auto item = prepared.photo
+	const auto item = prepared.forward
+		? _history->makeMessage(
+			std::move(fields),
+			not_null<HistoryItem*>(prepared.forward))
+		: prepared.photo
 		? _history->makeMessage(
 			std::move(fields),
 			not_null<PhotoData*>(prepared.photo),

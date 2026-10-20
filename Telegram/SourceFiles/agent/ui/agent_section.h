@@ -16,6 +16,7 @@ namespace Agent::Ui {
 struct HandoffDraft;
 
 void ShowGeneralAgent(not_null<Window::SessionController*> controller);
+void ShowAgentChat(not_null<Window::SessionController*> controller);
 void ShowGeneralAgent(
 	not_null<Window::SessionController*> controller,
 	HandoffDraft draft);

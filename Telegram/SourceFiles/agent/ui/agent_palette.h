@@ -15,6 +15,14 @@ namespace Ui {
 class PopupMenu;
 } // namespace Ui
 
+namespace Data {
+class Thread;
+} // namespace Data
+
+namespace Main {
+class Session;
+} // namespace Main
+
 namespace Window {
 class SessionController;
 } // namespace Window
@@ -29,6 +37,11 @@ bool ShowPalette(
 [[nodiscard]] bool CanPassChatToAgent(not_null<PeerData*> peer);
 bool PassToAgent(
 	not_null<Window::SessionController*> controller,
+	const MessageIdsList &ids);
+// Removes the agent chat from forward targets and passes the messages to it.
+bool TakeAgentTargets(
+	std::vector<not_null<Data::Thread*>> &threads,
+	not_null<Main::Session*> session,
 	const MessageIdsList &ids);
 void AddPassToAgentAction(
 	not_null<::Ui::PopupMenu*> menu,

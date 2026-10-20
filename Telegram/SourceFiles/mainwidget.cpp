@@ -1440,7 +1440,7 @@ void MainWidget::showHistory(
 		const SectionShow &params,
 		MsgId showAtMsgId) {
 	if (Agent::IsAgentPeer(peerId) && !_controller->window().locked()) {
-		Agent::Ui::ShowGeneralAgent(_controller);
+		Agent::Ui::ShowAgentChat(_controller);
 		return;
 	} else if (peerId && _controller->window().locked()) {
 		if (params.activation != anim::activation::background) {

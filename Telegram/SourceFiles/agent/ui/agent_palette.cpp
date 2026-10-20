@@ -325,6 +325,22 @@ bool PassToAgent(
 	return ShowPalette(controller, std::move(items));
 }
 
+bool TakeAgentTargets(
+		std::vector<not_null<Data::Thread*>> &threads,
+		not_null<Main::Session*> session,
+		const MessageIdsList &ids) {
+	const auto was = threads.size();
+	threads.erase(ranges::remove_if(threads, [](not_null<Data::Thread*> t) {
+		return IsAgentPeer(t->peer());
+	}), end(threads));
+	if (threads.size() == was) {
+		return false;
+	} else if (const auto window = session->tryResolveWindow()) {
+		PassToAgent(window, ids);
+	}
+	return true;
+}
+
 void AddPassToAgentAction(
 		not_null<::Ui::PopupMenu*> menu,
 		not_null<Window::SessionController*> controller,
