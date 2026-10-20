@@ -179,7 +179,7 @@ std::optional<ProviderSettings> Session::currentProvider() const {
 		return _run->provider;
 	} else if (isRun()) {
 		return std::nullopt;
-	} else if (const auto provider = ActiveProvider(_manager->providers())) {
+	} else if (const auto provider = DefaultProvider(_manager->providers())) {
 		return *provider;
 	}
 	return std::nullopt;

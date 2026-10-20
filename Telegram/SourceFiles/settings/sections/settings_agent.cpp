@@ -363,7 +363,7 @@ void RebuildProviderRows(
 	auto activeIndex = -1;
 	auto index = 0;
 	for (const auto &provider : list) {
-		if (provider.id == state->providers.activeId) {
+		if (provider.id == state->providers.defaultId) {
 			activeIndex = index;
 		}
 		++index;
@@ -558,7 +558,7 @@ void EditProviderBox(
 		tr::lng_agent_provider_prices_about());
 	Ui::AddSkip(container);
 
-	const auto wasActive = (provider.id == state->providers.activeId);
+	const auto wasActive = (provider.id == state->providers.defaultId);
 	const auto checkbox = container->add(
 		object_ptr<Ui::Checkbox>(
 			container,
@@ -613,7 +613,7 @@ void EditProviderBox(
 			provider.id = ::Agent::GenerateProviderId();
 			list.push_back(provider);
 			if (checkbox->checked() || list.size() == 1) {
-				state->providers.activeId = provider.id;
+				state->providers.defaultId = provider.id;
 			}
 		} else {
 			for (auto &item : list) {
@@ -623,9 +623,9 @@ void EditProviderBox(
 				}
 			}
 			if (checkbox->checked()) {
-				state->providers.activeId = provider.id;
+				state->providers.defaultId = provider.id;
 			} else if (wasActive) {
-				state->providers.activeId = QString();
+				state->providers.defaultId = QString();
 			}
 		}
 		SaveState(state.get());
@@ -641,8 +641,8 @@ void EditProviderBox(
 					break;
 				}
 			}
-			if (state->providers.activeId == provider.id) {
-				state->providers.activeId = QString();
+			if (state->providers.defaultId == provider.id) {
+				state->providers.defaultId = QString();
 			}
 			SaveState(state.get());
 			box->closeBox();
@@ -745,14 +745,14 @@ void BuildCheckButton(
 		.icon = { &st::menuIconNetwork },
 		.onClick = [=] {
 			if (const auto active
-					= ::Agent::ActiveProvider(state->providers)) {
+					= ::Agent::DefaultProvider(state->providers)) {
 				::Agent::ShowCheckBox(controller, *active);
 			}
 		},
 		.keywords = { u"check"_q, u"test"_q, u"connection"_q },
 	});
 	const auto update = [=] {
-		button->setDisabled(!::Agent::ActiveProvider(state->providers));
+		button->setDisabled(!::Agent::DefaultProvider(state->providers));
 	};
 	update();
 	state->changed.events(
@@ -821,7 +821,7 @@ void MediaModelBox(
 		auto &none = result.emplace_back();
 		none.title = tr::lng_agent_media_model_none(tr::now);
 		for (const auto &provider : state->providers.list) {
-			if (provider.id != state->providers.activeId) {
+			if (provider.id != state->providers.defaultId) {
 				result.push_back(provider);
 			}
 		}

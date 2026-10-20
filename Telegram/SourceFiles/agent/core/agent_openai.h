@@ -19,12 +19,21 @@ namespace Agent::OpenAi {
 
 struct ModelInfo {
 	QString id;
+	QString name;
 	int contextWindow = 0;
 	std::optional<bool> tools;
 	std::optional<bool> vision;
 	std::optional<bool> audio;
 	std::optional<bool> video;
 	std::optional<bool> files;
+	double priceInput = 0.;
+	double priceOutput = 0.;
+	double priceCached = 0.;
+};
+
+struct ModelRoute {
+	QString provider;
+	bool tools = false;
 };
 
 class Adapter final : public Agent::Adapter {
@@ -45,6 +54,12 @@ private:
 [[nodiscard]] QJsonObject RequestObject(const Request &request);
 [[nodiscard]] HttpRequest ModelsRequest(const ProviderSettings &settings);
 [[nodiscard]] std::vector<ModelInfo> ParseModels(const QByteArray &json);
+[[nodiscard]] std::vector<int> SearchModels(
+	const std::vector<ModelInfo> &models,
+	const QString &query);
+[[nodiscard]] HttpRequest EndpointsRequest(const ProviderSettings &settings);
+[[nodiscard]] std::vector<ModelRoute> ParseEndpoints(const QByteArray &json);
+[[nodiscard]] HttpRequest KeyRequest(const ProviderSettings &settings);
 [[nodiscard]] Error ParseError(
 	const HttpHead &head,
 	const QByteArray &body);

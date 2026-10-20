@@ -25,6 +25,11 @@ enum class ProviderKind : uchar {
 	Anthropic,
 };
 
+enum class ProviderService : uchar {
+	Custom,
+	OpenRouter,
+};
+
 struct ProviderSettings {
 	QString id;
 	ProviderKind kind = ProviderKind::OpenAiCompatible;
@@ -40,6 +45,8 @@ struct ProviderSettings {
 	bool audio = false;
 	bool video = false;
 	bool files = false;
+	ProviderService service = ProviderService::Custom;
+	std::vector<QString> ignoredRoutes;
 };
 
 enum class RowPreview : uchar {
@@ -50,7 +57,7 @@ enum class RowPreview : uchar {
 
 struct ProvidersState {
 	std::vector<ProviderSettings> list;
-	QString activeId;
+	QString defaultId;
 	QString instructions;
 	bool showEntryPoints = true;
 	bool showSpending = false;
@@ -65,13 +72,28 @@ struct ProvidersState {
 [[nodiscard]] std::optional<ProvidersState> DeserializeProviders(
 	const QByteArray &bytes);
 
-[[nodiscard]] const ProviderSettings *ActiveProvider(
+[[nodiscard]] QString OpenRouterBaseUrl();
+
+[[nodiscard]] const ProviderSettings *FindProvider(
+	const ProvidersState &state,
+	const QString &id);
+[[nodiscard]] const ProviderSettings *DefaultProvider(
 	const ProvidersState &state);
+[[nodiscard]] const ProviderSettings *SessionProvider(
+	const ProvidersState &state,
+	const QString &profileId);
 [[nodiscard]] const ProviderSettings *MediaProvider(
 	const ProvidersState &state);
 [[nodiscard]] const ProviderSettings *BackgroundProvider(
 	const ProvidersState &state,
 	const QString &taskProviderId = QString());
+[[nodiscard]] QString ServiceKey(
+	const ProvidersState &state,
+	ProviderService service);
+void SetServiceKey(
+	ProvidersState &state,
+	ProviderService service,
+	const QString &key);
 [[nodiscard]] bool IsOpenRouter(const ProviderSettings &settings);
 [[nodiscard]] std::unique_ptr<Adapter> CreateAdapter(
 	const ProviderSettings &settings);

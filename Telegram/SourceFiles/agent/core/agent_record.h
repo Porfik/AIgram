@@ -29,6 +29,7 @@ struct SessionInfo {
 	bool previewOutgoing = false;
 	int attachments = 0;
 	QString task;
+	QString profileId;
 };
 
 struct SessionRecord {

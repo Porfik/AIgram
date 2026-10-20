@@ -64,7 +64,7 @@ struct CallAbilities {
 	auto result = CallAbilities();
 	const auto provider = background
 		? &*background
-		: ActiveProvider(manager.providers());
+		: DefaultProvider(manager.providers());
 	if (provider) {
 		result.main = manager.abilities(*provider);
 		result.main.files = result.main.files || IsOpenRouter(*provider);

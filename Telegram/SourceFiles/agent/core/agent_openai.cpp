@@ -688,6 +688,24 @@ std::vector<ModelInfo> ParseModels(const QByteArray &json) {
 	return result;
 }
 
+std::vector<int> SearchModels(
+		const std::vector<ModelInfo> &models,
+		const QString &query) {
+	return {};
+}
+
+HttpRequest EndpointsRequest(const ProviderSettings &settings) {
+	return HttpRequest();
+}
+
+std::vector<ModelRoute> ParseEndpoints(const QByteArray &json) {
+	return {};
+}
+
+HttpRequest KeyRequest(const ProviderSettings &settings) {
+	return HttpRequest();
+}
+
 Error ParseError(const HttpHead &head, const QByteArray &body) {
 	auto result = Error();
 	result.kind = KindForStatus(head.status);

@@ -120,6 +120,7 @@ struct Request {
 	int maxOutputTokens = 0;
 	QString pdfEngine;
 	QString cacheKey;
+	std::vector<QString> ignoredRoutes;
 };
 
 enum class ErrorKind : uchar {

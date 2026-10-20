@@ -57,7 +57,7 @@ namespace {
 			false,
 		},
 	};
-	state.activeId = u"локальный"_q;
+	state.defaultId = u"локальный"_q;
 	state.instructions = u"Отвечай по-русски."_q;
 	state.showEntryPoints = false;
 	state.showSpending = true;
@@ -72,8 +72,8 @@ namespace {
 [[nodiscard]] QString ProvidersEqual(
 		const ProvidersState &a,
 		const ProvidersState &b) {
-	if (a.activeId != b.activeId) {
-		return u"activeId differs"_q;
+	if (a.defaultId != b.defaultId) {
+		return u"defaultId differs"_q;
 	} else if (a.instructions != b.instructions) {
 		return u"instructions differ"_q;
 	} else if (a.list.size() != b.list.size()) {
@@ -250,7 +250,7 @@ std::vector<Check> ProvidersChecks() {
 			}
 			if (restored->list.size() != 1
 				|| restored->list[0].id != u"old"_q
-				|| restored->activeId != u"old"_q) {
+				|| restored->defaultId != u"old"_q) {
 				return u"unexpected restored state"_q;
 			}
 			return QString();
@@ -290,7 +290,7 @@ std::vector<Check> ProvidersChecks() {
 		} },
 		{ u"providers_active_provider"_q, [] {
 			auto state = ProvidersState();
-			if (ActiveProvider(state) != nullptr) {
+			if (DefaultProvider(state) != nullptr) {
 				return u"expected nullptr for an empty list"_q;
 			}
 			auto first = ProviderSettings();
@@ -298,15 +298,15 @@ std::vector<Check> ProvidersChecks() {
 			auto second = ProviderSettings();
 			second.id = u"second"_q;
 			state.list = { first, second };
-			if (ActiveProvider(state) != &state.list[0]) {
+			if (DefaultProvider(state) != &state.list[0]) {
 				return u"expected the first provider as fallback"_q;
 			}
-			state.activeId = u"second"_q;
-			if (ActiveProvider(state) != &state.list[1]) {
-				return u"expected the provider with activeId"_q;
+			state.defaultId = u"second"_q;
+			if (DefaultProvider(state) != &state.list[1]) {
+				return u"expected the provider with defaultId"_q;
 			}
-			state.activeId = u"missing"_q;
-			if (ActiveProvider(state) != &state.list[0]) {
+			state.defaultId = u"missing"_q;
+			if (DefaultProvider(state) != &state.list[0]) {
 				return u"expected the first provider as fallback"_q;
 			}
 			return QString();
@@ -410,7 +410,7 @@ std::vector<Check> ProvidersChecks() {
 		} },
 		{ u"providers_background_provider"_q, [] {
 			auto state = SampleState();
-			const auto active = ActiveProvider(state);
+			const auto active = DefaultProvider(state);
 			if (BackgroundProvider(state) != active) {
 				return u"default must be the active provider"_q;
 			}

@@ -91,7 +91,7 @@ void Manager::updateEnabled() {
 }
 
 bool Manager::available() const {
-	const auto provider = ActiveProvider(_providers);
+	const auto provider = DefaultProvider(_providers);
 	if (!provider) {
 		return false;
 	}
@@ -111,7 +111,7 @@ const ProvidersState &Manager::providers() const {
 }
 
 int Manager::contextWindow() const {
-	const auto provider = ActiveProvider(_providers);
+	const auto provider = DefaultProvider(_providers);
 	if (!provider) {
 		return kDefaultContextWindow;
 	}
@@ -180,7 +180,7 @@ void Manager::startModels(const ProviderSettings &provider) {
 }
 
 void Manager::learnContextWindow() {
-	const auto active = ActiveProvider(_providers);
+	const auto active = DefaultProvider(_providers);
 	if (active) {
 		startModels(*active);
 	}

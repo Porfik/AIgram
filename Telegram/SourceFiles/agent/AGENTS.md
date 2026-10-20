@@ -159,7 +159,29 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `error` objects and non-2xx bodies through `ParseError()`.
 - `ParseModels()` reads `architecture.input_modalities` when present:
   `image` into `vision`, `audio`, `video` and `file` into `audio`,
-  `video` and `files` (each set true or false).
+  `video` and `files` (each set true or false). It reads `name` and
+  `pricing.prompt`, `pricing.completion` and `pricing.input_cache_read`
+  (dollars per token as strings or numbers) into `priceInput`,
+  `priceOutput` and `priceCached` in dollars per million tokens; missing,
+  unparsable or negative prices are zero.
+- `SearchModels()` returns the indices of the models matching `query`, in
+  list order. The query splits into words of letters and digits (case
+  ignored); a model matches when every query word is a prefix of a word
+  of its `name` or `id` split the same way (`z-ai/glm-5.3-flash` has the
+  words `z`, `ai`, `glm`, `5`, `3`, `flash`). An empty or blank query
+  matches every model.
+- `EndpointsRequest()` is a GET of `<baseUrl>/models/<model>/endpoints`
+  (the model id keeps its `/`), `KeyRequest()` a GET of `<baseUrl>/key`;
+  both send `Authorization: Bearer <apiKey>` when the key is not empty.
+  OpenRouter answers `/key` with 200 for a valid key and 401 otherwise.
+- `ParseEndpoints()` reads `data.endpoints` and returns one `ModelRoute`
+  per distinct `provider_name` in first-seen order; `tools` is true when
+  any endpoint of that provider lists `tools` in
+  `supported_parameters`. Malformed JSON gives an empty list.
+- `prepare()` copies `ignoredRoutes` of an OpenRouter provider
+  (`IsOpenRouter()`) into `Request::ignoredRoutes`; other providers send
+  none. `RequestObject()` writes a non-empty `ignoredRoutes` as
+  `"provider": {"ignore": [...]}`.
 - `Request::cacheKey`, when not empty, keeps the provider's prompt cache
   warm: to OpenRouter (`IsOpenRouter()`) it goes as the `x-session-id`
   header, to a provider whose base URL host is `api.openai.com` as the
@@ -217,12 +239,33 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   (`double`) and `backgroundDailyTokens` (`qint64`) after `mediaId`;
   older versions load an empty id, 1.0 and 1 000 000.
   `BackgroundProvider()` is the provider with `taskProviderId`, else the
-  one with `backgroundId`, else `ActiveProvider()`; ids that match no
+  one with `backgroundId`, else `DefaultProvider()`; ids that match no
   provider are skipped.
 - `MediaProvider()` is the provider whose id is `mediaId`, null when
   `mediaId` is empty or unknown. `IsOpenRouter()` is true when the host of
   `baseUrl` is `openrouter.ai` or a subdomain of it.
 - `Agent::SaveProviders()` fires `Agent::ProvidersChanged()` after writing.
+- Every `ProviderSettings` is a model profile (plan 11.7): `title` is the
+  name the user sees, `service` says how it was made. `Custom` is the
+  manual form ("Other provider"); `OpenRouter` profiles have
+  `OpenRouterBaseUrl()` (`https://openrouter.ai/api/v1`) as `baseUrl`,
+  the model id, and the context window, abilities and prices copied from
+  `/models` when the model was chosen. `ignoredRoutes` are OpenRouter
+  provider names (`provider_name` of `/endpoints`) its requests skip.
+- Version 7 appends `service` (`qint32`) and `ignoredRoutes` (a `qint32`
+  count of at most 100, then the strings) after `files` of each provider;
+  older versions load `Custom` and no routes, so saved providers become
+  "Other provider" profiles with the same ids. An unknown `service`
+  fails the read. `defaultId` (formerly `activeId`, same place in the
+  stream) is the default model profile.
+- `FindProvider()` is the provider with that id, null for an empty or
+  unknown id. `DefaultProvider()` is the one with `defaultId`, else the
+  first one, else null. `SessionProvider()` is the one with `profileId`,
+  else `DefaultProvider()`.
+- One key per service: `ServiceKey()` is the `apiKey` of the first
+  profile of that service (empty for `Custom` or when there is none);
+  `SetServiceKey()` sets the key of every profile of that service
+  (`Custom` is a programming error).
 
 ## Scope (`agent_scope.h`)
 
@@ -399,6 +442,10 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - Version 6 appends, after `info.task`, the `rows` of every card in card
   order (a count, then label, value and previous of each row); older
   records load cards without rows. The index stays version 4.
+- Version 7 appends `info.profileId` after the card rows, and index
+  version 5 appends it after `attachments` of every entry; older records
+  and indexes load it empty. `profileId` is the model profile the
+  session uses (see "Provider settings"); empty means the default one.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120

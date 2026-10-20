@@ -45,7 +45,7 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 			<< qint32(provider.video ? 1 : 0)
 			<< qint32(provider.files ? 1 : 0);
 	}
-	stream << state.activeId << state.instructions;
+	stream << state.defaultId << state.instructions;
 	stream << qint32(state.showEntryPoints ? 1 : 0);
 	stream << qint32(state.showSpending ? 1 : 0);
 	stream << qint32(state.rowPreview);
@@ -124,7 +124,7 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		}
 		state.list.push_back(std::move(provider));
 	}
-	stream >> state.activeId >> state.instructions;
+	stream >> state.defaultId >> state.instructions;
 	if (stream.status() != QDataStream::Ok) {
 		return std::nullopt;
 	}
@@ -179,47 +179,78 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 	return state;
 }
 
-const ProviderSettings *ActiveProvider(const ProvidersState &state) {
-	for (const auto &provider : state.list) {
-		if (provider.id == state.activeId) {
-			return &provider;
-		}
-	}
-	return state.list.empty() ? nullptr : &state.list.front();
+QString OpenRouterBaseUrl() {
+	return u"https://openrouter.ai/api/v1"_q;
 }
 
-const ProviderSettings *MediaProvider(const ProvidersState &state) {
-	if (state.mediaId.isEmpty()) {
+const ProviderSettings *FindProvider(
+		const ProvidersState &state,
+		const QString &id) {
+	if (id.isEmpty()) {
 		return nullptr;
 	}
 	for (const auto &provider : state.list) {
-		if (provider.id == state.mediaId) {
+		if (provider.id == id) {
 			return &provider;
 		}
 	}
 	return nullptr;
 }
 
+const ProviderSettings *DefaultProvider(const ProvidersState &state) {
+	if (const auto result = FindProvider(state, state.defaultId)) {
+		return result;
+	}
+	return state.list.empty() ? nullptr : &state.list.front();
+}
+
+const ProviderSettings *SessionProvider(
+		const ProvidersState &state,
+		const QString &profileId) {
+	if (const auto result = FindProvider(state, profileId)) {
+		return result;
+	}
+	return DefaultProvider(state);
+}
+
+const ProviderSettings *MediaProvider(const ProvidersState &state) {
+	return FindProvider(state, state.mediaId);
+}
+
 const ProviderSettings *BackgroundProvider(
 		const ProvidersState &state,
 		const QString &taskProviderId) {
-	const auto find = [&](const QString &id) -> const ProviderSettings* {
-		if (id.isEmpty()) {
-			return nullptr;
-		}
-		for (const auto &provider : state.list) {
-			if (provider.id == id) {
-				return &provider;
-			}
-		}
-		return nullptr;
-	};
-	if (const auto result = find(taskProviderId)) {
+	if (const auto result = FindProvider(state, taskProviderId)) {
 		return result;
-	} else if (const auto result = find(state.backgroundId)) {
+	} else if (const auto result = FindProvider(state, state.backgroundId)) {
 		return result;
 	}
-	return ActiveProvider(state);
+	return DefaultProvider(state);
+}
+
+QString ServiceKey(const ProvidersState &state, ProviderService service) {
+	if (service == ProviderService::Custom) {
+		return QString();
+	}
+	for (const auto &provider : state.list) {
+		if (provider.service == service) {
+			return provider.apiKey;
+		}
+	}
+	return QString();
+}
+
+void SetServiceKey(
+		ProvidersState &state,
+		ProviderService service,
+		const QString &key) {
+	Expects(service != ProviderService::Custom);
+
+	for (auto &provider : state.list) {
+		if (provider.service == service) {
+			provider.apiKey = key;
+		}
+	}
 }
 
 bool IsOpenRouter(const ProviderSettings &settings) {
