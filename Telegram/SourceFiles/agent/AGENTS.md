@@ -2219,8 +2219,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   on the first send.
 - The chat panel is an Info section (`Info::Section::Type::Agent`, keyed by
   the peer) built by `MakePanelMemento()`; `TogglePanel()` opens or closes
-  it and `PanelAvailable()` says whether a peer can have one. A new
-  panel (the ✦ button, switching chats with the panel open) starts in the
+  it and `PanelAvailable()` says whether a peer can have one. Every
+  panel widget registers itself (`RegisterShownPanel()`), so
+  `PanelShown()` and `PanelShownChanges()` let the history top bar show
+  its ✦ button active while the chat's panel is open in that window. A
+  new panel (the ✦ button, switching chats with the panel open) starts in the
   new-session state; a saved memento (the layer moving to the third
   column, Info back) keeps its session.
 - The panel goes to the third column whenever the window fits one without a

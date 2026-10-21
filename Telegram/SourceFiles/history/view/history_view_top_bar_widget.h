@@ -161,6 +161,7 @@ private:
 	void updateControlsGeometry();
 	void slideAnimationCallback();
 	void updateInfoToggleActive();
+	void updateAgentEntryActive();
 	void setupDragOnBackButton();
 
 	void call(Calls::StartOutgoingCallArgs);

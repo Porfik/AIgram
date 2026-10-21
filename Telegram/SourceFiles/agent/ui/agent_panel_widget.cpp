@@ -379,6 +379,7 @@ PanelWidget::PanelWidget(
 	}, _inner->lifetime());
 	setupThirdColumnFollow();
 	setupCloseOnExclusion();
+	RegisterShownPanel(window, peer, lifetime());
 }
 
 void PanelWidget::setupCloseOnExclusion() {

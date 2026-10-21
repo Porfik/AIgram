@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include <rpl/lifetime.h>
 #include <rpl/producer.h>
 
 #include <memory>
@@ -38,6 +39,15 @@ namespace Agent::Ui {
 void TogglePanel(
 	not_null<Window::SessionController*> controller,
 	not_null<PeerData*> peer);
+
+[[nodiscard]] bool PanelShown(
+	not_null<Window::SessionController*> controller,
+	not_null<PeerData*> peer);
+[[nodiscard]] rpl::producer<> PanelShownChanges();
+void RegisterShownPanel(
+	not_null<Window::SessionController*> controller,
+	not_null<PeerData*> peer,
+	rpl::lifetime &lifetime);
 
 // Turns the third column on when it fits; returns whether it did.
 bool EnableThirdColumn(not_null<Window::SessionController*> controller);

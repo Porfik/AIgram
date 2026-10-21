@@ -179,6 +179,10 @@ TopBarWidget::TopBarWidget(
 	) | rpl::on_next([=] {
 		updateControlsVisibility();
 	}, lifetime());
+	Agent::Ui::PanelShownChanges(
+	) | rpl::on_next([=] {
+		updateAgentEntryActive();
+	}, lifetime());
 	_infoToggle->setClickedCallback([=] { toggleInfoSection(); });
 	_back->setAcceptBoth();
 	_back->addClickHandler([=](Qt::MouseButton) {
@@ -1394,6 +1398,7 @@ void TopBarWidget::updateControlsVisibility() {
 	} else {
 		_agentEntry->setVisible(false);
 	}
+	updateAgentEntryActive();
 	const auto topic = _activeChat.key.topic();
 	const auto section = _activeChat.section;
 	const auto historyMode = (section == Section::History);
@@ -1902,6 +1907,15 @@ void TopBarWidget::updateInfoToggleActive() {
 		: nullptr;
 	_infoToggle->setIconOverride(iconOverride, iconOverride);
 	_infoToggle->setRippleColorOverride(rippleOverride);
+}
+
+void TopBarWidget::updateAgentEntryActive() {
+	const auto peer = _activeChat.key.peer();
+	const auto active = peer && Agent::Ui::PanelShown(_controller, peer);
+	const auto icon = active ? &st::agentPanelEntryActive : nullptr;
+	_agentEntry->setIconOverride(icon, icon);
+	_agentEntry->setRippleColorOverride(
+		active ? &st::lightButtonBgOver : nullptr);
 }
 
 void TopBarWidget::setupDragOnBackButton() {

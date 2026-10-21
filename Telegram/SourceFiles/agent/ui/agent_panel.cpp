@@ -24,9 +24,29 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "window/window_adaptive.h"
 #include "window/window_session_controller.h"
 
+#include <rpl/event_stream.h>
+
 #include "styles/style_agent_panel.h"
 
 namespace Agent::Ui {
+namespace {
+
+struct ShownPanel {
+	not_null<Window::SessionController*> controller;
+	not_null<PeerData*> peer;
+};
+
+[[nodiscard]] std::vector<ShownPanel> &ShownPanels() {
+	static auto result = std::vector<ShownPanel>();
+	return result;
+}
+
+[[nodiscard]] rpl::event_stream<> &ShownPanelsChanged() {
+	static auto result = rpl::event_stream<>();
+	return result;
+}
+
+} // namespace
 
 std::shared_ptr<Info::ContentMemento> MakePanelMemento(
 		not_null<PeerData*> peer) {
@@ -78,6 +98,36 @@ void TogglePanel(
 		(enabled
 			? Window::SectionShow(anim::type::instant)
 			: params).withThirdColumn());
+}
+
+bool PanelShown(
+		not_null<Window::SessionController*> controller,
+		not_null<PeerData*> peer) {
+	return ranges::any_of(ShownPanels(), [&](const ShownPanel &panel) {
+		return (panel.controller == controller) && (panel.peer == peer);
+	});
+}
+
+rpl::producer<> PanelShownChanges() {
+	return ShownPanelsChanged().events();
+}
+
+void RegisterShownPanel(
+		not_null<Window::SessionController*> controller,
+		not_null<PeerData*> peer,
+		rpl::lifetime &lifetime) {
+	ShownPanels().push_back({ controller, peer });
+	ShownPanelsChanged().fire({});
+	lifetime.add([=] {
+		auto &list = ShownPanels();
+		const auto i = ranges::find_if(list, [&](const ShownPanel &panel) {
+			return (panel.controller == controller) && (panel.peer == peer);
+		});
+		if (i != end(list)) {
+			list.erase(i);
+			ShownPanelsChanged().fire({});
+		}
+	});
 }
 
 bool EnableThirdColumn(not_null<Window::SessionController*> controller) {
