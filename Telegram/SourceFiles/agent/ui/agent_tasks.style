@@ -9,8 +9,6 @@ using "ui/basic.style";
 using "ui/widgets/widgets.style";
 using "agent/ui/agent.style";
 
-agentTasksRowPadding: margins(16px, 10px, 16px, 10px);
-
 agentTasksEmpty: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowSubTextFg;

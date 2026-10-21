@@ -19,8 +19,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   in `agent/ui/` (namespace `Agent::Ui`, which pulls in `::Ui` like
   `Calls::Group::Ui`; styles in `agent/ui/agent.style`,
   `agent/ui/agent_panel.style`, `agent/ui/agent_general.style`,
-  `agent/ui/agent_attach.style` and `agent/ui/agent_media.style`). It may
-  include `agent/core`, never the other way round.
+  `agent/ui/agent_media.style`, `agent/ui/agent_queue.style` and
+  `agent/ui/agent_tasks.style`). It may include `agent/core`, never the
+  other way round.
 - Tools: `agent_tool_table.h` holds `ToolEntry` (with `generalSchema`
   replacing `inputSchema` in the account scope when it is set),
   `PendingCall` and the schema helpers; each `agent_tools_<group>.cpp` returns its entries from

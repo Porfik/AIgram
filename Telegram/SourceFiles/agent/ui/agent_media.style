@@ -9,11 +9,4 @@ using "ui/basic.style";
 using "ui/chat/chat.style";
 using "agent/ui/agent.style";
 
-agentMediaThumbSize: 96px;
-agentMediaThumbRadius: 6px;
-agentMediaThumbBg: windowBgOver;
-agentMediaThumbIcon: windowSubTextFg;
-agentMediaThumbIconTop: 26px;
-agentMediaThumbExtTop: 62px;
-agentMediaThumbExtFont: font(11px semibold);
 agentCardPreviewWidth: 416px;

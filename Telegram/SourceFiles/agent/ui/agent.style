@@ -9,54 +9,13 @@ using "ui/basic.style";
 using "ui/widgets/widgets.style";
 using "chat_helpers/chat_helpers.style";
 
-agentFeedItemMargin: margins(16px, 6px, 16px, 6px);
-agentFeedUserMargin: margins(48px, 10px, 16px, 6px);
-agentFeedContentPadding: margins(0px, 10px, 0px, 10px);
 agentFeedMaxTextWidth: 440px;
-agentFeedBottomSkip: 12px;
 
-agentFeedUserBubbleBg: windowBgOver;
-agentFeedUserRadius: 12px;
-agentFeedUserPadding: margins(11px, 7px, 11px, 8px);
-agentFeedUserLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowFg;
-}
 agentFeedTextLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowFg;
 }
 
-agentStepsHeaderHeight: 28px;
-agentStepsRowHeight: 26px;
-agentStepsLineFg: windowBgOver;
-agentStepsLineSkip: 2px;
-agentStepsHeaderFg: windowSubTextFg;
-agentStepsHeaderFgOver: windowFg;
-agentStepsFailedFg: boxTextFgError;
-agentStepsChevronSize: 8px;
-agentStepsChevronStroke: 1.5;
-agentStepsTitleLeft: 18px;
-agentStepsListMargin: margins(10px, 0px, 0px, 2px);
-agentStepsRowMargin: margins(8px, 0px, 0px, 0px);
-agentStepsDetailsMargin: margins(18px, 2px, 0px, 8px);
-agentStepsDetailsGap: 6px;
-agentStepsSpinner: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
-	color: windowSubTextFg;
-	thickness: 2px;
-}
-agentStepsSpinnerSize: size(12px, 12px);
-agentStepsSectionLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowSubTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(12px);
-	}
-}
-agentStepsThinkingLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowSubTextFg;
-}
 agentStepsCodeLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowFg;
@@ -72,26 +31,10 @@ agentStepsCodeBg: windowBgOver;
 agentStepsCodeRadius: 6px;
 agentStepsCodePadding: margins(8px, 6px, 8px, 6px);
 
-agentFeedSummaryLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	align: align(center);
-	textFg: windowSubTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(12px);
-	}
-}
-
 agentFeedStatusLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	align: align(center);
 	textFg: windowSubTextFg;
-}
-agentFeedStatusPadding: margins(16px, 8px, 16px, 8px);
-agentFeedWorkingSize: size(14px, 14px);
-agentFeedWorkingGap: 6px;
-agentFeedWorking: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
-	color: windowSubTextFg;
-	thickness: 2px;
 }
 agentFeedRetry: RoundButton(defaultActiveButton) {
 	textFg: windowActiveTextFg;
@@ -109,13 +52,7 @@ agentFeedRetry: RoundButton(defaultActiveButton) {
 		font: font(13px);
 	}
 }
-agentFeedRetryMargin: margins(0px, 8px, 0px, 0px);
 
-agentWelcomeLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	align: align(center);
-	textFg: windowSubTextFg;
-}
 agentOverlayMargin: margins(24px, 0px, 24px, 0px);
 agentOverlayGap: 12px;
 agentOverlayOpenSettings: RoundButton(agentFeedRetry) {
@@ -124,35 +61,6 @@ agentOverlayOpenSettings: RoundButton(agentFeedRetry) {
 	radius: 15px;
 	textTop: 5px;
 }
-
-agentComposerFieldLeft: 14px;
-agentComposerQueuedPadding: margins(14px, 8px, 10px, 2px);
-agentModelChipMargin: margins(8px, 6px, 8px, 0px);
-agentModelChipHeight: 26px;
-agentModelChipPadding: margins(8px, 0px, 6px, 0px);
-agentModelChipArrowSkip: 4px;
-agentModelChipFont: font(12px semibold);
-agentModelChipFg: windowSubTextFg;
-agentModelChipFgOver: windowSubTextFgOver;
-agentModelChipBgOver: windowBgOver;
-agentModelChipRadius: 13px;
-agentModelChipArrow: icon {{ "intro_country_dropdown", windowSubTextFg }};
-agentModelChipRipple: defaultRippleAnimation;
-agentQueuedLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowSubTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(12px);
-	}
-}
-agentQueuedTextLabel: FlatLabel(agentQueuedLabel) {
-	textFg: windowFg;
-}
-agentQueuedBubbleBg: windowBgOver;
-agentQueuedBubbleRadius: 8px;
-agentQueuedBubblePadding: margins(8px, 5px, 8px, 6px);
-agentQueuedLabelMargin: margins(0px, 0px, 0px, 2px);
-agentQueuedBubbleMargin: margins(40px, 4px, 0px, 0px);
 
 agentFeedCardBg: windowBgOver;
 agentFeedCardRadius: 12px;
@@ -216,20 +124,12 @@ agentFeedCardButtonDanger: RoundButton(agentFeedCardButton) {
 	textFg: boxTextFgError;
 	textFgOver: boxTextFgError;
 }
-agentFeedCardButtonMargin: margins(0px, 12px, 0px, 0px);
 agentFeedCardButtonsGap: 8px;
 agentFeedCardSpinner: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
 	color: windowSubTextFg;
 	thickness: 2px;
 }
 agentFeedCardSpinnerSize: size(14px, 14px);
-agentFeedActionsMarkGood: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: menuIconFgOver;
-	style: TextStyle(defaultTextStyle) {
-		font: font(13px semibold);
-	}
-}
 agentFeedActionsMarkBad: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: boxTextFgError;
@@ -237,31 +137,10 @@ agentFeedActionsMarkBad: FlatLabel(defaultFlatLabel) {
 		font: font(13px semibold);
 	}
 }
-agentFeedActionsUndoLink: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowActiveTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(13px);
-	}
-	palette: TextPalette(defaultTextPalette) {
-		linkFg: windowActiveTextFg;
-	}
-}
-agentFeedActionsRowGap: 6px;
-agentFeedActionsUndoAllMargin: margins(0px, 8px, 0px, 0px);
 
 agentSessionListDeleteIcon: icon {{ "menu/delete", menuIconFg }};
 agentSessionListDeleteRight: 14px;
 agentSessionListDeleteTextGap: 8px;
-
-agentFeedSpendingLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowSubTextFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(12px);
-	}
-}
-agentFeedSpendingMargin: margins(16px, 4px, 16px, 6px);
 
 agentChatEmptyWidth: 260px;
 agentPaletteNaturalList: 320px;
