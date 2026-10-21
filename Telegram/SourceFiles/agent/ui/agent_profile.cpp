@@ -39,6 +39,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
 #include "ui/widgets/labels.h"
+#include "ui/wrap/slide_wrap.h"
 #include "ui/wrap/vertical_layout.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent_general.h"
@@ -533,22 +534,30 @@ void ShowEditAgentProfileBox(
 		}, userpic->lifetime());
 
 		const auto reset = box->addRow(
-			object_ptr<::Ui::LinkButton>(
+			object_ptr<::Ui::SlideWrap<::Ui::LinkButton>>(
 				box,
-				tr::lng_agent_profile_photo_reset(tr::now)),
+				object_ptr<::Ui::LinkButton>(
+					box,
+					tr::lng_agent_profile_photo_reset(tr::now))),
 			st::agentProfileResetPadding,
 			style::al_top);
-		reset->setClickedCallback([=] {
+		reset->toggle(!providers.agentPhoto.isEmpty(), anim::type::instant);
+		reset->entity()->setClickedCallback([=] {
 			state->image = QImage();
 			userpic->showCustom(DefaultAgentPhoto(kPhotoSize));
+			reset->toggle(false, anim::type::normal);
 		});
+		userpic->chosenImages(
+		) | rpl::on_next([=] {
+			reset->toggle(true, anim::type::normal);
+		}, reset->lifetime());
 
 		const auto name = box->addRow(
 			object_ptr<::Ui::InputField>(
 				box,
 				st::defaultInputField,
 				tr::lng_agent_profile_name(),
-				providers.agentName),
+				AgentName(providers.agentName)),
 			st::boxRowPadding);
 		name->setMaxLength(64);
 		box->setFocusCallback([=] {
@@ -557,7 +566,9 @@ void ShowEditAgentProfileBox(
 		const auto save = [=] {
 			const auto text = name->getLastText().trimmed();
 			UpdateProviders([&](ProvidersState &providers) {
-				providers.agentName = text;
+				providers.agentName = (text == AgentName(QString()))
+					? QString()
+					: text;
 				if (state->image) {
 					providers.agentPhoto = state->image->isNull()
 						? QByteArray()
