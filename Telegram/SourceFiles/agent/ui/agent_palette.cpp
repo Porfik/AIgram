@@ -93,7 +93,9 @@ PaletteLayer::PaletteLayer(
 , _view(this, controller, &controller->session().agent(), Scope::Account())
 , _bg(st::boxRadius, st::boxBg) {
 	const auto peer = controller->activeChatCurrent().peer();
-	if (peer && !_manager->exclusions().excluded(peer->id.value)) {
+	if (peer
+		&& !IsAgentPeer(peer)
+		&& !_manager->exclusions().excluded(peer->id.value)) {
 		_openPeer = peer;
 	}
 	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
