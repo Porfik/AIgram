@@ -21,8 +21,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_prompts.h"
 #include "agent/tools/agent_tool_format.h"
 #include "agent/tools/agent_tools.h"
+#include "agent/ui/agent_card_box.h"
 #include "agent/ui/agent_chat_items.h"
-#include "agent/ui/agent_feed_cards.h"
 #include "agent/ui/agent_feed_format.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_queue.h"
@@ -937,44 +937,18 @@ void ChatView::showCardBox(const QString &toolUseId) {
 	}
 	const auto data = *card;
 	const auto weak = base::make_weak(_session);
-	_controller->show(Box([=](not_null<::Ui::GenericBox*> box) {
-		box->setWidth(st::boxWideWidth);
-		const auto close = crl::guard(box, [=] { box->closeBox(); });
-		box->addRow(
-			object_ptr<FeedCardWidget>(box, FeedContext{
-				.controller = _controller,
-				.renderer = std::make_shared<
-					Iv::Markdown::MathRenderer>(),
-				.scrollBy = [](int) {},
-				.delegate = {
-					.decideCard = [=](
-							const QString &id,
-							CardDecision decision) {
-						if (const auto strong = weak.get()) {
-							strong->decideCard(id, std::move(decision));
-						}
-						close();
-					},
-					.canUndo = [](const QString &) { return false; },
-					.isUndone = [](const QString &) { return false; },
-					.undo = [](const std::vector<QString> &) {},
-					.startHandoff = [=](const QString &text) {
-						close();
-						handoffRequested(text);
-					},
-					.isRun = [=] {
-						const auto strong = weak.get();
-						return strong && strong->isRun();
-					},
-				},
-			}, data),
-			style::margins(
-				st::boxRowPadding.left(),
-				st::boxPadding.top(),
-				st::boxRowPadding.right(),
-				0));
-		box->addButton(tr::lng_close(), close);
-	}));
+	ShowCardBox(_controller, {
+		.card = data.card,
+		.run = _session->isRun(),
+		.decide = [=](CardDecision decision) {
+			if (const auto strong = weak.get()) {
+				strong->decideCard(data.card.toolUseId, std::move(decision));
+			}
+		},
+		.handoff = [=](QString text) {
+			handoffRequested(text);
+		},
+	});
 }
 
 void ChatView::send() {

@@ -154,12 +154,8 @@ PRIVATE
     agent/ui/agent_chat_view.h
     agent/ui/agent_claude_boxes.cpp
     agent/ui/agent_claude_boxes.h
-    agent/ui/agent_feed_cards.cpp
-    agent/ui/agent_feed_cards.h
     agent/ui/agent_feed_format.cpp
     agent/ui/agent_feed_format.h
-    agent/ui/agent_feed_items.cpp
-    agent/ui/agent_feed_items.h
     agent/ui/agent_history_view.cpp
     agent/ui/agent_history_view.h
     agent/ui/agent_memory_list.cpp

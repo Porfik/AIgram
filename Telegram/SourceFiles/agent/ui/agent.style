@@ -9,28 +9,6 @@ using "ui/basic.style";
 using "ui/widgets/widgets.style";
 using "chat_helpers/chat_helpers.style";
 
-agentFeedMaxTextWidth: 440px;
-
-agentFeedTextLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowFg;
-}
-
-agentStepsCodeLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(12px);
-	}
-	palette: TextPalette(defaultTextPalette) {
-		monoFg: windowFg;
-		selectMonoFg: windowFg;
-	}
-}
-agentStepsCodeBg: windowBgOver;
-agentStepsCodeRadius: 6px;
-agentStepsCodePadding: margins(8px, 6px, 8px, 6px);
-
 agentFeedStatusLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	align: align(center);
@@ -62,79 +40,11 @@ agentOverlayOpenSettings: RoundButton(agentFeedRetry) {
 	textTop: 5px;
 }
 
-agentFeedCardBg: windowBgOver;
-agentFeedCardRadius: 12px;
-agentFeedCardPadding: margins(12px, 10px, 12px, 12px);
-agentFeedCardTitleLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(13px semibold);
-	}
-}
-agentFeedCardTargetLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowFg;
-}
 agentFeedCardDetailLabel: FlatLabel(defaultFlatLabel) {
 	minWidth: 40px;
 	textFg: windowSubTextFg;
 	style: TextStyle(defaultTextStyle) {
 		font: font(12px);
-	}
-}
-agentFeedCardStatusLabel: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: windowSubTextFg;
-}
-agentFeedCardGap: 6px;
-agentFeedCardField: InputField(historyComposeField) {
-	textMargins: margins(8px, 7px, 8px, 7px);
-	heightMax: 220px;
-	textBg: windowBgRipple;
-	textBgActive: windowBgRipple;
-	textFg: windowFg;
-	placeholderFg: windowSubTextFg;
-	placeholderFgActive: windowSubTextFg;
-	placeholderFgError: windowSubTextFg;
-}
-agentFeedCardCheckbox: Checkbox(defaultCheckbox) {
-	textFg: windowFg;
-	style: TextStyle(defaultTextStyle) {
-		font: font(13px);
-	}
-}
-agentFeedCardButton: RoundButton(defaultLightButton) {
-	height: 30px;
-	radius: 15px;
-	textTop: 6px;
-	textFg: windowFg;
-	textFgOver: windowFg;
-	textBg: windowBgRipple;
-	textBgOver: windowBgOver;
-	width: -24px;
-}
-agentFeedCardButtonMain: RoundButton(defaultActiveButton) {
-	height: 30px;
-	radius: 15px;
-	textTop: 6px;
-	width: -24px;
-}
-agentFeedCardButtonDanger: RoundButton(agentFeedCardButton) {
-	textFg: boxTextFgError;
-	textFgOver: boxTextFgError;
-}
-agentFeedCardButtonsGap: 8px;
-agentFeedCardSpinner: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
-	color: windowSubTextFg;
-	thickness: 2px;
-}
-agentFeedCardSpinnerSize: size(14px, 14px);
-agentFeedActionsMarkBad: FlatLabel(defaultFlatLabel) {
-	minWidth: 40px;
-	textFg: boxTextFgError;
-	style: TextStyle(defaultTextStyle) {
-		font: font(13px semibold);
 	}
 }
 
