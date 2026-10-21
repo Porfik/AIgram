@@ -856,6 +856,15 @@ bool ChatItems::apply(
 		entry.markup.rows.push_back(std::move(row));
 		prepared.push_back(std::move(entry));
 	}
+	if (!extras.turnEnd.isEmpty()) {
+		prepared.push_back({
+			.key = u"turnend"_q,
+			.signature = extras.turnEnd,
+			.service = true,
+			.date = lastDate(),
+			.text = TextWithEntities{ extras.turnEnd },
+		});
+	}
 	if (!extras.spending.isEmpty()) {
 		prepared.push_back({
 			.key = u"spending"_q,

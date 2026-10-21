@@ -120,6 +120,7 @@ private:
 	[[nodiscard]] Session *ensureSession();
 	void handoffRequested(const QString &text);
 	[[nodiscard]] QString errorText() const;
+	[[nodiscard]] QString turnEndText() const;
 	[[nodiscard]] QString spendingText() const;
 	[[nodiscard]] QString noteText() const;
 	[[nodiscard]] TimeId messageDate(int index) const;
