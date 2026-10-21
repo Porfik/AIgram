@@ -65,6 +65,8 @@ std::vector<ChatMessage> BuildChatMessages(
 				.index = data.index,
 				.text = data.text,
 				.attachments = data.attachments,
+				.replyTo = data.replyTo,
+				.replyQuote = data.replyQuote,
 			});
 		}, [&](const FeedAssistant &data) {
 			auto &message = agent(data.index);
@@ -95,7 +97,13 @@ std::vector<ChatMessage> BuildChatMessages(
 				.kind = ChatMessageKind::Summary,
 				.index = data.until,
 			});
-		}, [&](const FeedTurnEnd &) {
+		}, [&](const FeedTurnEnd &data) {
+			flush();
+			push(ChatMessage{
+				.kind = ChatMessageKind::TurnEnd,
+				.index = data.index,
+				.turnEnd = data.end,
+			});
 		});
 	}
 	flush();

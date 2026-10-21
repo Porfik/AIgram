@@ -186,6 +186,61 @@ std::vector<Check> ChatMessagesChecks() {
 			tail.clear();
 			return tail.empty() ? QString() : u"clear must empty"_q;
 		} },
+		{ u"chat_messages_turn_end_ends_bubble"_q, [] {
+			const auto messages = std::vector<Message>{
+				Text(Role::User, u"hi"_q),
+				Text(Role::Assistant, u"answer"_q),
+				Text(Role::User, u"again"_q),
+				Message{ Role::Assistant, { ThinkingBlock{ u"plan"_q } } },
+			};
+			const auto turnEnds = std::vector<TurnEndMark>{
+				{ 2, TurnEnd::Interrupted },
+			};
+			const auto list = BuildChatMessages(
+				BuildFeed(messages, 0, {}, {}, turnEnds));
+			if (list.size() != 5) {
+				return u"expected the user, answer, turn end, user, steps"_q;
+			} else if (list[0].kind != ChatMessageKind::User
+				|| list[0].text != u"hi"_q) {
+				return u"the first message must be the user's"_q;
+			} else if (list[1].kind != ChatMessageKind::Agent
+				|| list[1].text != u"answer"_q) {
+				return u"the answer must be the second message"_q;
+			} else if (list[2].kind != ChatMessageKind::TurnEnd
+				|| list[2].index != 1
+				|| list[2].turnEnd != TurnEnd::Interrupted
+				|| list[2].key != u"e1"_q) {
+				return u"the turn end must be the third message"_q;
+			} else if (list[3].kind != ChatMessageKind::User
+				|| list[3].text != u"again"_q) {
+				return u"the user message must follow the turn end"_q;
+			} else if (list[4].kind != ChatMessageKind::Agent
+				|| list[4].steps.size() != 1
+				|| list[4].key != u"a3"_q) {
+				return u"the steps after the turn end must start a bubble"_q;
+			}
+			return QString();
+		} },
+		{ u"chat_messages_user_replies_copy"_q, [] {
+			const auto messages = std::vector<Message>{
+				Message{
+					.role = Role::User,
+					.blocks = { TextBlock{ u"reply text"_q } },
+					.replyTo = u"a0"_q,
+					.replyQuote = u"some quote"_q,
+				},
+				Text(Role::Assistant, u"done"_q),
+			};
+			const auto list = BuildChatMessages(BuildFeed(messages, 0));
+			if (list.size() != 2) {
+				return u"expected the user message and the answer"_q;
+			} else if (list[0].kind != ChatMessageKind::User
+				|| list[0].replyTo != u"a0"_q
+				|| list[0].replyQuote != u"some quote"_q) {
+				return u"the reply must be copied to the user message"_q;
+			}
+			return QString();
+		} },
 	};
 }
 

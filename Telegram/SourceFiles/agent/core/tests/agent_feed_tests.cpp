@@ -65,6 +65,9 @@ namespace {
 						? (u"='"_q + value.result->content + u"'"_q)
 						: QString())
 					+ u" "_q;
+			} else if constexpr (std::is_same_v<T, FeedTurnEnd>) {
+				result += u"turnEnd("_q + QString::number(value.index)
+					+ u") "_q;
 			}
 		}, item);
 	}
@@ -402,6 +405,89 @@ std::vector<Check> FeedChecks() {
 			const auto summary = std::get_if<FeedSummary>(&feed[2]);
 			if (!summary || summary->until != 2) {
 				return u"expected summary last, got: "_q + DumpFeed(feed);
+			}
+			return QString();
+		} },
+		{ u"feed_turn_end_after_assistant"_q, [] {
+			const auto turnEnds = std::vector<TurnEndMark>{
+				{ 2, TurnEnd::Interrupted },
+			};
+			return Expect(BuildFeed({
+				UserText(u"go"_q),
+				Message{ Role::Assistant, { TextBlock{ u"answer"_q, false } } },
+				UserText(u"next"_q),
+			}, 0, {}, {}, turnEnds),
+				u"user(0): 'go' assistant(1): 'answer' "
+					"turnEnd(1) user(2): 'next'"_q);
+		} },
+		{ u"feed_turn_end_splits_steps"_q, [] {
+			const auto turnEnds = std::vector<TurnEndMark>{
+				{ 2, TurnEnd::Interrupted },
+			};
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"plan"_q, QByteArray() },
+					Call(u"call1"_q),
+				} },
+				Message{ Role::User, { Result(u"call1"_q, u"one"_q) } },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+			}, 0, {}, {}, turnEnds),
+				u"steps(0)[ thinking(0): 'plan' tool(0): 'call1'='one' ] "
+					"turnEnd(1) steps(2)[ tool(2): 'call2' ]"_q);
+		} },
+		{ u"feed_turn_end_result_attaches_earlier"_q, [] {
+			const auto turnEnds = std::vector<TurnEndMark>{
+				{ 2, TurnEnd::Interrupted },
+			};
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, { Call(u"call1"_q) } },
+				Message{ Role::Assistant, { Call(u"call2"_q) } },
+				Message{ Role::User, { Result(u"call1"_q, u"one"_q) } },
+				Message{ Role::User, { Result(u"call2"_q, u"two"_q) } },
+			}, 0, {}, {}, turnEnds),
+				u"steps(0)[ tool(0): 'call1'='one' tool(1): 'call2'='two' ] "
+					"turnEnd(1)"_q);
+		} },
+		{ u"feed_turn_end_before_summary"_q, [] {
+			const auto turnEnds = std::vector<TurnEndMark>{
+				{ 2, TurnEnd::Interrupted },
+			};
+			return Expect(BuildFeed({
+				UserText(u"first"_q),
+				Message{ Role::Assistant, { TextBlock{ u"text"_q, false } } },
+				UserText(u"second"_q),
+			}, 2, {}, {}, turnEnds),
+				u"user(0): 'first' assistant(1): 'text' "
+					"turnEnd(1) summary(2) user(2): 'second'"_q);
+		} },
+		{ u"feed_thinking_duration_and_replies"_q, [] {
+			const auto feed = BuildFeed({
+				Message{
+					.role = Role::User,
+					.blocks = { TextBlock{ u"reply text"_q } },
+					.replyTo = u"a0"_q,
+					.replyQuote = u"some quote"_q,
+				},
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"think"_q, QByteArray(), false, 3000 },
+					TextBlock{ u"answer"_q, false },
+				} },
+			}, 0);
+			if (feed.size() != 3) {
+				return u"expected three items, got: "_q + DumpFeed(feed);
+			}
+			const auto user = std::get_if<FeedUser>(&feed[0]);
+			if (!user || user->replyTo != u"a0"_q
+				|| user->replyQuote != u"some quote"_q) {
+				return u"the user replies must be copied"_q;
+			}
+			const auto steps = std::get_if<FeedSteps>(&feed[1]);
+			if (!steps || steps->steps.size() != 1) {
+				return u"expected one thinking step, got: "_q + DumpFeed(feed);
+			}
+			const auto thinking = std::get_if<FeedThinking>(&steps->steps[0]);
+			if (!thinking || thinking->durationMs != 3000) {
+				return u"the thinking duration must be copied"_q;
 			}
 			return QString();
 		} },
