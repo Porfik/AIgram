@@ -127,12 +127,14 @@ ChatView::ChatView(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller,
 	not_null<Manager*> manager,
-	Scope scope)
+	Scope scope,
+	MsgId draftRootId)
 : RpWidget(parent)
 , WindowListDelegate(controller)
 , _controller(controller)
 , _manager(manager)
 , _scope(scope)
+, _draftRootId(draftRootId ? draftRootId : DraftRootId(scope))
 , _history(manager->chat().history())
 , _queueStrip(this, manager, scope)
 , _scroll(
@@ -310,7 +312,7 @@ void ChatView::setupComposeControls() {
 		});
 	_composeControls->setHistory({
 		.history = _history.get(),
-		.topicRootId = DraftRootId(_scope),
+		.topicRootId = _draftRootId,
 		.writeRestriction = rpl::single(
 			rpl::empty
 		) | rpl::then(
@@ -527,6 +529,10 @@ MsgId ChatView::DraftRootId(Scope scope) {
 	return (scope.kind == ScopeKind::Chat)
 		? MsgId(1 + int64(scope.peer % 0x3FFFFFFFULL))
 		: MsgId();
+}
+
+MsgId ChatView::PaletteDraftRootId() {
+	return MsgId(0x40000000);
 }
 
 QRect ChatView::listGeometry() const {
