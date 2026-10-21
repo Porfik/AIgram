@@ -9,7 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_manager.h"
 #include "agent/ui/agent_memory_list.h"
-#include "agent/ui/agent_sessions_list.h"
+#include "agent/ui/agent_session_rows.h"
 #include "agent/ui/agent_tasks_view.h"
 #include "lang/lang_keys.h"
 #include "ui/widgets/discrete_sliders.h"
@@ -41,16 +41,17 @@ HistoryView::HistoryView(
 
 	_sessionsScroll = CreateChild<ScrollArea>(this);
 	_sessions = _sessionsScroll->setOwnedWidget(
-		object_ptr<SessionsList>(
+		object_ptr<SessionRows>(
 			_sessionsScroll,
 			_controller,
 			_manager,
-			_scope));
+			_scope,
+			true));
 	_sessionsScroll->widthValue(
 	) | rpl::on_next([=](int width) {
 		_sessions->resizeToWidth(width);
 	}, lifetime());
-	_sessions->openSessionRequests(
+	_sessions->openRequests(
 	) | rpl::start_to_stream(_openSessionRequests, lifetime());
 
 	_memoryScroll = CreateChild<ScrollArea>(this);

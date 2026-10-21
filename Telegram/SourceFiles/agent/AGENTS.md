@@ -2381,7 +2381,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   session creation time, and never decrease.
 - `HistoryView` is the history pane of the panel and the general screen:
   "Sessions" and "Memory" tabs over a scroll area with the scope's
-  `SessionsList` or its `MemoryList` (owner `Scope::peer`). With it open
+  compact `SessionRows` or its `MemoryList` (owner `Scope::peer`). With it open
   the top bar title is "History"; mementos keep the open tab.
 - `MemoryList` shows the owner's facts in order, each wrapping, with
   "Edit" and "Delete" icons always shown at the right; below them "Add a
@@ -2394,11 +2394,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   it is hidden on the general screen and disabled in the panel, because an
   `Info::TopBar` button keeps its place when hidden. After a delete the
   view shows the new-session state.
-- `SessionsList` shows a delete icon at the right of the hovered row,
-  which opens `ShowDeleteSessionBox()`; the context menu stays. With
-  `ProvidersState::showSpending` the date line adds
-  `FormatSpending(UsageTotals(info.usage))`. The userpic stack skips
-  excluded peers.
+- `SessionRows` in the compact mode (the panel's "Sessions" tab) has no
+  userpics and shorter rows (`agentPanelSessionRow`): the title and the
+  date, the preview with the read check, "typing…" and the waiting
+  badge as in the agent chat, spending first in the preview with
+  `showSpending`; the hovered row shows a delete icon at the right
+  instead of the date and the badge, which opens
+  `ShowDeleteSessionBox()`, and without sessions it shows
+  `lng_agent_sessions_empty`. The context menu stays.
 - With `showSpending` a session with usage ends with a "This session: …"
   service message. Memory action lines read "Remembered: …", "Updated
   memory: …" or "Forgot: …" with the result's `fact.text`.

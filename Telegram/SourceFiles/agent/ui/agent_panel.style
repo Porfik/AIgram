@@ -65,11 +65,3 @@ agentMemoryButtonSkip: 8px;
 agentMemoryAddIcon: icon {{ "menu/add", lightButtonFg }};
 
 agentSessionListEmptyHeight: 120px;
-agentSessionListRowHeight: 60px;
-agentSessionListRowPadding: margins(16px, 12px, 16px, 12px);
-agentSessionListTitleStyle: TextStyle(defaultTextStyle) {
-	font: font(14px semibold);
-}
-agentSessionListDateStyle: TextStyle(defaultTextStyle) {
-	font: font(12px);
-}

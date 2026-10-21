@@ -29,7 +29,7 @@ namespace Agent::Ui {
 using namespace ::Ui;
 
 class MemoryList;
-class SessionsList;
+class SessionRows;
 class TasksView;
 
 enum class HistoryTab : uchar {
@@ -66,7 +66,7 @@ private:
 	SettingsSlider *_tabs = nullptr;
 	PlainShadow *_shadow = nullptr;
 	ScrollArea *_sessionsScroll = nullptr;
-	SessionsList *_sessions = nullptr;
+	SessionRows *_sessions = nullptr;
 	ScrollArea *_tasksScroll = nullptr;
 	TasksView *_tasks = nullptr;
 	ScrollArea *_memoryScroll = nullptr;

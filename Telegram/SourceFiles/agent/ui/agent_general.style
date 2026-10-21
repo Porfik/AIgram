@@ -10,12 +10,15 @@ using "ui/layers/layers.style";
 using "agent/ui/agent.style";
 using "agent/ui/agent_panel.style";
 using "settings/settings.style";
+using "dialogs/dialogs.style";
 
 agentGeneralContentMaxWidth: 720px;
 
-agentSessionListUserpicSize: 36px;
-agentSessionListUserpicGap: 12px;
-agentSessionListUserpicShift: 12px;
+agentPanelSessionRow: DialogRow(forumTopicRow) {
+	padding: margins(16px, 7px, 12px, 7px);
+	nameLeft: 16px;
+	textLeft: 16px;
+}
 
 agentUserpicIcon: icon {{ "menu/ai_prompt", historyPeerUserpicFg }};
 agentUserpicIconBase: 42px;

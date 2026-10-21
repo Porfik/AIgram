@@ -29,6 +29,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/menu/menu_add_action_callback_factory.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
+#include "styles/style_agent.h"
+#include "styles/style_agent_general.h"
+#include "styles/style_agent_panel.h"
 #include "styles/style_dialogs.h"
 #include "styles/style_menu_icons.h"
 #include "styles/style_widgets.h"
@@ -39,11 +42,14 @@ SessionRows::SessionRows(
 	QWidget *parent,
 	not_null<Window::SessionController*> controller,
 	not_null<Manager*> manager,
-	Scope scope)
+	Scope scope,
+	bool compact)
 : RpWidget(parent)
 , _controller(controller)
 , _manager(manager)
-, _scope(scope) {
+, _scope(scope)
+, _compact(compact)
+, _st(compact ? st::agentPanelSessionRow : st::defaultDialogRow) {
 	setMouseTracking(true);
 	_manager->listChanges(
 	) | rpl::filter([=](const Scope &changed) {
@@ -101,6 +107,9 @@ void SessionRows::rebuild() {
 		row.outgoing = info.previewOutgoing && !info.preview.isEmpty();
 		row.date = ::Ui::FormatDialogsDate(
 			base::unixtime::parse(TimeId(info.updated)));
+		if (_compact) {
+			continue;
+		}
 		for (const auto key : info.touched) {
 			if (_manager->exclusions().excluded(key)) {
 				continue;
@@ -137,14 +146,25 @@ void SessionRows::refreshActivity() {
 }
 
 int SessionRows::resizeGetHeight(int newWidth) {
-	return int(_rows.size()) * st::defaultDialogRow.height;
+	return (_compact && _rows.empty())
+		? st::agentSessionListEmptyHeight
+		: int(_rows.size()) * _st.height;
 }
 
 void SessionRows::paintEvent(QPaintEvent *e) {
 	auto p = Painter(this);
 	const auto clip = e->rect();
-	p.fillRect(clip, st::dialogsBg);
-	const auto height = st::defaultDialogRow.height;
+	p.fillRect(clip, _compact ? st::windowBg : st::dialogsBg);
+	if (_compact && _rows.empty()) {
+		p.setPen(st::windowSubTextFg);
+		p.setFont(st::normalFont);
+		p.drawText(
+			QRect(0, 0, width(), st::agentSessionListEmptyHeight),
+			Qt::AlignCenter,
+			tr::lng_agent_sessions_empty(tr::now));
+		return;
+	}
+	const auto height = _st.height;
 	const auto from = std::max(clip.y() / height, 0);
 	const auto till = std::min(
 		(clip.y() + clip.height() + height - 1) / height,
@@ -154,11 +174,8 @@ void SessionRows::paintEvent(QPaintEvent *e) {
 	}
 }
 
-void SessionRows::paintRow(Painter &p, Row &row, int top, bool selected) {
-	const auto &st = st::defaultDialogRow;
-	if (selected) {
-		p.fillRect(0, top, width(), st.height, st::dialogsBgOver);
-	}
+void SessionRows::paintUserpic(Painter &p, Row &row, int top) {
+	const auto &st = _st;
 	if (row.userpic->isSelf()) {
 		::Ui::EmptyUserpic::PaintSavedMessages(
 			p,
@@ -175,9 +192,36 @@ void SessionRows::paintRow(Painter &p, Row &row, int top, bool selected) {
 			width(),
 			st.photoSize);
 	}
+}
 
-	auto nameWidth = width() - st.nameLeft - st.padding.right();
-	if (!row.date.isEmpty()) {
+void SessionRows::paintRow(Painter &p, Row &row, int top, bool selected) {
+	const auto &st = _st;
+	if (selected) {
+		p.fillRect(
+			0,
+			top,
+			width(),
+			st.height,
+			_compact ? st::windowBgOver : st::dialogsBgOver);
+	}
+	if (row.userpic) {
+		paintUserpic(p, row, top);
+	}
+	const auto trash = _compact && selected;
+	if (trash) {
+		st::agentSessionListDeleteIcon.paint(
+			p,
+			deleteIconRect(top).topLeft(),
+			width());
+	}
+	const auto right = trash
+		? (width()
+			- deleteIconRect(top).x()
+			+ st::agentSessionListDeleteTextGap)
+		: st.padding.right();
+
+	auto nameWidth = width() - st.nameLeft - right;
+	if (!row.date.isEmpty() && !trash) {
 		const auto dateWidth = st::dialogsDateFont->width(row.date);
 		nameWidth -= dateWidth + st::dialogsDateSkip;
 		p.setFont(st::dialogsDateFont);
@@ -204,8 +248,8 @@ void SessionRows::paintRow(Painter &p, Row &row, int top, bool selected) {
 		.elisionLines = 1,
 	});
 
-	auto textWidth = width() - st.textLeft - st.padding.right();
-	if (row.pending) {
+	auto textWidth = width() - st.textLeft - right;
+	if (row.pending && !trash) {
 		auto style = ::Ui::UnreadBadgeStyle();
 		style.selected = selected;
 		style.align = style::al_right;
@@ -246,8 +290,17 @@ void SessionRows::paintRow(Painter &p, Row &row, int top, bool selected) {
 	});
 }
 
+QRect SessionRows::deleteIconRect(int top) const {
+	const auto &icon = st::agentSessionListDeleteIcon;
+	return QRect(
+		width() - st::agentSessionListDeleteRight - icon.width(),
+		top + (_st.height - icon.height()) / 2,
+		icon.width(),
+		icon.height());
+}
+
 std::optional<int> SessionRows::rowAt(int y) const {
-	const auto index = (y >= 0) ? (y / st::defaultDialogRow.height) : -1;
+	const auto index = (y >= 0) ? (y / _st.height) : -1;
 	if (index < 0 || index >= int(_rows.size())) {
 		return std::nullopt;
 	}
@@ -265,7 +318,13 @@ void SessionRows::mouseReleaseEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton || !pressed) {
 		return;
 	} else if (rowAt(e->pos().y()) == pressed) {
-		_openRequests.fire_copy(_rows[*pressed].id);
+		const auto id = _rows[*pressed].id;
+		if (_compact
+			&& deleteIconRect(*pressed * _st.height).contains(e->pos())) {
+			ShowDeleteSessionBox(_controller, _manager, id);
+			return;
+		}
+		_openRequests.fire_copy(id);
 	}
 }
 

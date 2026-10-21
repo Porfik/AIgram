@@ -29,6 +29,10 @@ namespace Agent {
 class Manager;
 } // namespace Agent
 
+namespace style {
+struct DialogRow;
+} // namespace style
+
 namespace Agent::Ui {
 
 using namespace ::Ui;
@@ -39,7 +43,8 @@ public:
 		QWidget *parent,
 		not_null<Window::SessionController*> controller,
 		not_null<Manager*> manager,
-		Scope scope);
+		Scope scope,
+		bool compact = false);
 
 	[[nodiscard]] rpl::producer<QString> openRequests() const;
 	[[nodiscard]] bool empty() const;
@@ -69,11 +74,15 @@ private:
 	void rebuild();
 	void refreshActivity();
 	void paintRow(Painter &p, Row &row, int top, bool selected);
+	void paintUserpic(Painter &p, Row &row, int top);
 	[[nodiscard]] std::optional<int> rowAt(int y) const;
+	[[nodiscard]] QRect deleteIconRect(int top) const;
 
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
+	const bool _compact = false;
+	const style::DialogRow &_st;
 	std::vector<Row> _rows;
 	std::optional<int> _selected;
 	std::optional<int> _pressed;
