@@ -476,6 +476,10 @@ TasksView::TasksView(
 	_manager->tasks().changes(
 	) | rpl::on_next([=](const QString &id) {
 		if (!_taskId.isEmpty() && !_manager->tasks().find(_taskId)) {
+			if (_single) {
+				requestClose();
+				return;
+			}
 			_taskId = QString();
 		}
 		rebuild();
@@ -501,6 +505,20 @@ rpl::producer<QString> TasksView::openRunRequests() const {
 	return _openRunRequests.events();
 }
 
+rpl::producer<> TasksView::closeRequests() const {
+	return _closeRequests.events();
+}
+
+void TasksView::requestClose() {
+	crl::on_main(this, [=] {
+		_closeRequests.fire({});
+	});
+}
+
+void TasksView::setOpenTaskHandler(Fn<void(QString)> open) {
+	_openTask = std::move(open);
+}
+
 void TasksView::showList() {
 	if (_taskId.isEmpty()) {
 		return;
@@ -515,6 +533,12 @@ void TasksView::showTask(const QString &taskId) {
 	}
 	_taskId = taskId;
 	rebuild();
+}
+
+void TasksView::showSingleTask(const QString &taskId) {
+	_single = true;
+	_taskId = QString();
+	showTask(taskId);
 }
 
 QString TasksView::openedTask() const {
@@ -574,7 +598,11 @@ void TasksView::buildList() {
 			FormatTaskState(_manager, task),
 			isBusy(task)
 		))->setClickedCallback([=, id = task.id] {
-			showTask(id);
+			if (_openTask) {
+				_openTask(id);
+			} else {
+				showTask(id);
+			}
 		});
 	}
 }
@@ -582,6 +610,10 @@ void TasksView::buildList() {
 void TasksView::buildTask() {
 	const auto task = _manager->tasks().find(_taskId);
 	if (!task) {
+		if (_single) {
+			requestClose();
+			return;
+		}
 		_taskId = QString();
 		rebuild();
 		return;
@@ -590,15 +622,19 @@ void TasksView::buildTask() {
 	const auto container = _layout;
 	const auto session = &_manager->session();
 
-	const auto back = container->add(
-		object_ptr<LinkButton>(
-			container,
-			tr::lng_agent_tasks_back(tr::now),
-			st::defaultLinkButton),
-		st::agentTasksBackMargins);
-	back->setClickedCallback([=] {
-		showList();
-	});
+	if (!_single) {
+		const auto back = container->add(
+			object_ptr<LinkButton>(
+				container,
+				tr::lng_agent_tasks_back(tr::now),
+				st::defaultLinkButton),
+			st::agentTasksBackMargins);
+		back->setClickedCallback([=] {
+			showList();
+		});
+	} else {
+		Ui::AddSkip(container, st::agentTasksBackMargins.top());
+	}
 
 	container->add(
 		object_ptr<FlatLabel>(container, task->title, st::agentTasksTitle),
@@ -710,7 +746,11 @@ void TasksView::buildTask() {
 		st::settingsAttentionButton
 	)->setClickedCallback([=] {
 		ShowDeleteTaskBox(_controller, _manager, id, [=] {
-			showList();
+			if (_single) {
+				requestClose();
+			} else {
+				showList();
+			}
 		});
 	});
 

@@ -286,9 +286,13 @@ int JournalList::resizeGetHeight(int newWidth) {
 
 } // namespace
 
-ProfileMemento::ProfileMemento(not_null<PeerData*> peer, ProfileMode mode)
+ProfileMemento::ProfileMemento(
+	not_null<PeerData*> peer,
+	ProfileMode mode,
+	QString taskId)
 : Info::ContentMemento(peer, nullptr, nullptr, PeerId())
-, _mode(mode) {
+, _mode(mode)
+, _taskId(std::move(taskId)) {
 }
 
 object_ptr<Info::ContentWidget> ProfileMemento::createWidget(
@@ -299,7 +303,8 @@ object_ptr<Info::ContentWidget> ProfileMemento::createWidget(
 		parent,
 		controller,
 		peer(),
-		_mode);
+		_mode,
+		_taskId);
 	result->setInternalState(geometry, this);
 	return result;
 }
@@ -312,14 +317,20 @@ ProfileMode ProfileMemento::mode() const {
 	return _mode;
 }
 
+QString ProfileMemento::taskId() const {
+	return _taskId;
+}
+
 ProfileWidget::ProfileWidget(
 	QWidget *parent,
 	not_null<Info::Controller*> controller,
 	not_null<PeerData*> peer,
-	ProfileMode mode)
+	ProfileMode mode,
+	QString taskId)
 : Info::ContentWidget(parent, controller)
 , _peer(peer)
-, _mode(mode) {
+, _mode(mode)
+, _taskId(std::move(taskId)) {
 	const auto window = controller->parentController();
 	const auto manager = &peer->session().agent();
 	auto owned = object_ptr<::Ui::VerticalLayout>(this);
@@ -328,12 +339,24 @@ ProfileWidget::ProfileWidget(
 	case ProfileMode::Main:
 		setupMain(container);
 		break;
-	case ProfileMode::Tasks: {
+	case ProfileMode::Tasks:
+	case ProfileMode::Task: {
 		const auto tasks = container->add(object_ptr<TasksView>(
 			container,
 			window,
 			manager,
 			Scope::Account()));
+		if (_mode == ProfileMode::Task) {
+			tasks->showSingleTask(_taskId);
+			tasks->closeRequests(
+			) | rpl::on_next([=] {
+				this->controller()->showBackFromStack();
+			}, tasks->lifetime());
+		} else {
+			tasks->setOpenTaskHandler([=](const QString &id) {
+				showMode(ProfileMode::Task, id);
+			});
+		}
 		tasks->openRunRequests(
 		) | rpl::on_next([=](const QString &id) {
 			ShowGeneralAgentSession(window, id);
@@ -456,10 +479,10 @@ void ProfileWidget::setupMain(not_null<::Ui::VerticalLayout*> container) {
 	::Ui::AddDividerText(container, tr::lng_agent_profile_about());
 }
 
-void ProfileWidget::showMode(ProfileMode mode) {
+void ProfileWidget::showMode(ProfileMode mode, QString taskId) {
 	controller()->showSection(std::make_shared<Info::Memento>(
 		std::vector<std::shared_ptr<Info::ContentMemento>>{
-			std::make_shared<ProfileMemento>(_peer, mode),
+			std::make_shared<ProfileMemento>(_peer, mode, std::move(taskId)),
 		}));
 }
 
@@ -467,7 +490,7 @@ bool ProfileWidget::showInternal(not_null<Info::ContentMemento*> memento) {
 	if (!controller()->validateMementoPeer(memento)) {
 		return false;
 	} else if (const auto my = dynamic_cast<ProfileMemento*>(memento.get())) {
-		return (my->mode() == _mode);
+		return (my->mode() == _mode) && (my->taskId() == _taskId);
 	}
 	return false;
 }
@@ -481,7 +504,8 @@ void ProfileWidget::setInternalState(
 
 rpl::producer<QString> ProfileWidget::title() {
 	switch (_mode) {
-	case ProfileMode::Tasks: return tr::lng_agent_tasks_tab();
+	case ProfileMode::Tasks:
+	case ProfileMode::Task: return tr::lng_agent_tasks_tab();
 	case ProfileMode::Memory: return tr::lng_agent_memory_tab();
 	case ProfileMode::Journal: return tr::lng_agent_journal();
 	case ProfileMode::Main: break;
@@ -507,7 +531,7 @@ void ProfileWidget::setupTopBar(
 }
 
 std::shared_ptr<Info::ContentMemento> ProfileWidget::doCreateMemento() {
-	return std::make_shared<ProfileMemento>(_peer, _mode);
+	return std::make_shared<ProfileMemento>(_peer, _mode, _taskId);
 }
 
 void ShowEditAgentProfileBox(

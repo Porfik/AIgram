@@ -31,13 +31,17 @@ namespace Agent::Ui {
 enum class ProfileMode {
 	Main,
 	Tasks,
+	Task,
 	Memory,
 	Journal,
 };
 
 class ProfileMemento final : public Info::ContentMemento {
 public:
-	ProfileMemento(not_null<PeerData*> peer, ProfileMode mode);
+	ProfileMemento(
+		not_null<PeerData*> peer,
+		ProfileMode mode,
+		QString taskId = QString());
 
 	object_ptr<Info::ContentWidget> createWidget(
 		QWidget *parent,
@@ -46,9 +50,11 @@ public:
 
 	[[nodiscard]] Info::Section section() const override;
 	[[nodiscard]] ProfileMode mode() const;
+	[[nodiscard]] QString taskId() const;
 
 private:
 	ProfileMode _mode = ProfileMode::Main;
+	QString _taskId;
 
 };
 
@@ -58,7 +64,8 @@ public:
 		QWidget *parent,
 		not_null<Info::Controller*> controller,
 		not_null<PeerData*> peer,
-		ProfileMode mode);
+		ProfileMode mode,
+		QString taskId);
 
 	bool showInternal(
 		not_null<Info::ContentMemento*> memento) override;
@@ -71,12 +78,13 @@ public:
 
 private:
 	void setupMain(not_null<::Ui::VerticalLayout*> container);
-	void showMode(ProfileMode mode);
+	void showMode(ProfileMode mode, QString taskId = QString());
 
 	std::shared_ptr<Info::ContentMemento> doCreateMemento() override;
 
 	const not_null<PeerData*> _peer;
 	const ProfileMode _mode;
+	const QString _taskId;
 
 };
 

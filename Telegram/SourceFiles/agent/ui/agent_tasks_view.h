@@ -36,9 +36,12 @@ public:
 		Scope scope);
 
 	[[nodiscard]] rpl::producer<QString> openRunRequests() const;
+	[[nodiscard]] rpl::producer<> closeRequests() const;
 
+	void setOpenTaskHandler(Fn<void(QString)> open);
 	void showList();
 	void showTask(const QString &taskId);
+	void showSingleTask(const QString &taskId);
 	[[nodiscard]] QString openedTask() const;
 
 protected:
@@ -48,14 +51,18 @@ private:
 	void rebuild();
 	void buildList();
 	void buildTask();
+	void requestClose();
 	[[nodiscard]] bool isBusy(const Task &task) const;
 
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
 	QString _taskId;
+	Fn<void(QString)> _openTask;
+	bool _single = false;
 	VerticalLayout *_layout = nullptr;
 	rpl::event_stream<QString> _openRunRequests;
+	rpl::event_stream<> _closeRequests;
 
 };
 

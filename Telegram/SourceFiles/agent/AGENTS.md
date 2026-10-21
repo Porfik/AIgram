@@ -2295,7 +2295,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   peer): a centered userpic, the name and "AI agent", then "Default
   model" (a single-choice box), "Tasks" and "Memory" with their counts,
   "Action Journal" (each opens a `ProfileMemento` of that mode, pushed
-  onto the Info stack) and "Agent Settings". The journal reads every
+  onto the Info stack) and "Agent Settings". A task of the "Tasks" page
+  opens as one more `ProfileMemento` (`ProfileMode::Task` with the task
+  id): `TasksView::showSingleTask()` without the "All tasks" link, whose
+  removal goes back through the Info stack. The journal reads every
   indexed session and every task run record (open sessions from memory),
   shows `BuildJournal(..., ActionToolNames(), 200)` as rows (a ✓ or ✗
   mark and the action or card text, the description of a Telegram API
@@ -2434,7 +2437,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `TasksView` has two modes. The list shows `Tasks::list(scope)`, newest
   first: the title, `FormatTaskTrigger()` on one elided line and
   `FormatTaskState()` (in the active text color while running or
-  waiting); a click opens the task. Without tasks it shows
+  waiting); a click opens the task in place, or calls the
+  `setOpenTaskHandler()` handler when one is set. Without tasks it shows
   `lng_agent_tasks_empty`. The task mode starts with a back link
   (`lng_agent_tasks_back`) and the title, then label and value rows like
   the settings info rows: "When" (`FormatTaskTrigger()`), "What to do"
