@@ -152,6 +152,9 @@ void FillQueueBox(
 	manager->runner().waitingChanges(
 	) | rpl::on_next(refresh, container->lifetime());
 	refresh();
+	box->addButton(tr::lng_close(), [=] {
+		box->closeBox();
+	});
 }
 
 } // namespace

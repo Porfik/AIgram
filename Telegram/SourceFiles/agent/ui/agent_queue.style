@@ -24,7 +24,7 @@ agentQueueStripArrowIcon: icon {{ "pinned_show_all", windowActiveTextFg }};
 agentQueueStripArrowSize: 22px;
 agentQueueStripArrowRight: 13px;
 
-agentQueueRowPadding: margins(16px, 10px, 16px, 10px);
+agentQueueRowPadding: margins(24px, 10px, 24px, 10px);
 agentQueueRowGap: 4px;
 agentQueueRowButton: SettingsButton(defaultSettingsButton) {
 	padding: margins(0px, 0px, 0px, 0px);
