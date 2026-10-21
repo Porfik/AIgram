@@ -17,7 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kSessionVersion = qint32(9);
+constexpr auto kSessionVersion = qint32(10);
 constexpr auto kIndexVersion = qint32(6);
 constexpr auto kPreviewMaxChars = 120;
 constexpr auto kMaxMessages = 1'000'000;
@@ -64,7 +64,8 @@ void WriteBlock(QDataStream &stream, const ThinkingBlock &block) {
 		<< quint8(BlockTag::Thinking)
 		<< block.text
 		<< block.signature
-		<< qint32(block.redacted ? 1 : 0);
+		<< qint32(block.redacted ? 1 : 0)
+		<< qint32(block.durationMs);
 }
 
 void WriteBlock(QDataStream &stream, const ToolUseBlock &block) {
@@ -176,6 +177,15 @@ std::optional<Block> ReadBlock(QDataStream &stream, qint32 version) {
 				return std::nullopt;
 			}
 			block.redacted = (redacted != 0);
+			if (version >= 10) {
+				auto durationMs = qint32(0);
+				stream >> durationMs;
+				if (stream.status() != QDataStream::Ok
+					|| durationMs < 0) {
+					return std::nullopt;
+				}
+				block.durationMs = durationMs;
+			}
 		}
 		return block;
 	}
@@ -577,6 +587,13 @@ QByteArray SerializeSession(const SessionRecord &record) {
 	for (const auto &message : record.messages) {
 		stream << message.date;
 	}
+	for (const auto &message : record.messages) {
+		stream << message.replyTo << message.replyQuote;
+	}
+	stream << qint32(record.turnEnds.size());
+	for (const auto &mark : record.turnEnds) {
+		stream << qint32(mark.after) << qint32(mark.end);
+	}
 	return result;
 }
 
@@ -709,6 +726,38 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 		}
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
+		}
+	}
+	if (version >= 10) {
+		for (auto &message : record.messages) {
+			stream >> message.replyTo >> message.replyQuote;
+		}
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+	}
+	if (version >= 10) {
+		auto markCount = qint32(0);
+		stream >> markCount;
+		if (stream.status() != QDataStream::Ok || markCount < 0) {
+			return std::nullopt;
+		}
+		record.turnEnds.reserve(markCount);
+		auto previousAfter = 0;
+		for (auto i = 0; i != markCount; ++i) {
+			auto after = qint32(0);
+			auto end = qint32(0);
+			stream >> after >> end;
+			if (stream.status() != QDataStream::Ok
+				|| after < 1
+				|| after > record.messages.size()
+				|| after <= previousAfter
+				|| end < int(TurnEnd::Interrupted)
+				|| end > int(TurnEnd::Refusal)) {
+				return std::nullopt;
+			}
+			previousAfter = after;
+			record.turnEnds.push_back({ after, TurnEnd(end) });
 		}
 	}
 	if (!stream.atEnd()) {

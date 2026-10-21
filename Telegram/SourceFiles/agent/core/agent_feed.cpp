@@ -138,7 +138,18 @@ std::vector<FeedItem> BuildFeed(
 			{ -1, int(run->actions.size()) - 1, true, true });
 	};
 	const auto count = int(messages.size());
+	auto markIndex = 0;
+	const auto flushMarks = [&](int index) {
+		while (markIndex < int(turnEnds.size())
+			&& turnEnds[markIndex].after == index) {
+			const auto &mark = turnEnds[markIndex];
+			flushRun();
+			result.push_back(FeedTurnEnd{ mark.after - 1, mark.end });
+			++markIndex;
+		}
+	};
 	for (auto index = 0; index != count; ++index) {
+		flushMarks(index);
 		if (summaryUntil > 0 && summaryUntil == index) {
 			flushRun();
 			result.push_back(FeedSummary{ summaryUntil });
@@ -156,7 +167,9 @@ std::vector<FeedItem> BuildFeed(
 				result.push_back(FeedUser{
 					index,
 					base::take(text),
-					base::take(attachments) });
+					base::take(attachments),
+					message.replyTo,
+					message.replyQuote });
 			} else {
 				result.push_back(FeedAssistant{ index, base::take(text) });
 			}
@@ -179,7 +192,10 @@ std::vector<FeedItem> BuildFeed(
 					if (!user) {
 						flush();
 						if (!value.text.isEmpty()) {
-							addStep(index, FeedThinking{ index, value.text });
+							addStep(index, FeedThinking{
+								index,
+								value.text,
+								value.durationMs });
 						}
 					}
 				} else if constexpr (std::is_same_v<T, ToolUseBlock>) {
@@ -206,6 +222,7 @@ std::vector<FeedItem> BuildFeed(
 		flush();
 	}
 	flushRun();
+	flushMarks(count);
 	if (summaryUntil > 0 && summaryUntil == count) {
 		result.push_back(FeedSummary{ summaryUntil });
 	}

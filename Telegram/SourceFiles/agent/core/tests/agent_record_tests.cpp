@@ -111,7 +111,8 @@ namespace {
 			result = other
 				&& other->text == value.text
 				&& other->signature == value.signature
-				&& other->redacted == value.redacted;
+				&& other->redacted == value.redacted
+				&& other->durationMs == value.durationMs;
 		} else if constexpr (std::is_same_v<T, ToolUseBlock>) {
 			const auto other = std::get_if<ToolUseBlock>(&b);
 			result = other
@@ -181,6 +182,14 @@ namespace {
 		return u"tainted differs"_q;
 	} else if (a.messages.size() != b.messages.size()) {
 		return u"message count differs"_q;
+	} else if (a.turnEnds.size() != b.turnEnds.size()) {
+		return u"turnEnds count differs"_q;
+	}
+	for (auto i = 0; i != int(a.turnEnds.size()); ++i) {
+		if (a.turnEnds[i].after != b.turnEnds[i].after
+			|| a.turnEnds[i].end != b.turnEnds[i].end) {
+			return u"turnEnd "_q + QString::number(i) + u" differs"_q;
+		}
 	}
 	for (auto i = 0, count = int(a.messages.size()); i != count; ++i) {
 		const auto &x = a.messages[i];
@@ -189,6 +198,10 @@ namespace {
 			return u"message role differs"_q;
 		} else if (x.date != y.date) {
 			return u"message date differs"_q;
+		} else if (x.replyTo != y.replyTo) {
+			return u"message replyTo differs"_q;
+		} else if (x.replyQuote != y.replyQuote) {
+			return u"message replyQuote differs"_q;
 		} else if (x.blocks.size() != y.blocks.size()) {
 			return u"block count differs"_q;
 		}
@@ -1325,6 +1338,121 @@ std::vector<Check> RecordChecks() {
 			record.cards = { card };
 			if (CloseInterruptedTurn(record)) {
 				return u"nothing open must not change the record"_q;
+			}
+			return QString();
+		} },
+		{ u"record_v10_round_trip"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"1111111111111111"_q;
+			record.messages = {
+				Message{
+					.role = Role::User,
+					.blocks = { TextBlock{ u"hi"_q } },
+					.replyTo = u"a1_2"_q,
+					.replyQuote = u"quote"_q,
+				},
+				Message{
+					.role = Role::Assistant,
+					.blocks = {
+						ThinkingBlock{ u"t"_q, QByteArray("s"), false, 123 },
+						TextBlock{ u"answer"_q },
+					},
+				},
+			};
+			record.turnEnds = {
+				{ 1, TurnEnd::Interrupted },
+				{ 2, TurnEnd::StepLimit },
+			};
+			const auto bytes = SerializeSession(record);
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"failed to deserialize"_q;
+			}
+			const auto diff = RecordsEqual(record, *restored);
+			if (!diff.isEmpty()) {
+				return diff;
+			} else if (SerializeSession(*restored) != bytes) {
+				return u"re-serialization is not byte-identical"_q;
+			}
+			return QString();
+		} },
+		{ u"record_loads_version9"_q, [] {
+			const auto bytes = Written([&](QDataStream &stream) {
+				stream << qint32(9);
+				WriteHandInfo(stream);
+				stream << qint32(1);
+				stream << qint32(Role::Assistant) << qint32(1);
+				stream << quint8(3) << u"t"_q << QByteArray("s") << qint32(0);
+				WriteHandTail(stream, 0);
+				stream << qint32(0) << qint32(0) << qint32(0);
+				stream << qint32(0) << QString() << QString();
+				stream << qint32(0) << qint64(0);
+			});
+			const auto restored = DeserializeSession(bytes);
+			if (!restored) {
+				return u"version 9 failed to load"_q;
+			}
+			const auto thinking = std::get_if<ThinkingBlock>(
+				&restored->messages[0].blocks[0]);
+			if (!thinking) {
+				return u"version 9 thinking block lost"_q;
+			} else if (thinking->durationMs != 0) {
+				return u"version 9 must load zero durations"_q;
+			} else if (!restored->messages[0].replyTo.isEmpty()
+				|| !restored->messages[0].replyQuote.isEmpty()) {
+				return u"version 9 must load empty replies"_q;
+			} else if (!restored->turnEnds.empty()) {
+				return u"version 9 must have no marks"_q;
+			}
+			return QString();
+		} },
+		{ u"record_rejects_invalid_marks"_q, [] {
+			auto record = SessionRecord();
+			record.info.id = u"2222222222222222"_q;
+			record.messages.push_back(Message{
+				.role = Role::User,
+				.blocks = { TextBlock{ u"hi"_q } },
+			});
+			const auto bytes = SerializeSession(record);
+			const auto patched = [&](auto write) {
+				auto result = bytes;
+				result.chop(4);
+				QDataStream stream(&result, QIODevice::Append);
+				stream.setVersion(QDataStream::Qt_5_1);
+				write(stream);
+				return DeserializeSession(result).has_value();
+			};
+			if (patched([&](QDataStream &s) {
+				s << qint32(1) << qint32(0) << qint32(TurnEnd::Interrupted);
+			})) {
+				return u"after 0 must be rejected"_q;
+			}
+			if (patched([&](QDataStream &s) {
+				s << qint32(1) << qint32(2) << qint32(TurnEnd::Interrupted);
+			})) {
+				return u"after > size must be rejected"_q;
+			}
+			if (patched([&](QDataStream &s) {
+				s << qint32(2)
+					<< qint32(1) << qint32(TurnEnd::Interrupted)
+					<< qint32(1) << qint32(TurnEnd::Interrupted);
+			})) {
+				return u"non-increasing after must be rejected"_q;
+			}
+			if (patched([&](QDataStream &s) {
+				s << qint32(1) << qint32(1) << qint32(TurnEnd::Completed);
+			})) {
+				return u"end Completed must be rejected"_q;
+			}
+			if (patched([&](QDataStream &s) {
+				s << qint32(1) << qint32(1) << qint32(TurnEnd::Failed);
+			})) {
+				return u"end Failed must be rejected"_q;
+			}
+			if (patched([&](QDataStream &s) {
+				s << qint32(1) << qint32(1) << qint32(100);
+			})) {
+				return u"end out of range must be rejected"_q;
 			}
 			return QString();
 		} },
