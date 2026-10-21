@@ -66,18 +66,16 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   turns the feed into chat messages (`BuildChatMessages()`) and keeps the
   live tail of a running turn (`LiveTail`); `core/agent_journal` lists
   the agent's done actions for the journal in the profile.
-- UI: `agent_feed_cards.*` are the card and action rows of the feed,
+- UI: `agent_feed_cards.*` is the card widget of the "Edit..." box,
   `agent_section.*` the general agent screen (sessions list and session
   chat), `agent_session_rows.*` the sessions list rows,
   `agent_chat_view.*` the native session view (`ChatView`),
   `agent_chat_items.*` its local history items (`ChatItems`),
-  `agent_feed_format.*` the step, action and card texts shared by both
-  feeds, `agent_profile.*` the agent profile, `agent_history_view.*` the history
+  `agent_feed_format.*` the step, action and card texts,
+  `agent_profile.*` the agent profile, `agent_history_view.*` the history
   pane with its tabs, `agent_memory_list.*` the memory tab,
   `agent_menus.*` the agent items of the chat and folder menus and
-  `agent_spending_format.*` the spending texts, `agent_feed_attachments.*`
-  the attachments inside user bubbles and `agent_feed_media.*` the media
-  thumbnails of steps.
+  `agent_spending_format.*` the spending texts.
 - Hooks into existing code stay one call or one enum value wide:
   `Main::Session::agent()`, the agent values in `Storage::Account`,
   `Info::Section::Type::Agent`, `Agent::Ui::SetupPanelTopBar()` in
@@ -2208,10 +2206,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 
 ## UI (`agent/ui/`)
 
-- `SessionView` is the session pane shared by the chat panel and the general
-  agent screen: the feed from `BuildFeed()` plus live streaming, and the
-  composer. Without a session it shows the new-session state and creates the
-  session through `Manager::create()` on the first send.
+- `ChatView` (below) is the session view shared by the chat panel, the
+  general agent screen and the palette. Without a session it shows the
+  new-session state and creates the session through `Manager::create()`
+  on the first send.
 - The chat panel is an Info section (`Info::Section::Type::Agent`, keyed by
   the peer) built by `MakePanelMemento()`; `TogglePanel()` opens or closes
   it and `PanelAvailable()` says whether a peer can have one.
@@ -2221,19 +2219,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   wide enough, the layer moves to the third column, keeping the session, the
   history list state and the unsent text.
 - The panel has no header of its own: its title (the session title, the
-  agent name without a session, "Sessions" with the list open) and the "new
+  agent's name without a session, "History" with the list open) and the "new
   session" and "history" buttons live in the Info top bar, added by
   `SetupPanelTopBar()`. The panel content lies over the Info scroll area,
   which only holds an empty widget reporting the layer height, so the Info
   scroll never moves.
-- The feed is a `Ui::VerticalLayout` in a scroll area. Rows are deleted
-  explicitly, never left to `object_ptr`. A `FeedSteps` row is collapsed by
-  default and shows the last tool, the step count and failures; its steps
-  expand to the thinking text or the arguments and result, shown without the
-  untrusted tags and with JSON indented. The feed keeps to the bottom while
-  the user is there, except while an expand animation runs.
-- The feed is built with the record's `cards` and `ActionToolNames()`.
-  A `FeedCard` shows its kind's title, the targets as checkboxes, the
+- `FeedCardWidget` (`agent_feed_cards.*`), the card widget of the old
+  feed, is used only by the "Edit..." / "Details..." box of a card. It
+  shows its kind's title, the targets as checkboxes, the
   editable text while pending, `detail`, the option and "allow until the
   end of the request" when offered, and the buttons: "Send (N)", "To
   draft", "Decline" for `Send`; "Replace", "Append", "Cancel" for
@@ -2241,19 +2234,13 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   agent" for `Handoff`. The main button is disabled without checked
   targets (when there are targets) or with an empty editable text. A
   final card shows its status line instead of buttons, read-only.
-- A `FeedActions` item shows one row per action: the action text from the
-  tool name, its input and the `done` titles, failures marked with their
-  errors, and "Undo" while `Session::canUndo()`, "Undone" once undone;
-  "Undo all" when two or more of its actions can be undone.
-- While a card waits, the status line says the agent waits for a
-  decision.
+- While a card waits, the headers say the agent waits for a decision.
 - The handoff button calls `ShowGeneralAgent()` with a `HandoffDraft`:
   the card's text, `HandoffText()` of the chat session and the chat.
-  `SessionView::startHandoff()` shows the new-session state with a note
-  naming the chat and the text in the composer; the first send passes the
-  untrusted text, starting or opening another session drops it.
-- `SessionView::setContentMaxWidth()` centers the feed items and the
-  composer within that width while the scroll bar stays at the edge.
+  `ChatView::startHandoff()` shows the new-session state with a service
+  note naming the chat and the text in the composer; the first send
+  passes the untrusted text, starting or opening another session drops
+  it.
 - The agent chat (plan 11.9). `AgentChat` creates the agent peer once per
   account session: a bot `UserData` (`AgentPeerId()`, outside the range
   of real and name-hashed fake ids) named `AgentName()` of
@@ -2360,11 +2347,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `ProvidersState::showSpending` the date line adds
   `FormatSpending(UsageTotals(info.usage))`. The userpic stack skips
   excluded peers.
-- With `showSpending` a gray "This session: …" line for a session with
-  usage is pinned under the feed, above the status line, with
-  `FormatSpendingDetails()` as its tooltip; it stays out of the list so
-  live rows keep appending at the end. Memory action rows read "Remembered: …", "Updated memory: …"
-  or "Forgot: …" with the result's `fact.text`.
+- With `showSpending` a session with usage ends with a "This session: …"
+  service message. Memory action lines read "Remembered: …", "Updated
+  memory: …" or "Forgot: …" with the result's `fact.text`.
 - `PanelAvailable()` is also false for an excluded peer;
   `PanelAvailabilityChanges()` fires on `enabledValue()` and exclusion
   changes. An open panel whose chat becomes excluded closes: the third
@@ -2394,23 +2379,17 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   the composer; closing the box puts its caption back into the composer.
   Too many or too big files show `lng_agent_attach_too_many`
   or `lng_agent_attach_too_big` instead.
-- A `FeedUser` with attachments shows them inside the bubble above the
-  text, like a sent message: images and videos as rounded thumbnails
-  (several as an album grid), other files as document rows (an icon
-  colored by extension, the name, the size), read through
-  `FeedDelegate::attachment`.
+- A user message with one image attachment shows it as a local photo in
+  the bubble; other and further attachments are "📎 name · size" lines
+  above the text.
 - Steps of media tools are titled from the call and its result:
   `lng_agent_tool_view_photo`, `_view_video`, `_view_media`,
   `_view_attachment`, `_listen_voice` and `_listen_audio` (with the
   duration), `_transcribe` (with the duration), `_read_file` (with the
   file name), `_list_agent_files`, `_draft_files`, followed by
-  `lng_agent_tool_media_model` when the media model answered. An
-  expanded media step shows the thumbnail of the message media
-  (`Data::PhotoMedia` or `Data::DocumentMedia`, loaded on demand) or of
-  the attachment, and the transcript, description or text under
-  `lng_agent_tool_transcript`. A message thumbnail opens the message
-  media in the media viewer (`SessionController::openPhoto()` or
-  `openDocument()` with the message context).
+  `lng_agent_tool_media_model` when the media model answered. In the
+  native chat an expanded step shows its arguments and result as text;
+  the media thumbnails of the old feed are not shown.
 - `Transcribe` cards show the message preview, the trials left
   (`lng_agent_card_transcribe_left`) and the about line with
   "Transcribe" and "Decline".
@@ -2486,16 +2465,17 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   missed run, the sender and chat of a message, or "On schedule".
   `FormatTaskRunOutcome()`: running, waiting, the number of actions or
   "Nothing to do", the error, or interrupted.
-- A session view of a run (`info.task` not empty) is read-only: no
-  composer, attaching or dropping, a gray note `lng_agent_run_about`
-  with the task title over the feed. Its cards can still be decided and
-  its actions undone.
+- A session view of a run (`info.task` not empty) is read-only: the
+  composer is replaced by the write restriction `lng_agent_run_about`
+  with the task title, attaching and dropping are off. Its cards can
+  still be decided and its actions undone.
 - `QueueStrip` is a full-width clickable bar at the top of a normal
   session view showing `lng_agent_queue_strip` with the number of
   pending cards of `TaskRunner::waiting(scope)`; it has zero height and
-  is hidden when nothing waits. `ShowQueueBox()` lists the waiting runs
-  (the task title, the run trigger, the time since) and opens the chosen
-  one; a session view opens it in place.
+  is hidden when nothing waits or while the view shows a run.
+  `ShowQueueBox()` lists the waiting runs (the task title, the run
+  trigger, the time since) and opens the chosen one; a session view
+  opens it in place.
 - `CreateTask` and `UpdateTask` cards show the task from `Card::task`:
   "When", "What to do" (the editable instruction while pending),
   "Without asking", "Model", "Limits", "Notifications" and the catch-up
@@ -2538,20 +2518,21 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `FormatTaskTool()` maps every action and visible tool of stage 3a to its
   `lng_agent_task_tool_<name>`; the three invite link tools share
   `lng_agent_task_tool_invite_links`.
-- `SessionView::setComposerOnTop()` puts the composer (and the passed
-  messages bar) right under the queue strip and the feed below it; the
-  composer then draws its shadow at the bottom and the welcome text is
-  hidden. `naturalHeightValue()` is the height the view needs at its
-  current width: the strip, the composer, the passed messages bar, the
-  run note and the feed's natural height (its items, status and
-  spending line).
-- `SessionView::setMentionsProvider()` adds peers to every request's
+- `ChatView::setComposerOnTop()` puts the composer right under the queue
+  strip and the list below it, hides the welcome text and lays the list
+  out at its content height (aligned to the top).
+  `naturalHeightValue()` is the height the view needs: the strip, the
+  composer and, with messages, the list's content height up to
+  `agentPaletteNaturalList` (always that height without the composer on
+  top). `setBottomRadius()` rounds the bottom corners of the wallpaper;
+  `hasMessages()` says whether the list has items.
+- `ChatView::setMentionsProvider()` adds peers to every request's
   `mentions`, so they count as named for the taint rule.
-- `SessionView::passMessages()` shows the passed messages above the
-  composer in a bar drawn by the chat's own
-  `HistoryView::Controls::ForwardPanel` (the forward icon, the senders
-  and the text or "N forwarded messages") with a cancel button. The next
-  request carries them: `untrusted` gets "Messages the user passed to
+- `ChatView::passMessages()` puts the passed messages into the agent
+  history's forward draft at topic root 0, which the compose controls
+  show as their native forward bar with a cancel button (a composer on a
+  fake topic root cannot show it: forward drafts exist only for real
+  threads). The next request carries them: `untrusted` gets "Messages the user passed to
   you:" and `{"chat": {"id", "title"}, "messages": [...]}` with every
   message as `ToolFormat::SerializeMessage()` gives it, the chat joins
   `mentions`, and the bar empties.
@@ -2559,11 +2540,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   window shown by `ShowPalette()` (false when `Manager::enabled()` is
   false), `Ctrl+Shift+Space` by default. It is `agentPaletteWidth` wide
   (less in a narrow window), `agentPaletteTop` from the top, and as high
-  as its header plus the view's natural height, at most down to
-  `agentPaletteMargin` from the bottom. The header shows the agent
+  as its header plus the view's natural height (plus a `boxRadius` strip
+  of the box background under the composer while the list is empty), at
+  most down to `agentPaletteMargin` from the bottom; the view rounds its
+  wallpaper's bottom corners by `boxRadius`. The header shows the agent
   userpic, the session title (or the agent name) and "new", "open in
   the agent" (only with a session) and "close" buttons. It holds an
-  account scope `SessionView` with the composer on top; the first
+  account scope `ChatView` with the composer on top, sharing the agent
+  chat's draft; the first
   request creates a session, the next ones continue it, "new" starts
   over, and every opening of the palette starts without a session.
   "Open in the agent" closes the palette and opens the session with
@@ -2652,14 +2636,15 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   days); `FormatSpending()` adds "cache N%" when asked to and the share
   is positive (the session line).
 - A failed turn with an `Auth` error shows "Model settings" next to
-  "Retry" in the feed status (`ShowEditModel()` of the session's
+  "Retry" under the error message (`ShowEditModel()` of the session's
   profile); for a subscription profile the text is the localized "not
-  found" (`ClaudeMissingText()`) or "not signed in" message.
-- The composer has a model chip above the field (`Composer::setModel()`,
-  hidden when the title is empty; `modelRequests()` on a click).
-  `SessionView` shows the session's profile title there (none for runs),
-  for a view without a session the profile it will use: the one chosen
-  in the chip, else the default. A click opens a popup menu with every
+  found" (`ClaudeMissingText()`) or "not signed in" message, for other
+  profiles `lng_agent_failed_auth` with the provider's text.
+- The session model is the bot-menu-style button left of the field
+  (`customMenuText` of the compose controls, hidden when the title is
+  empty). `ChatView` shows the session's profile title there (none for
+  runs), for a view without a session the profile it will use: the one
+  chosen in the menu, else the default. A click opens a popup menu with every
   profile (a check at the current one) and "Add model..."; choosing sets
   the session's profile (`Session::setProfile()`), or remembers it until
   the view creates its session; a model added from the menu is chosen
