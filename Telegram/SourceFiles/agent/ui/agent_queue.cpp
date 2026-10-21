@@ -190,9 +190,16 @@ rpl::producer<> QueueStrip::clicks() const {
 	return _clicks.events();
 }
 
+void QueueStrip::setSuppressed(bool suppressed) {
+	if (_suppressed != suppressed) {
+		_suppressed = suppressed;
+		refresh();
+	}
+}
+
 void QueueStrip::refresh() {
 	resizeToWidth(width());
-	setVisible(_waiting > 0);
+	setVisible(_waiting > 0 && !_suppressed);
 }
 
 void QueueStrip::mousePressEvent(QMouseEvent *e) {
@@ -210,7 +217,7 @@ int QueueStrip::resizeGetHeight(int newWidth) {
 		(st::agentQueueStripHeight - _title->height()) / 2,
 		newWidth);
 	update();
-	return _waiting
+	return (_waiting && !_suppressed)
 		? (st::agentQueueStripHeight + st::lineWidth)
 		: 0;
 }

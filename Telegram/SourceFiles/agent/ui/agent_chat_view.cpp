@@ -414,6 +414,7 @@ void ChatView::showSession(Session *session) {
 	_session = session;
 	_tail.clear();
 	_pendingProfileId = QString();
+	_queueStrip->setSuppressed(session && session->isRun());
 	if (session) {
 		_handoff.reset();
 		std::move(session->recordChanges()

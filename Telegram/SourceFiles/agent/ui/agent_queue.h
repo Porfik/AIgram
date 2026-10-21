@@ -28,6 +28,7 @@ public:
 	QueueStrip(QWidget *parent, not_null<Manager*> manager, Scope scope);
 
 	[[nodiscard]] rpl::producer<> clicks() const;
+	void setSuppressed(bool suppressed);
 
 protected:
 	int resizeGetHeight(int newWidth) override;
@@ -37,6 +38,7 @@ private:
 	const Scope _scope;
 	object_ptr<FlatLabel> _title = { nullptr };
 	int _waiting = 0;
+	bool _suppressed = false;
 	rpl::event_stream<> _clicks;
 
 	void refresh();
