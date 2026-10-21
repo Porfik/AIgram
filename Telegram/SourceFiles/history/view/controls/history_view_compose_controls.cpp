@@ -1695,6 +1695,9 @@ void ComposeControls::updateFeatures(ChatHelpers::ComposeFeatures features) {
 	if (was.emojiOnlyPanel != features.emojiOnlyPanel) {
 		initFieldAutocomplete();
 	}
+	if (was.aiEditor != features.aiEditor) {
+		updateAiButtonVisibility();
+	}
 	if (was.richEditor != features.richEditor) {
 		untrackThreadFieldVisibility();
 		unregisterDraftSources();
@@ -5270,7 +5273,8 @@ void ComposeControls::updateControlsVisibility() {
 }
 
 void ComposeControls::updateAiButtonVisibility() {
-	const auto hidden = !hasEnoughLinesForAi()
+	const auto hidden = !_features.aiEditor
+		|| !hasEnoughLinesForAi()
 		|| !_wrap->isVisible()
 		|| _recording.current()
 		|| !_field->isVisible();

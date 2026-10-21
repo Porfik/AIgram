@@ -300,6 +300,7 @@ void ChatView::setupComposeControls() {
 				.recordMediaMessage = false,
 				.emojiOnlyPanel = true,
 				.richEditor = false,
+				.aiEditor = false,
 			},
 			.customMenuText = _modelTitle.value(),
 			.customMenuClicked = [=] { showModelMenu(); },

@@ -112,7 +112,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `HistoryView::ComposeControlsDescriptor` has `customMenuText` /
   `customMenuClicked` (a bot-menu-style button left of the field, the
   session model) and `customStopShown` / `customStopClicked` (the send
-  button turns into "Stop" while the field is empty).
+  button turns into "Stop" while the field is empty);
+  `ChatHelpers::ComposeFeatures::aiEditor` false hides Telegram's AI
+  editor button ("✨Ai") in agent composers.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
