@@ -32,6 +32,7 @@ enum class ProfileMode {
 	Main,
 	Tasks,
 	Memory,
+	Journal,
 };
 
 class ProfileMemento final : public Info::ContentMemento {

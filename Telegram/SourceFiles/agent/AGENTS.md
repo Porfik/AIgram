@@ -101,6 +101,7 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   in `Data::Session::pinnedCanPin()` (`CountPinnedForLimit()`) and
   `maxPinnedChatsLimitValue()` (one extra slot in the main list),
   `ApiWrap::requestFullPeer()`, `Data::Histories::requestDialogEntry()`,
+  `Data::ScheduledMessages::request()`,
   cloud drafts (`ShouldSkipPlainDraftCloudSave()`,
   `ApiWrap::savePreparedDraftToCloud()`), `Data::ChatFilter::contains()`
   (never in folders), `Info::Memento` (the agent peer's Info section is
@@ -2290,9 +2291,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `showFinishedHook()`, since the show animation shows every child.
 - The agent profile (`ProfileWidget`, `Section::Type::Agent` of the agent
   peer): a centered userpic, the name and "AI agent", then "Default
-  model" (a single-choice box), "Tasks" and "Memory" with their counts
-  (each opens a `ProfileMemento` of that mode, pushed onto the Info
-  stack) and "Agent Settings"; the top bar "Edit" opens
+  model" (a single-choice box), "Tasks" and "Memory" with their counts,
+  "Action Journal" (each opens a `ProfileMemento` of that mode, pushed
+  onto the Info stack) and "Agent Settings". The journal reads every
+  indexed session and every task run record (open sessions from memory),
+  shows `BuildJournal(..., ActionToolNames(), 200)` as rows (a ✓ or ✗
+  mark and the action or card text, under it the time, the session title
+  and "Undone"), "Undo" while the session is open and `canUndo()`, and a
+  click opens the session (a chat session opens its chat); the top bar "Edit" opens
   `ShowEditAgentProfileBox()` (a `UserpicButton` choosing a photo, "Use
   the default photo", the name field; saved as a 320 px JPEG and the name
   through `UpdateProviders()`). The settings page has "Agent name and

@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "data/components/scheduled_messages.h"
 
+#include "agent/agent_chat.h"
 #include "base/unixtime.h"
 #include "data/data_forum_topic.h"
 #include "data/data_peer.h"
@@ -487,7 +488,8 @@ Data::MessagesSlice ScheduledMessages::list(
 
 void ScheduledMessages::request(not_null<History*> history) {
 	const auto peer = history->peer;
-	if (peer->isBroadcast() && !Data::CanSendAnything(peer)) {
+	if ((peer->isBroadcast() && !Data::CanSendAnything(peer))
+		|| Agent::IsAgentHistory(history)) {
 		return;
 	}
 	auto &request = _requests[history];

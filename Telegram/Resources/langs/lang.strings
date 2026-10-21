@@ -1629,6 +1629,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_profile_settings" = "Agent Settings";
 "lng_agent_chat_card_edit" = "Edit...";
 "lng_agent_chat_card_details" = "Details...";
+"lng_agent_journal" = "Action Journal";
+"lng_agent_journal_empty" = "The agent hasn't done anything for you yet.";
+"lng_agent_journal_about" = "Everything the agent did, newest first. Undo works while the session is open, until the app restarts.";
 "lng_agent_row_working" = "Working...";
 "lng_agent_row_pending#one" = "{count} action waiting";
 "lng_agent_row_pending#other" = "{count} actions waiting";

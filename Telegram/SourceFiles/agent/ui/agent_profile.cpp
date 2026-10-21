@@ -11,12 +11,19 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_memories.h"
 #include "agent/agent_settings.h"
+#include "agent/ui/agent_feed_format.h"
+#include "agent/tools/agent_tools.h"
+#include "agent/core/agent_journal.h"
+#include "agent/agent_session_store.h"
+#include "agent/agent_session.h"
 #include "agent/agent_tasks.h"
 #include "agent/ui/agent_memory_list.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_section.h"
 #include "agent/ui/agent_tasks_view.h"
 #include "data/data_peer.h"
+#include "data/data_session.h"
+#include "ui/text/format_values.h"
 #include "info/info_controller.h"
 #include "info/info_memento.h"
 #include "info/info_top_bar.h"
@@ -102,6 +109,178 @@ void DefaultModelChoiceBox(not_null<::Ui::GenericBox*> box) {
 	});
 }
 
+class JournalList final : public ::Ui::RpWidget {
+public:
+	JournalList(
+		QWidget *parent,
+		not_null<Window::SessionController*> controller);
+
+protected:
+	int resizeGetHeight(int newWidth) override;
+
+private:
+	void rebuild();
+	[[nodiscard]] std::vector<SessionRecord> readRecords() const;
+	[[nodiscard]] QString entryText(const JournalEntry &entry) const;
+	void open(const JournalEntry &entry);
+
+	const not_null<Window::SessionController*> _controller;
+	const not_null<Manager*> _manager;
+	object_ptr<::Ui::VerticalLayout> _content;
+
+};
+
+JournalList::JournalList(
+	QWidget *parent,
+	not_null<Window::SessionController*> controller)
+: RpWidget(parent)
+, _controller(controller)
+, _manager(&controller->session().agent())
+, _content(this) {
+	_content->heightValue(
+	) | rpl::on_next([=] {
+		resizeToWidth(width());
+	}, lifetime());
+	rebuild();
+}
+
+std::vector<SessionRecord> JournalList::readRecords() const {
+	auto ids = std::vector<QString>();
+	for (const auto &info : _manager->listAll()) {
+		ids.push_back(info.id);
+	}
+	for (const auto &task : _manager->tasks().list()) {
+		for (const auto &run : _manager->tasks().runs(task.id)) {
+			ids.push_back(run.sessionId);
+		}
+	}
+	auto result = std::vector<SessionRecord>();
+	const auto store = SessionStore(&_manager->session());
+	for (const auto &id : ids) {
+		if (const auto session = _manager->loaded(id)) {
+			result.push_back(session->record());
+		} else if (auto record = store.readSession(id)) {
+			result.push_back(std::move(*record));
+		}
+	}
+	return result;
+}
+
+QString JournalList::entryText(const JournalEntry &entry) const {
+	if (entry.card) {
+		auto titles = QStringList();
+		for (const auto &target : entry.card->targets) {
+			if (target.error.isEmpty()) {
+				titles.push_back(target.title);
+			}
+		}
+		const auto &card = *entry.card;
+		const auto title = (card.kind == CardKind::Change
+				&& !card.text.isEmpty())
+			? card.text
+			: CardTitleText(card.kind);
+		return titles.isEmpty()
+			? title
+			: (title + u": "_q + titles.join(u", "_q));
+	}
+	const auto parsed = ParseActionResult(entry.result);
+	return ActionMainText(
+		entry.call.name,
+		entry.call.input,
+		parsed.chats(),
+		parsed.folder,
+		parsed.fact,
+		parsed);
+}
+
+void JournalList::open(const JournalEntry &entry) {
+	if (entry.scope.kind == ScopeKind::Account || !entry.task.isEmpty()) {
+		ShowGeneralAgentSession(_controller, entry.sessionId);
+	} else if (const auto peer = _manager->session().data().peerLoaded(
+			PeerId(entry.scope.peer))) {
+		_controller->showPeerHistory(peer);
+	}
+}
+
+void JournalList::rebuild() {
+	_content->clear();
+	const auto entries = BuildJournal(
+		readRecords(),
+		ActionToolNames(),
+		200);
+	if (entries.empty()) {
+		_content->add(
+			object_ptr<::Ui::FlatLabel>(
+				_content,
+				tr::lng_agent_journal_empty(tr::now),
+				st::agentProfileStatus),
+			st::agentJournalEmptyPadding);
+	}
+	for (const auto &entry : entries) {
+		const auto mark = QString(QChar(entry.failed ? 0x2717 : 0x2713));
+		const auto button = _content->add(object_ptr<::Ui::SettingsButton>(
+			_content,
+			rpl::single(mark + ' ' + entryText(entry)),
+			st::agentJournalButton));
+		const auto date = FormatDateTime(
+			QDateTime::fromSecsSinceEpoch(entry.date));
+		auto about = date + u" · "_q + (entry.sessionTitle.isEmpty()
+			? tr::lng_agent_session_untitled(tr::now)
+			: entry.sessionTitle);
+		if (entry.undone) {
+			about += u" · "_q + tr::lng_agent_undone(tr::now);
+		}
+		const auto label = ::Ui::CreateChild<::Ui::FlatLabel>(
+			button,
+			about,
+			st::agentJournalAbout);
+		label->setAttribute(Qt::WA_TransparentForMouseEvents);
+		const auto session = _manager->loaded(entry.sessionId);
+		const auto id = entry.call.id;
+		const auto undo = (!entry.undone && session && session->canUndo(id))
+			? ::Ui::CreateChild<::Ui::LinkButton>(
+				button,
+				tr::lng_agent_undo(tr::now))
+			: nullptr;
+		button->widthValue(
+		) | rpl::on_next([=](int width) {
+			const auto &padding = st::agentJournalButton.padding;
+			const auto right = undo ? (undo->width() + padding.right()) : 0;
+			label->resizeToWidth(std::max(
+				width - padding.left() - padding.right() - right,
+				1));
+			label->moveToLeft(padding.left(), st::agentJournalAboutTop);
+			if (undo) {
+				undo->moveToRight(
+					padding.right(),
+					(button->height() - undo->height()) / 2);
+			}
+		}, button->lifetime());
+		if (undo) {
+			const auto weak = base::make_weak(session);
+			undo->setClickedCallback(crl::guard(this, [=] {
+				if (const auto strong = weak.get()) {
+					strong->undo({ id });
+				}
+				crl::on_main(this, [=] { rebuild(); });
+			}));
+		}
+		button->setClickedCallback([=, entry = entry] {
+			open(entry);
+		});
+	}
+	::Ui::AddSkip(_content);
+	::Ui::AddDividerText(_content, tr::lng_agent_journal_about());
+	_content->showChildren();
+	resizeToWidth(width());
+}
+
+int JournalList::resizeGetHeight(int newWidth) {
+	_content->resizeToWidth(newWidth);
+	_content->moveToLeft(0, 0, newWidth);
+	return _content->height();
+}
+
 } // namespace
 
 ProfileMemento::ProfileMemento(not_null<PeerData*> peer, ProfileMode mode)
@@ -163,6 +342,9 @@ ProfileWidget::ProfileWidget(
 			window,
 			manager,
 			PeerKey(0)));
+		break;
+	case ProfileMode::Journal:
+		container->add(object_ptr<JournalList>(container, window));
 		break;
 	}
 	setInnerWidget(std::move(owned));
@@ -252,6 +434,15 @@ void ProfileWidget::setupMain(not_null<::Ui::VerticalLayout*> container) {
 
 	Settings::AddButtonWithIcon(
 		container,
+		tr::lng_agent_journal(),
+		st::settingsButton,
+		{ &st::menuIconRestore }
+	)->setClickedCallback([=] {
+		showMode(ProfileMode::Journal);
+	});
+
+	Settings::AddButtonWithIcon(
+		container,
 		tr::lng_agent_profile_settings(),
 		st::settingsButton,
 		{ &st::menuIconSettings }
@@ -289,6 +480,7 @@ rpl::producer<QString> ProfileWidget::title() {
 	switch (_mode) {
 	case ProfileMode::Tasks: return tr::lng_agent_tasks_tab();
 	case ProfileMode::Memory: return tr::lng_agent_memory_tab();
+	case ProfileMode::Journal: return tr::lng_agent_journal();
 	case ProfileMode::Main: break;
 	}
 	return tr::lng_agent_profile_title();

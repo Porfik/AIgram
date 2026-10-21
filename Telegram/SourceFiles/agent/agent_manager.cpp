@@ -270,6 +270,10 @@ void Manager::finishModels(
 	}
 }
 
+const std::vector<SessionInfo> &Manager::listAll() const {
+	return _index;
+}
+
 std::vector<SessionInfo> Manager::list(const Scope &scope) const {
 	auto result = std::vector<SessionInfo>();
 	for (const auto &entry : _index) {

@@ -85,7 +85,7 @@ std::vector<JournalEntry> BuildJournal(
 	auto entries = std::vector<Indexed>();
 	auto index = 0;
 	for (const auto &record : records) {
-		const auto info = record.info;
+		const auto &info = record.info;
 		for (const auto &message : record.messages) {
 			for (const auto &block : message.blocks) {
 				const auto call = std::get_if<ToolUseBlock>(&block);

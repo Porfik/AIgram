@@ -88,6 +88,7 @@ public:
 		const Task &task) const;
 
 	[[nodiscard]] std::vector<SessionInfo> list(const Scope &scope) const;
+	[[nodiscard]] const std::vector<SessionInfo> &listAll() const;
 	[[nodiscard]] std::optional<SessionInfo> info(const QString &id) const;
 	[[nodiscard]] rpl::producer<Scope> listChanges() const;
 	[[nodiscard]] ScopeActivity activity(const Scope &scope) const;

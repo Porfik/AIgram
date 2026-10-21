@@ -9,6 +9,7 @@ using "ui/basic.style";
 using "ui/layers/layers.style";
 using "agent/ui/agent.style";
 using "agent/ui/agent_panel.style";
+using "settings/settings.style";
 
 agentGeneralContentMaxWidth: 720px;
 
@@ -105,6 +106,17 @@ agentProfileStatus: FlatLabel(defaultFlatLabel) {
 	maxHeight: 20px;
 }
 agentProfileResetPadding: margins(22px, 8px, 22px, 12px);
+agentJournalButton: SettingsButton(settingsButtonNoIcon) {
+	height: 40px;
+	padding: margins(22px, 8px, 22px, 26px);
+}
+agentJournalAbout: FlatLabel(defaultFlatLabel) {
+	textFg: windowSubTextFg;
+	minWidth: 40px;
+	maxHeight: 20px;
+}
+agentJournalAboutTop: 32px;
+agentJournalEmptyPadding: margins(22px, 20px, 22px, 12px);
 
 agentModelRowPadding: margins(22px, 9px, 22px, 9px);
 agentModelRowSkip: 2px;
