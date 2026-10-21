@@ -1487,6 +1487,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_routes_none_error" = "Leave at least one provider checked.";
 "lng_agent_instructions_title" = "General instructions";
 "lng_agent_instructions_placeholder" = "Extra text that every agent will see, e.g. 'Keep answers short and always reply in the user's language.'";
+"lng_agent_instructions_about" = "Every session follows these instructions: the agent chat, chat panels, the palette and background tasks.";
 "lng_agent_check_button" = "Check connection";
 "lng_agent_check_title" = "Check Connection";
 "lng_agent_check_prompt" = "Call get_current_time, then tell me the time you got in one short sentence.";
@@ -1502,7 +1503,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_error_url" = "Base URL must start with http:// or https://.";
 "lng_agent_error_model" = "Please enter a model name.";
 "lng_agent_show_entry_points" = "Show the agent in chats";
-"lng_agent_show_entry_points_about" = "Adds the agent button to chat headers and the agent row above the chat list.";
+"lng_agent_show_entry_points_about" = "Adds the agent button to chat headers and the agent chat to the chat list.";
 "lng_agent_new_session" = "New session";
 "lng_agent_history" = "History";
 "lng_agent_sessions_tab" = "Sessions";

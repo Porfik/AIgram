@@ -538,6 +538,7 @@ void BuildInstructions(
 			.keywords = { u"instructions"_q, u"prompt"_q },
 		};
 	});
+	builder.addDividerText(tr::lng_agent_instructions_about());
 }
 
 [[nodiscard]] QString RowPreviewText(::Agent::RowPreview mode) {
@@ -1047,6 +1048,7 @@ void BuildClearData(
 		},
 		.keywords = { u"delete"_q, u"data"_q, u"agent"_q },
 	});
+	builder.addSkip();
 }
 
 Agent::Agent(QWidget *parent, not_null<Window::SessionController*> controller)
