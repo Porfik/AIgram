@@ -2231,10 +2231,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   window shows it as a layer, sized to fit the window; once the window grows
   wide enough, the layer moves to the third column, keeping the session, the
   history list state and the unsent text.
-- The panel has no header of its own: its title (the session title, the
-  agent's name without a session, "History" with the list open) and the "new
-  session" and "history" buttons live in the Info top bar, added by
-  `SetupPanelTopBar()`. The panel content lies over the Info scroll area,
+- The panel has no header of its own: its title (the session title, "New
+  session" without a session, "History" with the list open), the status
+  line under it ("waiting for your decision…" while a card of the shown
+  session waits, "typing…" while it works, else the agent's name; the
+  Info top bar subtitle) and the "new session" and "history" buttons live
+  in the Info top bar, added by `SetupPanelTopBar()`. The panel content lies over the Info scroll area,
   which only holds an empty widget reporting the layer height, so the Info
   scroll never moves.
 - `FeedCardWidget` (`agent_feed_cards.*`), the card widget of the old

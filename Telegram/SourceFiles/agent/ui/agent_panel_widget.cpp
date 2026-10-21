@@ -153,6 +153,7 @@ public:
 	void toggleHistory();
 	void showSessionMenu(not_null<QWidget*> button);
 	[[nodiscard]] rpl::producer<QString> titleValue() const;
+	[[nodiscard]] rpl::producer<QString> statusValue() const;
 	[[nodiscard]] rpl::producer<bool> listOpenValue() const;
 	[[nodiscard]] rpl::producer<bool> hasSessionValue() const;
 
@@ -176,6 +177,7 @@ private:
 	rpl::variable<bool> _listOpen = false;
 	rpl::variable<bool> _hasSession = false;
 	rpl::variable<QString> _title;
+	rpl::variable<QString> _status;
 	base::unique_qptr<PopupMenu> _menu;
 	rpl::lifetime _sessionLifetime;
 
@@ -281,6 +283,10 @@ rpl::producer<QString> PanelWidget::Inner::titleValue() const {
 	return _title.value();
 }
 
+rpl::producer<QString> PanelWidget::Inner::statusValue() const {
+	return _status.value();
+}
+
 rpl::producer<bool> PanelWidget::Inner::listOpenValue() const {
 	return _listOpen.value();
 }
@@ -305,7 +311,9 @@ void PanelWidget::Inner::trackSession(Session *session) {
 	_sessionLifetime = rpl::lifetime();
 	_hasSession = (session != nullptr);
 	if (session) {
-		session->recordChanges(
+		rpl::merge(
+			session->recordChanges(),
+			session->stateChanges()
 		) | rpl::on_next([=] {
 			updateTitle();
 		}, _sessionLifetime);
@@ -314,16 +322,25 @@ void PanelWidget::Inner::trackSession(Session *session) {
 }
 
 void PanelWidget::Inner::updateTitle() {
+	const auto session = _sessionView->session();
 	if (_listOpen.current()) {
 		_title = tr::lng_agent_history(tr::now);
-	} else if (const auto session = _sessionView->session()) {
+	} else if (session) {
 		const auto title = session->record().info.title;
 		_title = title.isEmpty()
 			? tr::lng_agent_session_untitled(tr::now)
 			: title;
 	} else {
-		_title = _manager->chat().name();
+		_title = tr::lng_agent_new_session(tr::now);
 	}
+	const auto &state = session ? session->state() : SessionState();
+	const auto working = (state.status == SessionStatus::Working)
+		|| (state.status == SessionStatus::Compacting);
+	_status = state.pendingCards
+		? tr::lng_agent_waiting_card(tr::now)
+		: working
+		? (tr::lng_typing(tr::now) + QString::fromUtf8("\xe2\x80\xa6"))
+		: _manager->chat().name();
 }
 
 void PanelWidget::Inner::saveState(not_null<PanelMemento*> memento) const {
@@ -429,6 +446,14 @@ not_null<PeerData*> PanelWidget::peer() const {
 
 rpl::producer<QString> PanelWidget::title() {
 	return _inner->titleValue() | rpl::after_next([=] {
+		if (const auto topBar = _topBar.data()) {
+			topBar->resizeToWidth(topBar->width());
+		}
+	});
+}
+
+rpl::producer<QString> PanelWidget::subtitle() {
+	return _inner->statusValue() | rpl::after_next([=] {
 		if (const auto topBar = _topBar.data()) {
 			topBar->resizeToWidth(topBar->width());
 		}

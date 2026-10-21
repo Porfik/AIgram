@@ -72,6 +72,7 @@ public:
 		not_null<Info::ContentMemento*> memento);
 
 	rpl::producer<QString> title() override;
+	rpl::producer<QString> subtitle() override;
 	void setInnerFocus() override;
 	void setupTopBar(not_null<Info::TopBar*> topBar, Info::Wrap wrap);
 
