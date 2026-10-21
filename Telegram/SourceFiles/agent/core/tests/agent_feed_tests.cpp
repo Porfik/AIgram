@@ -174,6 +174,15 @@ std::vector<Check> FeedChecks() {
 			}, 0), u"assistant(0): 'answer' "
 				"steps(0)[ thinking(0): 'reasoning' ]"_q);
 		} },
+		{ u"feed_blank_text_keeps_the_run"_q, [] {
+			return Expect(BuildFeed({
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"plan"_q, QByteArray("sign1") },
+					TextBlock{ u" \n"_q, false },
+					Call(u"call1"_q),
+				} },
+			}, 0), u"steps(0)[ thinking(0): 'plan' tool(0): 'call1' ]"_q);
+		} },
 		{ u"feed_tool_results_across_messages"_q, [] {
 			return Expect(BuildFeed({
 				Message{ Role::Assistant, { Call(u"call1"_q) } },

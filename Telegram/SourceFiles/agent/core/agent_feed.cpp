@@ -164,7 +164,7 @@ std::vector<FeedItem> BuildFeed(
 			std::visit([&](const auto &value) {
 				using T = std::decay_t<decltype(value)>;
 				if constexpr (std::is_same_v<T, TextBlock>) {
-					if (!value.hidden) {
+					if (!value.hidden && !value.text.trimmed().isEmpty()) {
 						if (!text.isEmpty()) {
 							text += u"\n\n"_q;
 						}
