@@ -2296,8 +2296,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   through `UpdateProviders()`). The settings page has "Agent name and
   photo" opening the same box.
 - `ChatView` is the native session view: a `HistoryView::ListWidget`
-  (`Context::Replies`) over `ChatItems::ids()`, the agent chat theme as
-  the background, a "jump down" corner button and `ComposeControls`
+  (`Context::Replies`) over `ChatItems::ids()`, its own default chat
+  theme (`DefaultChatThemeOn()`) as the background, since a theme caches
+  the wallpaper for one size and the chat next to the panel shares the
+  window's one, a "jump down" corner button and `ComposeControls`
   (emoji only, attachments, no stickers, voice, inline bots or
   autocomplete) on the agent history: its custom menu button shows the
   session model and opens the model menu, its custom stop stops the

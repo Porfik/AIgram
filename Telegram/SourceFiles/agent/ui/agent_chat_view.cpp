@@ -60,6 +60,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/labels.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/section_widget.h"
+#include "window/themes/window_theme.h"
 #include "window/window_session_controller.h"
 #include "styles/style_agent.h"
 #include "styles/style_boxes.h"
@@ -177,11 +178,11 @@ ChatView::ChatView(
 		handleButton(button);
 	}, lifetime());
 
-	Window::ChatThemeValueFromPeer(
-		controller,
-		_history->peer
-	) | rpl::on_next([=](std::shared_ptr<::Ui::ChatTheme> &&theme) {
-		_theme = std::move(theme);
+	// WHY: a shared theme caches the wallpaper for one size, and the chat
+	// next to the panel or the palette keeps it at its own size.
+	_theme = Window::Theme::DefaultChatThemeOn(lifetime());
+	_theme->repaintBackgroundRequests(
+	) | rpl::on_next([=] {
 		update();
 	}, lifetime());
 
