@@ -14,6 +14,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_menus.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_chat_view.h"
+#include "agent/ui/agent_queue.h"
 #include "agent/ui/agent_session_rows.h"
 #include "agent/ui/agent_sessions_list.h"
 #include "core/application.h"
@@ -144,6 +145,7 @@ private:
 	::Ui::IconButton *_infoToggle = nullptr;
 	::Ui::IconButton *_menuToggle = nullptr;
 	::Ui::PlainShadow *_shadow = nullptr;
+	QueueStrip *_queueStrip = nullptr;
 	::Ui::ScrollArea *_listScroll = nullptr;
 	::Ui::RpWidget *_listContent = nullptr;
 	::Ui::VerticalLayout *_list = nullptr;
@@ -349,6 +351,27 @@ void GeneralAgentSection::updateInfoToggleActive() {
 }
 
 void GeneralAgentSection::setupList() {
+	_queueStrip = ::Ui::CreateChild<QueueStrip>(
+		this,
+		_manager,
+		Scope::Account());
+	_queueStrip->heightValue(
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateControlsGeometry();
+	}, _queueStrip->lifetime());
+	_queueStrip->clicks(
+	) | rpl::on_next([=] {
+		ShowQueueBox(
+			controller(),
+			_manager,
+			Scope::Account(),
+			crl::guard(this, [=](QString sessionId) {
+				if (const auto session = _manager->open(sessionId)) {
+					showSession(session);
+				}
+			}));
+	}, _queueStrip->lifetime());
+
 	_listScroll = ::Ui::CreateChild<::Ui::ScrollArea>(
 		this,
 		st::defaultSolidScroll);
@@ -409,6 +432,7 @@ Dialogs::RowDescriptor GeneralAgentSection::activeChat() const {
 
 void GeneralAgentSection::applyModeVisibility() {
 	const auto list = (_mode == Mode::List);
+	_queueStrip->setSuppressed(!list);
 	_listScroll->setVisible(list);
 	_sessionView->setVisible(!list);
 }
@@ -427,6 +451,7 @@ void GeneralAgentSection::showAnimatedHook(
 void GeneralAgentSection::showList() {
 	const auto focused = ::Ui::InFocusChain(this);
 	_mode = Mode::List;
+	_queueStrip->setSuppressed(false);
 	_listScroll->show();
 	if (focused) {
 		_listScroll->setFocus();
@@ -441,6 +466,7 @@ void GeneralAgentSection::showSession(Session *session) {
 	_mode = Mode::Session;
 	_sessionView->showSession(session);
 	_sessionView->show();
+	_queueStrip->setSuppressed(true);
 	_listScroll->hide();
 	trackSession(session);
 	updateControlsGeometry();
@@ -642,7 +668,10 @@ void GeneralAgentSection::updateControlsGeometry() {
 
 	const auto top = st::topBarHeight + st::lineWidth;
 	const auto content = QRect(0, top, width(), std::max(height() - top, 0));
-	_listScroll->setGeometry(content);
+	_queueStrip->resizeToWidth(width());
+	_queueStrip->moveToLeft(0, top, width());
+	const auto strip = (_mode == Mode::List) ? _queueStrip->height() : 0;
+	_listScroll->setGeometry(content.marginsRemoved({ 0, strip, 0, 0 }));
 	_listContent->resizeToWidth(content.width());
 	_sessionView->setGeometry(content);
 }

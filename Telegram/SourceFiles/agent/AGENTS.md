@@ -2490,9 +2490,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   with the task title, attaching and dropping are off. Its cards can
   still be decided and its actions undone.
 - `QueueStrip` is a full-width clickable bar at the top of a normal
-  session view showing `lng_agent_queue_strip` with the number of
+  session view and of the agent chat's sessions list (above "＋ New
+  session") showing `lng_agent_queue_strip` with the number of
   pending cards of `TaskRunner::waiting(scope)`; it has zero height and
-  is hidden when nothing waits or while the view shows a run.
+  is hidden when nothing waits, while the view shows a run, and in the
+  section while it shows a session (the view has its own).
   `ShowQueueBox()` lists the waiting runs (the task title, the run
   trigger, the time since) and opens the chosen one; a session view
   opens it in place.
