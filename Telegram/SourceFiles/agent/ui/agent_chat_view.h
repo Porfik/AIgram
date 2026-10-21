@@ -76,6 +76,8 @@ public:
 	void startHandoff(HandoffDraft draft);
 	void passMessages(HistoryItemsList items);
 	void setComposerOnTop(bool onTop);
+	void setBottomRadius(int radius);
+	[[nodiscard]] bool hasMessages() const;
 	[[nodiscard]] rpl::producer<int> naturalHeightValue() const;
 	[[nodiscard]] int naturalHeight() const;
 	[[nodiscard]] QRect listGeometry() const;
@@ -231,6 +233,7 @@ private:
 	rpl::event_stream<> _slices;
 	rpl::event_stream<Session*> _sessionChanges;
 	bool _composerOnTop = false;
+	int _bottomRadius = 0;
 	bool _noProviderMode = false;
 	bool _skipScrollEvent = false;
 	rpl::lifetime _sessionLifetime;

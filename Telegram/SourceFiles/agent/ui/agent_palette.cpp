@@ -98,6 +98,7 @@ PaletteLayer::PaletteLayer(
 	}
 	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_view->setComposerOnTop(true);
+	_view->setBottomRadius(st::boxRadius);
 	_view->setHintProvider([=] {
 		return openChatHint();
 	});
@@ -205,12 +206,11 @@ void PaletteLayer::updateGeometry() {
 			outer.height() - top - margin - header,
 			st::agentPaletteMinBody);
 		_view->resize(width, std::max(_view->height(), 1));
-		const auto natural = std::max(
-			_view->naturalHeight(),
-			st::agentPaletteMinBody);
+		const auto bottom = _view->hasMessages() ? 0 : st::boxRadius;
+		const auto natural = std::max(_view->naturalHeight(), 1) + bottom;
 		const auto body = std::min(natural, maxBody);
 		setGeometry((outer.width() - width) / 2, top, width, header + body);
-		_view->setGeometry(0, header, width, body);
+		_view->setGeometry(0, header, width, body - bottom);
 		layoutHeader();
 	} while (_updateAgain);
 	_updating = false;

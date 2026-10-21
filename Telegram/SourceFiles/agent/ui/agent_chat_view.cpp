@@ -51,6 +51,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "storage/storage_media_prepare.h"
 #include "ui/chat/chat_style.h"
 #include "ui/chat/chat_theme.h"
+#include "ui/image/image_prepare.h"
 #include "ui/layers/generic_box.h"
 #include "ui/painter.h"
 #include "ui/widgets/buttons.h"
@@ -251,6 +252,12 @@ void ChatView::setupList() {
 	) | rpl::on_next([=] {
 		_scroll->updateBars();
 	}, _scroll->lifetime());
+	_inner->heightValue(
+	) | rpl::skip(1) | rpl::filter([=] {
+		return _composerOnTop;
+	}) | rpl::on_next([=] {
+		refreshNaturalHeight();
+	}, _inner->lifetime());
 	_cornerButtons = std::make_unique<::HistoryView::CornerButtons>(
 		_scroll.data(),
 		_controller->chatStyle(),
@@ -497,6 +504,15 @@ void ChatView::passMessages(HistoryItemsList items) {
 void ChatView::setComposerOnTop(bool onTop) {
 	_composerOnTop = onTop;
 	updateControlsGeometry();
+}
+
+void ChatView::setBottomRadius(int radius) {
+	_bottomRadius = radius;
+	update();
+}
+
+bool ChatView::hasMessages() const {
+	return !_items->ids().empty();
 }
 
 rpl::producer<int> ChatView::naturalHeightValue() const {
@@ -1119,9 +1135,14 @@ void ChatView::sendingFilesConfirmed(
 }
 
 void ChatView::refreshNaturalHeight() {
+	if (!_composeControls) {
+		return;
+	}
 	auto result = _queueStrip->height() + _composeControls->heightCurrent();
 	if (!_items->ids().empty()) {
-		result += st::agentPaletteNaturalList;
+		result += _composerOnTop
+			? std::min(_inner->height(), st::agentPaletteNaturalList)
+			: st::agentPaletteNaturalList;
 	}
 	_naturalHeight = result;
 }
@@ -1171,7 +1192,9 @@ void ChatView::updateControlsGeometry() {
 	if (_scroll->size() != scrollSize) {
 		_skipScrollEvent = true;
 		_scroll->resize(scrollSize);
-		_inner->resizeToWidth(scrollSize.width(), _scroll->height());
+		_inner->resizeToWidth(
+			scrollSize.width(),
+			_composerOnTop ? 0 : _scroll->height());
 		_skipScrollEvent = false;
 	}
 	_scroll->move(0, scrollTop);
@@ -1192,15 +1215,47 @@ void ChatView::updateInnerVisibleArea() {
 
 void ChatView::paintEvent(QPaintEvent *e) {
 	const auto clip = e->rect();
-	if (_theme) {
+	if (!_theme) {
+		QPainter(this).fillRect(clip, st::windowBg);
+		return;
+	} else if (_bottomRadius <= 0) {
 		Window::SectionWidget::PaintBackground(
 			_controller,
 			_theme.get(),
 			this,
 			clip);
-	} else {
-		QPainter(this).fillRect(clip, st::windowBg);
+		return;
 	}
+	auto p = QPainter(this);
+	const auto strip = QRect(
+		0,
+		height() - _bottomRadius,
+		width(),
+		_bottomRadius);
+	const auto top = clip.intersected(QRect(0, 0, width(), strip.y()));
+	if (!top.isEmpty()) {
+		p.setClipRect(top);
+		Window::SectionWidget::PaintBackground(p, _theme.get(), size(), top);
+		p.setClipping(false);
+	}
+	if (!clip.intersects(strip)) {
+		return;
+	}
+	const auto ratio = style::DevicePixelRatio();
+	auto image = QImage(
+		strip.size() * ratio,
+		QImage::Format_ARGB32_Premultiplied);
+	image.setDevicePixelRatio(ratio);
+	image.fill(Qt::transparent);
+	{
+		auto q = QPainter(&image);
+		q.translate(0, -strip.y());
+		Window::SectionWidget::PaintBackground(q, _theme.get(), size(), strip);
+	}
+	p.drawImage(strip.topLeft(), Images::Round(
+		std::move(image),
+		Images::CornersMask(_bottomRadius),
+		RectPart::BottomLeft | RectPart::BottomRight));
 }
 
 ::HistoryView::Context ChatView::listContext() {
