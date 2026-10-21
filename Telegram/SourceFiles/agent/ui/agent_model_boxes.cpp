@@ -1021,12 +1021,14 @@ void EditCustomBox(
 			provider.model),
 		st::boxRowPadding);
 	::Ui::AddSkip(container);
-	container->add(
-		object_ptr<::Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_abilities(),
-			st::boxLabel),
-		st::boxRowPadding);
+	::Ui::AddSubsectionTitle(
+		container,
+		tr::lng_agent_provider_abilities(),
+		style::margins(
+			st::boxRowPadding.left() - st::defaultSubsectionTitlePadding.left(),
+			0,
+			0,
+			0));
 	const auto addAbility = [&](rpl::producer<QString> text, bool checked) {
 		return container->add(
 			object_ptr<::Ui::Checkbox>(
@@ -1057,12 +1059,14 @@ void EditCustomBox(
 		container,
 		tr::lng_agent_provider_abilities_about());
 	::Ui::AddSkip(container);
-	container->add(
-		object_ptr<::Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_prices(),
-			st::boxLabel),
-		st::boxRowPadding);
+	::Ui::AddSubsectionTitle(
+		container,
+		tr::lng_agent_provider_prices(),
+		style::margins(
+			st::boxRowPadding.left() - st::defaultSubsectionTitlePadding.left(),
+			0,
+			0,
+			0));
 	const auto addPrice = [&](rpl::producer<QString> text, double price) {
 		return container->add(
 			object_ptr<::Ui::InputField>(
