@@ -15,6 +15,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_feed_format.h"
 #include "base/unixtime.h"
 #include "ui/image/image_location.h"
+#include "data/data_document.h"
+#include "data/data_media_types.h"
 #include "data/data_photo.h"
 #include "base/random.h"
 #include "data/data_session.h"
@@ -168,7 +170,58 @@ void Linkify(std::vector<Block> &blocks) {
 	});
 }
 
-[[nodiscard]] Block StepBlock(const FeedStep &step, Main::Session *session) {
+using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
+
+[[nodiscard]] Block PhotoBlock(not_null<PhotoData*> photo) {
+	return {
+		.kind = BlockKind::Photo,
+		.width = photo->width(),
+		.height = photo->height(),
+		.photoId = photo->id,
+		.photo = photo,
+	};
+}
+
+[[nodiscard]] std::optional<Block> StepMediaBlock(
+		const MediaBlock &media,
+		Main::Session *session,
+		const AttachmentPhoto &attachmentPhoto) {
+	if (!media.attachment.isEmpty()) {
+		const auto photo = attachmentPhoto
+			? attachmentPhoto(media)
+			: nullptr;
+		return photo ? PhotoBlock(photo) : std::optional<Block>();
+	} else if (!session || !media.peer || !media.messageId) {
+		return std::nullopt;
+	}
+	const auto item = session->data().message(
+		FullMsgId(PeerId(media.peer), MsgId(media.messageId)));
+	const auto itemMedia = item ? item->media() : nullptr;
+	if (!itemMedia) {
+		return std::nullopt;
+	} else if (const auto photo = itemMedia->photo()) {
+		return PhotoBlock(photo);
+	} else if (const auto document = itemMedia->document()) {
+		const auto video = document->isVideoFile()
+			|| document->isAnimation()
+			|| document->isVideoMessage();
+		const auto size = document->dimensions;
+		return Block{
+			.kind = video ? BlockKind::Video : BlockKind::File,
+			.fileName = document->filename(),
+			.width = size.width(),
+			.height = size.height(),
+			.documentId = document->id,
+			.document = document,
+		};
+	}
+	return std::nullopt;
+}
+
+[[nodiscard]] Block StepBlock(
+		const FeedStep &step,
+		Main::Session *session,
+		const AttachmentPhoto &attachmentPhoto) {
 	return v::match(step, [&](const FeedThinking &data) {
 		return Details(
 			TextWithEntities{ tr::lng_agent_thinking(tr::now) },
@@ -183,6 +236,25 @@ void Linkify(std::vector<Block> &blocks) {
 				tr::lng_agent_tool_failed(tr::now));
 		}
 		auto blocks = std::vector<Block>();
+		if (IsMediaTool(data.call.name)) {
+			const auto object = ToolResultObject(data.result);
+			if (data.call.name == u"view_media"_q) {
+				if (auto media = StepMediaBlock(
+						ResultMediaBlock(object),
+						session,
+						attachmentPhoto)) {
+					blocks.push_back(std::move(*media));
+				}
+			}
+			const auto transcript = ResultTranscriptText(
+				data.call.name,
+				object);
+			if (!transcript.isEmpty()) {
+				blocks.push_back(Paragraph(::Ui::Text::Bold(
+					tr::lng_agent_tool_transcript(tr::now))));
+				blocks.push_back(Paragraph(TextWithEntities{ transcript }));
+			}
+		}
 		const auto arguments = ArgumentsText(data.call);
 		if (!arguments.isEmpty()) {
 			blocks.push_back(Paragraph(::Ui::Text::Bold(
@@ -205,7 +277,8 @@ void Linkify(std::vector<Block> &blocks) {
 [[nodiscard]] Block StepsBlock(
 		const std::vector<FeedStep> &steps,
 		bool live,
-		Main::Session *session) {
+		Main::Session *session,
+		const AttachmentPhoto &attachmentPhoto) {
 	auto title = QString();
 	auto failed = 0;
 	for (const auto &step : steps) {
@@ -232,7 +305,7 @@ void Linkify(std::vector<Block> &blocks) {
 	auto blocks = std::vector<Block>();
 	blocks.reserve(steps.size());
 	for (const auto &step : steps) {
-		blocks.push_back(StepBlock(step, session));
+		blocks.push_back(StepBlock(step, session, attachmentPhoto));
 	}
 	return Details(TextWithEntities{ title }, std::move(blocks));
 }
@@ -763,7 +836,10 @@ bool ChatItems::apply(
 				blocks.push_back(StepsBlock(
 					message.steps,
 					lastLive,
-					session));
+					session,
+					[&](const MediaBlock &media) {
+						return localPhoto(media, entry.date);
+					}));
 			}
 			if (thinking) {
 				const auto &text = std::get<FeedThinking>(

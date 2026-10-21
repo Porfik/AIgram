@@ -2446,8 +2446,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   duration), `_transcribe` (with the duration), `_read_file` (with the
   file name), `_list_agent_files`, `_draft_files`, followed by
   `lng_agent_tool_media_model` when the media model answered. In the
-  native chat an expanded step shows its arguments and result as text;
-  the media thumbnails of the old feed are not shown.
+  native chat an expanded media step (`IsMediaTool()`) starts with the
+  media as a rich page block (`view_media`: an attachment as a local
+  photo, a loaded chat message's photo as `Photo`, its video as `Video`,
+  other documents as `File`; a click opens the media viewer) and the
+  transcript or description under a bold `lng_agent_tool_transcript`,
+  then the arguments and the result.
 - `Transcribe` cards show the message preview, the trials left
   (`lng_agent_card_transcribe_left`) and the about line with
   "Transcribe" and "Decline".
