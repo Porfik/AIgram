@@ -1,0 +1,65 @@
+/*
+This file is part of Telegram Desktop,
+the official desktop application for the Telegram messaging service.
+
+For license and copyright information please follow this link:
+https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
+*/
+using "ui/basic.style";
+using "ui/widgets/widgets.style";
+using "ui/layers/layers.style";
+using "chat_helpers/chat_helpers.style";
+
+agentCardTitleLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+	style: TextStyle(defaultTextStyle) {
+		font: font(13px semibold);
+	}
+}
+agentCardTextLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+}
+agentCardDetailLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+	textFg: windowSubTextFg;
+	style: TextStyle(defaultTextStyle) {
+		font: font(12px);
+	}
+}
+agentCardStatusLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+	textFg: windowSubTextFg;
+	style: TextStyle(defaultTextStyle) {
+		font: font(13px italic);
+	}
+}
+agentCardRowSkip: 6px;
+agentCardGap: 6px;
+agentCardField: InputField(historyComposeField) {
+	textMargins: margins(8px, 7px, 8px, 7px);
+	heightMax: 220px;
+	textBg: windowBgRipple;
+	textBgActive: windowBgRipple;
+	textFg: windowFg;
+	placeholderFg: windowSubTextFg;
+	placeholderFgActive: windowSubTextFg;
+	placeholderFgError: windowSubTextFg;
+}
+agentCardSpinner: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
+	color: windowSubTextFg;
+	thickness: 2px;
+}
+agentCardSpinnerSize: size(14px, 14px);
+agentCardCodeLabel: FlatLabel(defaultFlatLabel) {
+	minWidth: 100px;
+	style: TextStyle(defaultTextStyle) {
+		font: font(12px);
+	}
+	palette: TextPalette(defaultTextPalette) {
+		monoFg: windowFg;
+		selectMonoFg: windowFg;
+	}
+}
+agentCardCodeBg: windowBgOver;
+agentCardCodeRadius: 6px;
+agentCardCodePadding: margins(8px, 6px, 8px, 6px);

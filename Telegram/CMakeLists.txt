@@ -146,6 +146,8 @@ PRIVATE
     agent/tools/agent_tools_profile.cpp
     agent/tools/agent_tools_tasks.cpp
     agent/tools/agent_tools_telegram_ai.cpp
+    agent/ui/agent_card_box.cpp
+    agent/ui/agent_card_box.h
     agent/ui/agent_chat_items.cpp
     agent/ui/agent_chat_items.h
     agent/ui/agent_chat_view.cpp
