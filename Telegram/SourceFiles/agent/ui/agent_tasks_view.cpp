@@ -31,7 +31,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "styles/style_agent_tasks.h"
 #include "styles/style_boxes.h"
 #include "styles/style_layers.h"
-#include "styles/style_menu_icons.h"
 #include "styles/style_settings.h"
 
 #include <QtCore/QLocale>
@@ -707,8 +706,7 @@ void TasksView::buildTask() {
 	Settings::AddButtonWithIcon(
 		container,
 		tr::lng_agent_task_delete(),
-		st::settingsAttentionButton,
-		{ &st::menuIconDeleteAttention }
+		st::settingsAttentionButton
 	)->setClickedCallback([=] {
 		ShowDeleteTaskBox(_controller, _manager, id, [=] {
 			showList();
