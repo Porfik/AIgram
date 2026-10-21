@@ -1521,6 +1521,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_compacting" = "Summarizing earlier messages...";
 "lng_agent_compacted" = "Earlier messages were summarized for the model.";
 "lng_agent_failed" = "The request failed: {error}";
+"lng_agent_failed_auth" = "The provider did not accept the API key: {error}";
 "lng_agent_retry" = "Retry";
 "lng_agent_turn_interrupted" = "Stopped.";
 "lng_agent_turn_step_limit" = "Stopped: too many steps in one turn.";

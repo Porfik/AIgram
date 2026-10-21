@@ -685,6 +685,10 @@ QString ChatView::errorText() const {
 		} else if (provider && UsesClaudeCode(*provider)) {
 			return tr::lng_agent_claude_error_login(tr::now);
 		}
+		return tr::lng_agent_failed_auth(
+			tr::now,
+			lt_error,
+			state.error->text);
 	}
 	return tr::lng_agent_failed(tr::now, lt_error, state.error->text);
 }
