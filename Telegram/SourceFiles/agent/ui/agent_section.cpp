@@ -372,9 +372,7 @@ void GeneralAgentSection::setupList() {
 			}));
 	}, _queueStrip->lifetime());
 
-	_listScroll = ::Ui::CreateChild<::Ui::ScrollArea>(
-		this,
-		st::defaultSolidScroll);
+	_listScroll = ::Ui::CreateChild<::Ui::ScrollArea>(this);
 	const auto content = _listScroll->setOwnedWidget(
 		object_ptr<::Ui::RpWidget>(_listScroll));
 	_listContent = content.data();
