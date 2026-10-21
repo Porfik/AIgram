@@ -6573,6 +6573,10 @@ Ui::InputField *ComposeControls::fieldForMention() const {
 		: _field.get();
 }
 
+not_null<Ui::InputField*> ComposeControls::inputField() const {
+	return _field.get();
+}
+
 auto ComposeControls::fieldTabbed() const
 -> rpl::producer<not_null<Ui::InputField::TabbedRequest*>> {
 	return _field->tabbed();

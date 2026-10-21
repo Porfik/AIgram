@@ -75,6 +75,7 @@ public:
 	void setInnerFocus();
 	void startHandoff(HandoffDraft draft);
 	void passMessages(HistoryItemsList items);
+	void setNewSessionDraftKey(const QString &key);
 	void setComposerOnTop(bool onTop);
 	void setBottomRadius(int radius);
 	[[nodiscard]] bool hasMessages() const;
@@ -116,6 +117,9 @@ private:
 	[[nodiscard]] bool checkAttachmentLimits(
 		const std::vector<const ::Ui::PreparedFile*> &files) const;
 	[[nodiscard]] Session *ensureSession();
+	[[nodiscard]] QString currentDraftKey() const;
+	void saveDraft();
+	void switchDraft();
 	void handoffRequested(const QString &text);
 	[[nodiscard]] QString errorText() const;
 	[[nodiscard]] QString turnEndText() const;
@@ -212,6 +216,9 @@ private:
 	Session *_session = nullptr;
 	QString _pendingProfileId;
 	std::optional<HandoffDraft> _handoff;
+	QString _draftKey;
+	QString _newDraftKey;
+	bool _applyingDraft = false;
 	Fn<QString()> _hint;
 	Fn<std::vector<PeerKey>()> _mentions;
 	std::shared_ptr<::Ui::ChatTheme> _theme;

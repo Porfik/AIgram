@@ -30,6 +30,7 @@ class Session;
 namespace Agent {
 
 class AgentChat;
+class Drafts;
 class Attachments;
 class ClaudeLauncher;
 class ClaudePool;
@@ -107,6 +108,7 @@ public:
 	void clearAllData();
 
 	[[nodiscard]] AgentChat &chat() const;
+	[[nodiscard]] Drafts &drafts() const;
 	[[nodiscard]] Memories &memories() const;
 	[[nodiscard]] Exclusions &exclusions() const;
 	[[nodiscard]] SpendingTracker &spending() const;
@@ -149,6 +151,7 @@ private:
 	const std::unique_ptr<HttpTransport> _transport;
 	const std::unique_ptr<ClaudeLauncher> _claudeLauncher;
 	const std::unique_ptr<ClaudePool> _claudePool;
+	const std::unique_ptr<Drafts> _drafts;
 	const std::unique_ptr<Memories> _memories;
 	const std::unique_ptr<Exclusions> _exclusions;
 	const std::unique_ptr<SpendingTracker> _spending;

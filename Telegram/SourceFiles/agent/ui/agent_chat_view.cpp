@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_attachments.h"
 #include "agent/agent_chat.h"
 #include "agent/agent_claude.h"
+#include "agent/agent_drafts.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/agent_settings.h"
@@ -224,9 +225,11 @@ ChatView::ChatView(
 	refreshProviderState();
 	refreshModel();
 	rebuildMessages();
+	switchDraft();
 }
 
 ChatView::~ChatView() {
+	saveDraft();
 	_sessionLifetime.destroy();
 	_composeControls = nullptr;
 	_items = nullptr;
@@ -335,6 +338,14 @@ void ChatView::setupComposeControls() {
 		}),
 	});
 	_composeControls->setPasteToastParent(_scroll.data());
+	_composeControls->inputField()->changes(
+	) | rpl::on_next([=] {
+		saveDraft();
+	}, lifetime());
+	_composeControls->replyingToMessageValue(
+	) | rpl::skip(1) | rpl::on_next([=] {
+		saveDraft();
+	}, lifetime());
 	_composeControls->height(
 	) | rpl::on_next([=] {
 		const auto wasMax = atBottom();
@@ -460,7 +471,62 @@ void ChatView::showSession(Session *session) {
 	refreshModel();
 	_composeControls->updateForwarding();
 	_inner->showAtPosition(Data::MaxMessagePosition, {});
+	switchDraft();
 	_sessionChanges.fire_copy(_session);
+}
+
+void ChatView::setNewSessionDraftKey(const QString &key) {
+	_newDraftKey = key;
+	switchDraft();
+}
+
+QString ChatView::currentDraftKey() const {
+	if (_session) {
+		return _session->isRun() ? QString() : _session->id();
+	} else if (!_newDraftKey.isEmpty()) {
+		return _newDraftKey;
+	}
+	return (_scope.kind == ScopeKind::Chat)
+		? (u"new:"_q + QString::number(_scope.peer))
+		: u"new"_q;
+}
+
+void ChatView::saveDraft() {
+	if (_applyingDraft || _draftKey.isEmpty() || !_composeControls) {
+		return;
+	}
+	const auto newKey = _draftKey.startsWith(u"new"_q)
+		|| (_draftKey == _newDraftKey);
+	if (!newKey && !_manager->info(_draftKey)) {
+		return;
+	}
+	const auto field = _composeControls->inputField();
+	_manager->drafts().set(_draftKey, {
+		.text = field->getTextWithTags(),
+		.cursor = MessageCursor(field),
+		.reply = _composeControls->replyingToMessage(),
+	});
+}
+
+void ChatView::switchDraft() {
+	const auto key = currentDraftKey();
+	if (key == _draftKey) {
+		return;
+	}
+	saveDraft();
+	_draftKey = key;
+	auto draft = key.isEmpty()
+		? ViewDraft()
+		: _manager->drafts().get(key);
+	_applyingDraft = true;
+	_composeControls->cancelReplyMessage();
+	_composeControls->setText(draft.text);
+	draft.cursor.applyTo(_composeControls->inputField());
+	if (draft.reply.messageId
+		&& _history->owner().message(draft.reply.messageId)) {
+		_composeControls->replyToMessage(draft.reply);
+	}
+	_applyingDraft = false;
 }
 
 Session *ChatView::session() const {
@@ -921,6 +987,8 @@ Session *ChatView::ensureSession() {
 		session->setProfile(profileId);
 	}
 	auto handoff = base::take(_handoff);
+	_manager->drafts().remove(_draftKey);
+	_draftKey = session->id();
 	showSession(session);
 	_handoff = std::move(handoff);
 	return session;

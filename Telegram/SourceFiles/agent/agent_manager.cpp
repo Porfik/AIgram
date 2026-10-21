@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_attachments.h"
 #include "agent/agent_chat.h"
 #include "agent/agent_claude.h"
+#include "agent/agent_drafts.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_http_transport.h"
 #include "agent/agent_memories.h"
@@ -58,6 +59,7 @@ Manager::Manager(not_null<Main::Session*> session)
 , _transport(std::make_unique<HttpTransport>())
 , _claudeLauncher(std::make_unique<ClaudeLauncher>())
 , _claudePool(std::make_unique<ClaudePool>())
+, _drafts(std::make_unique<Drafts>(session))
 , _memories(std::make_unique<Memories>(session))
 , _exclusions(std::make_unique<Exclusions>(session))
 , _spending(std::make_unique<SpendingTracker>(session))
@@ -450,6 +452,7 @@ void Manager::remove(const QString &id) {
 		}
 	}
 	_store->removeSession(id);
+	_drafts->remove(id);
 	for (auto i = _index.begin(); i != _index.end();) {
 		if (i->id == id) {
 			i = _index.erase(i);
@@ -535,6 +538,7 @@ void Manager::clearAllData() {
 	_index.clear();
 	_session->local().removeAgentValue(u"index"_q);
 	_memories->clearAll();
+	_drafts->clear();
 	_spending->reset();
 	sessions.clear();
 	for (const auto &scope : scopes) {
@@ -545,6 +549,10 @@ void Manager::clearAllData() {
 
 AgentChat &Manager::chat() const {
 	return *_chat;
+}
+
+Drafts &Manager::drafts() const {
+	return *_drafts;
 }
 
 Memories &Manager::memories() const {

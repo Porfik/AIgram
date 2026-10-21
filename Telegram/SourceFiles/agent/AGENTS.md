@@ -114,7 +114,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   session model) and `customStopShown` / `customStopClicked` (the send
   button turns into "Stop" while the field is empty);
   `ChatHelpers::ComposeFeatures::aiEditor` false hides Telegram's AI
-  editor button ("✨Ai") in agent composers.
+  editor button ("✨Ai") in agent composers;
+  `ComposeControls::inputField()` gives the field to the agent drafts.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
@@ -2584,6 +2585,20 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `agentPaletteNaturalList` (always that height without the composer on
   top). `setBottomRadius()` rounds the bottom corners of the wallpaper;
   `hasMessages()` says whether the list has items.
+- Drafts (plan 11.10): `Manager::drafts()` (`agent_drafts.*`) keeps the
+  composer text, cursor and (in memory only) the reply per key: a
+  session id, `new` for the agent chat without a session, `new:<peer>`
+  for a chat panel without a session and `palette` for the palette
+  (`ChatView::setNewSessionDraftKey()`). It is the agent value `drafts`
+  (version, then key, text, serialized tags and the cursor of each
+  non-empty draft), written a second after the last change. `ChatView`
+  saves the field under the current key on every change and swaps the
+  text in when the shown session changes; the first send of a new
+  session moves the key to the created session, so the sent text never
+  stays behind. Removing a session drops its draft, `clearAllData()`
+  all of them. The compose controls still write the history draft of
+  their topic root, but the view overwrites the field when it is
+  created.
 - `ChatView::setMentionsProvider()` adds peers to every request's
   `mentions`, so they count as named for the taint rule.
 - `ChatView::passMessages()` puts the passed messages into the agent
@@ -2604,9 +2619,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   wallpaper's bottom corners by `boxRadius`. The header shows the agent
   userpic, the session title (or the agent name) and "new", "open in
   the agent" (only with a session) and "close" buttons. It holds an
-  account scope `ChatView` with the composer on top, sharing the agent
-  chat's draft; the first
-  request creates a session, the next ones continue it, "new" starts
+  account scope `ChatView` with the composer on top and its own draft
+  (`palette`) until it has a session; the first request creates a session, the next ones continue it, "new" starts
   over, and every opening of the palette starts without a session.
   "Open in the agent" closes the palette and opens the session with
   `ShowGeneralAgentSession()`. Escape, the close button and a click

@@ -98,6 +98,7 @@ PaletteLayer::PaletteLayer(
 	}
 	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_view->setComposerOnTop(true);
+	_view->setNewSessionDraftKey(u"palette"_q);
 	_view->setBottomRadius(st::boxRadius);
 	_view->setHintProvider([=] {
 		return openChatHint();

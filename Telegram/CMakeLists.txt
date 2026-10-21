@@ -199,6 +199,8 @@ PRIVATE
     agent/agent_chat.h
     agent/agent_claude.cpp
     agent/agent_claude.h
+    agent/agent_drafts.cpp
+    agent/agent_drafts.h
     agent/agent_exclusions.cpp
     agent/agent_exclusions.h
     agent/agent_files.cpp
