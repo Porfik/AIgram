@@ -1410,8 +1410,13 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `Session::send()` queues the request while the session is working; the
   queue shows in `SessionState::queued` and runs in order after each
   finished turn, on the next main loop iteration. After a failed turn the
-  queue waits for `retry()` or `stop()`. `stop()` interrupts the turn or the compaction and clears
-  the queue. `retry()` resumes a failed turn whose history ends with a user
+  queue waits for `retry()`, `interrupt()` or `stop()`. `stop()`
+  interrupts the turn or the compaction and clears the queue.
+  `interrupt()` (the "Stop" button) does the same but merges the queue
+  into one request (texts joined by an empty line, hints by a line
+  break, the untrusted texts, mentions and attachments joined, as long
+  as the attachments fit `kAttachmentsPerMessage`), which runs as the
+  next turn. `retry()` resumes a failed turn whose history ends with a user
   message.
 - A dispatch builds the user message (the text, then the hint as a hidden
   block), starts a policy turn with the mentions plus `FindNamedPeers()`,

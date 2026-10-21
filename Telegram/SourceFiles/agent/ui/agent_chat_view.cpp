@@ -307,7 +307,7 @@ void ChatView::setupComposeControls() {
 			.customStopShown = _working.value(),
 			.customStopClicked = [=] {
 				if (_session) {
-					_session->stop();
+					_session->interrupt();
 				}
 			},
 		});

@@ -17,6 +17,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_tasks.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_loop.h"
+#include "agent/core/agent_media.h"
 #include "agent/core/agent_memory.h"
 #include "agent/core/agent_policy.h"
 #include "agent/core/agent_prompts.h"
@@ -48,6 +49,42 @@ constexpr auto kProvisionalTitleLimit = 60;
 		}
 	}
 	return {};
+}
+
+void AppendPart(QString &to, const QString &part, const QString &separator) {
+	if (part.isEmpty()) {
+		return;
+	}
+	to = to.isEmpty() ? part : (to + separator + part);
+}
+
+[[nodiscard]] std::vector<SendRequest> MergeQueue(
+		std::vector<SendRequest> queue) {
+	auto result = std::vector<SendRequest>();
+	for (auto &request : queue) {
+		const auto fits = !result.empty()
+			&& (result.back().attachments.size()
+				+ request.attachments.size()
+				<= kAttachmentsPerMessage);
+		if (!fits) {
+			result.push_back(std::move(request));
+			continue;
+		}
+		auto &merged = result.back();
+		AppendPart(merged.text, request.text, u"\n\n"_q);
+		AppendPart(merged.hint, request.hint, u"\n"_q);
+		AppendPart(merged.untrusted, request.untrusted, u"\n\n"_q);
+		for (const auto &peer : request.mentions) {
+			if (!ranges::contains(merged.mentions, peer)) {
+				merged.mentions.push_back(peer);
+			}
+		}
+		merged.attachments.insert(
+			end(merged.attachments),
+			std::make_move_iterator(begin(request.attachments)),
+			std::make_move_iterator(end(request.attachments)));
+	}
+	return result;
 }
 
 [[nodiscard]] int CountPendingCards(const std::vector<Card> &cards) {
@@ -255,12 +292,26 @@ void Session::send(SendRequest request) {
 }
 
 void Session::stop() {
-	const auto weak = base::make_weak(this);
 	_queue.clear();
 	_state.queued.clear();
+	halt();
+}
+
+void Session::interrupt() {
+	_queue = MergeQueue(base::take(_queue));
+	_state.queued.clear();
+	for (const auto &request : _queue) {
+		_state.queued.push_back(request.text);
+	}
+	halt();
+}
+
+void Session::halt() {
+	const auto weak = base::make_weak(this);
 	_compaction = nullptr;
 	_titleRequest = nullptr;
-	if (_loop && _loop->busy()) {
+	const auto busy = _loop && _loop->busy();
+	if (busy) {
 		_loop->interrupt();
 		if (!weak) {
 			return;
@@ -269,6 +320,14 @@ void Session::stop() {
 	if (_state.status != SessionStatus::Idle) {
 		_state.status = SessionStatus::Idle;
 		_stateChanges.fire({});
+		if (!weak) {
+			return;
+		}
+	}
+	if (!busy && !_queue.empty()) {
+		crl::on_main(this, [=] {
+			processQueue();
+		});
 	}
 }
 

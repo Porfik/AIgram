@@ -85,6 +85,7 @@ public:
 
 	void send(SendRequest request);
 	void stop();
+	void interrupt();
 	void retry();
 
 	void decideCard(const QString &toolUseId, CardDecision decision);
@@ -98,6 +99,7 @@ private:
 	friend class Manager;
 
 	void dispatch(SendRequest request);
+	void halt();
 	void finishOpen();
 	void applyCard(Card card);
 	[[nodiscard]] QString undoHint();
