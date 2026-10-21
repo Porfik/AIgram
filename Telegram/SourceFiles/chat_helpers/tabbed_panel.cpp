@@ -264,6 +264,14 @@ void TabbedPanel::paintEvent(QPaintEvent *e) {
 
 void TabbedPanel::moveHorizontally() {
 	const auto padding = innerPadding();
+	const auto available = parentWidget()->width()
+		- padding.left()
+		- padding.right();
+	const auto inner = std::max(std::min(st::emojiPanWidth, available), 1);
+	if (innerRect().width() != inner && !isSelectorStolen()) {
+		resize(inner + padding.left() + padding.right(), height());
+		_selector->resize(inner, _selector->height());
+	}
 	const auto width = innerRect().width() + padding.left() + padding.right();
 	const auto right = std::max(
 		parentWidget()->width() - std::max(_right, width),
