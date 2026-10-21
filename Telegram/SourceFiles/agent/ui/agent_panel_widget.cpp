@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/ui/agent_panel_widget.h"
 
+#include "agent/agent_chat.h"
 #include "agent/agent_manager.h"
 #include "agent/agent_session.h"
 #include "agent/ui/agent_chat_view.h"
@@ -234,6 +235,10 @@ PanelWidget::Inner::Inner(
 	if (_hintProvider) {
 		_sessionView->setHintProvider(_hintProvider);
 	}
+	_manager->chat().nameValue(
+	) | rpl::skip(1) | rpl::on_next([=] {
+		updateTitle();
+	}, lifetime());
 
 	const auto list = _manager->list(_scope);
 	showSession(list.empty() ? nullptr : _manager->open(list.front().id));
@@ -318,7 +323,7 @@ void PanelWidget::Inner::updateTitle() {
 			? tr::lng_agent_session_untitled(tr::now)
 			: title;
 	} else {
-		_title = tr::lng_agent_title(tr::now);
+		_title = _manager->chat().name();
 	}
 }
 
