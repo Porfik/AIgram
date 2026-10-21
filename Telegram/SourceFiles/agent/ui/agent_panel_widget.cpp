@@ -240,8 +240,7 @@ PanelWidget::Inner::Inner(
 		updateTitle();
 	}, lifetime());
 
-	const auto list = _manager->list(_scope);
-	showSession(list.empty() ? nullptr : _manager->open(list.front().id));
+	showSession(nullptr);
 }
 
 void PanelWidget::Inner::showHistory(bool shown) {
