@@ -147,6 +147,7 @@ void ShowMemoryDeleteBox(
 			close();
 		},
 		.confirmText = tr::lng_box_delete(),
+		.confirmStyle = &st::attentionBoxButton,
 	}));
 }
 
@@ -161,6 +162,7 @@ void ShowMemoryClearBox(
 			close();
 		},
 		.confirmText = tr::lng_box_delete(),
+		.confirmStyle = &st::attentionBoxButton,
 	}));
 }
 

@@ -86,6 +86,7 @@ void ShowDeleteSessionBox(
 			close();
 		},
 		.confirmText = tr::lng_box_delete(),
+		.confirmStyle = &st::attentionBoxButton,
 	}));
 }
 
