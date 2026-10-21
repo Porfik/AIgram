@@ -35,15 +35,15 @@ agentCardStatusLabel: FlatLabel(defaultFlatLabel) {
 }
 agentCardRowSkip: 6px;
 agentCardGap: 6px;
-agentCardField: InputField(historyComposeField) {
-	textMargins: margins(8px, 7px, 8px, 7px);
+agentCardField: InputField(defaultInputField) {
+	textMargins: margins(0px, 6px, 0px, 6px);
+	heightMin: 32px;
 	heightMax: 220px;
-	textBg: windowBgRipple;
-	textBgActive: windowBgRipple;
-	textFg: windowFg;
-	placeholderFg: windowSubTextFg;
-	placeholderFgActive: windowSubTextFg;
-	placeholderFgError: windowSubTextFg;
+}
+agentCardTargetItem: PeerListItem(defaultPeerListItem) {
+	photoPosition: point(0px, 6px);
+	namePosition: point(56px, 11px);
+	statusPosition: point(56px, 31px);
 }
 agentCardSpinner: InfiniteRadialAnimation(defaultInfiniteRadialAnimation) {
 	color: windowSubTextFg;

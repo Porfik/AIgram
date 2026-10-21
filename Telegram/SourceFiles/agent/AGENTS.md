@@ -2280,9 +2280,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   download files as checkboxes with the total, the targets as
   "choose chats" rows (userpic in a `RoundImageCheckbox`, title, preview
   or error; checkable only while pending with more than one target) under
-  `lng_agent_card_targets`, the editable text under
-  `lng_agent_card_text_title`, the option and "allow until the end of the
-  request". Pending cards get the box buttons: the main one (its count
+  `lng_agent_card_targets` (rows and subsection titles aligned with the
+  box text), the editable text in an underline field under its own
+  subsection title ("Message text", "New text" or "Caption"), the option
+  and "allow until the end of the request". Pending cards get the box
+  buttons: the main one (its count
   follows the checks; without checked targets it shows
   `lng_agent_card_choose_chats`, with an empty text it marks the field),
   the alternate one and "Decline" / "Cancel" on the left in red; a

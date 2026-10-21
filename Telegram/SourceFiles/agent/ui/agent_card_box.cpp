@@ -63,6 +63,15 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent::Ui {
 namespace {
 
+void AddTitle(
+		not_null<VerticalLayout*> container,
+		rpl::producer<QString> text) {
+	Ui::AddSubsectionTitle(
+		container,
+		std::move(text),
+		style::margins(-st::defaultSubsectionTitlePadding.left(), 0, 0, 0));
+}
+
 [[nodiscard]] QString OptionText(CardKind kind) {
 	return (kind == CardKind::Delete)
 		? tr::lng_agent_card_revoke(tr::now)
@@ -425,7 +434,7 @@ TargetRow::TargetRow(
 		const CardTarget &target,
 		bool checkable)
 : RippleButton(parent, st::defaultRippleAnimation)
-, _st(st::defaultPeerListItem)
+, _st(st::agentCardTargetItem)
 , _checked(checkable && target.checked) {
 	_name.setText(_st.nameStyle, target.title);
 	_isError = !checkable && !target.error.isEmpty();
@@ -485,18 +494,21 @@ void TargetRow::paintEvent(QPaintEvent *e) {
 		_paintUserpic(p, x, y, width(), st.photoSize);
 	}
 	p.setPen(_checked ? st.nameFgChecked : st.nameFg);
+	const auto nameTop = _status.isEmpty()
+		? (st.height - st.nameStyle.font->height) / 2
+		: st.namePosition.y();
 	_name.drawLeftElided(
 		p,
 		st.namePosition.x(),
-		st.namePosition.y(),
-		width() - st.namePosition.x() - st.photoPosition.x(),
+		nameTop,
+		width() - st.namePosition.x(),
 		width());
 	p.setPen(_isError ? st::boxTextFgError : st.statusFg);
 	_status.drawLeftElided(
 		p,
 		st.statusPosition.x(),
 		st.statusPosition.y(),
-		width() - st.statusPosition.x() - st.photoPosition.x(),
+		width() - st.statusPosition.x(),
 		width());
 }
 
@@ -1021,7 +1033,7 @@ void CardBoxState::buildTargets(bool pendingNow) {
 	const auto session = &_controller->session();
 	const auto checkable = pendingNow && _card.targets.size() > 1;
 	if (checkable) {
-		Ui::AddSubsectionTitle(_inner, tr::lng_agent_card_targets());
+		AddTitle(_inner, tr::lng_agent_card_targets());
 	}
 	auto index = 0;
 	for (const auto &target : _card.targets) {
@@ -1047,7 +1059,7 @@ void CardBoxState::buildFiles(bool pendingNow) {
 	if (_payload.checked.size() < _card.files.size()) {
 		_payload.checked.resize(_card.files.size(), true);
 	}
-	Ui::AddSubsectionTitle(_inner, tr::lng_agent_card_files());
+	AddTitle(_inner, tr::lng_agent_card_files());
 	auto index = 0;
 	for (const auto &file : _card.files) {
 		const auto i = index++;
@@ -1076,13 +1088,12 @@ void CardBoxState::buildFiles(bool pendingNow) {
 }
 
 void CardBoxState::buildField(rpl::producer<QString> placeholder) {
-	Ui::AddSubsectionTitle(_inner, tr::lng_agent_card_text_title());
+	AddTitle(_inner, std::move(placeholder));
 	_field = _inner->add(
 		object_ptr<Ui::InputField>(
 			_inner,
 			st::agentCardField,
-			Ui::InputField::Mode::MultiLine,
-			std::move(placeholder)),
+			Ui::InputField::Mode::MultiLine),
 		style::margins(0, st::agentCardGap, 0, 0));
 	_field->setText(_payload.text);
 	_field->changes() | rpl::on_next([=] {

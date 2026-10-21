@@ -1604,7 +1604,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_handoff_button" = "Continue in the general agent";
 "lng_agent_card_targets" = "Chats";
 "lng_agent_card_files" = "Files";
-"lng_agent_card_text_title" = "Text";
 "lng_agent_card_choose_chats" = "Choose at least one chat.";
 "lng_agent_undo" = "Undo";
 "lng_agent_undo_all" = "Undo all";
