@@ -104,7 +104,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   cloud drafts (`ShouldSkipPlainDraftCloudSave()`,
   `ApiWrap::savePreparedDraftToCloud()`), `Data::ChatFilter::contains()`
   (never in folders), `Info::Memento` (the agent peer's Info section is
-  `Section::Type::Agent`, the agent profile) and
+  `Section::Type::Agent`, the agent profile; `thirdSectionIsAgentPanel()`
+  skips it, so leaving the agent chat shows the next chat's profile) and
   `Api::ActivateBotButton()` (`ChatItems::Activate()` handles the inline
   buttons of agent items). `Exclusions::excluded()` is true for the agent
   peer, so tools never see it.

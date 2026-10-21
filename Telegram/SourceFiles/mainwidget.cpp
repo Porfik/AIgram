@@ -2991,7 +2991,8 @@ bool MainWidget::thirdSectionIsAgentPanel(PeerData *peer) const {
 	const auto memento = _thirdSection->createMemento();
 	if (const auto info = dynamic_cast<Info::Memento*>(memento.get())) {
 		const auto content = info->content();
-		if (content->section().type() != Info::Section::Type::Agent) {
+		if (content->section().type() != Info::Section::Type::Agent
+			|| Agent::IsAgentPeer(content->peer())) {
 			return false;
 		}
 		return !peer || content->peer() == peer;
