@@ -40,8 +40,11 @@ constexpr auto kProvisionalTitleLimit = 60;
 [[nodiscard]] QString ProvisionalTitle(const QString &text) {
 	for (const auto &line : text.split('\n')) {
 		const auto trimmed = line.trimmed();
-		if (!trimmed.isEmpty()) {
-			return trimmed.left(kProvisionalTitleLimit);
+		if (trimmed.size() > kProvisionalTitleLimit) {
+			return trimmed.left(kProvisionalTitleLimit - 1).trimmed()
+				+ QChar(0x2026);
+		} else if (!trimmed.isEmpty()) {
+			return trimmed;
 		}
 	}
 	return {};
