@@ -1408,7 +1408,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_provider_make_active" = "Default model";
 "lng_agent_default_model" = "Default model";
 "lng_agent_default_model_title" = "Default Model";
-"lng_agent_default_model_about" = "New sessions start with this model. To switch the model of a session, use the button above the message field.";
+"lng_agent_default_model_about" = "New sessions start with this model. To switch the model of a session, use the model button left of the message field.";
 "lng_agent_add_model_title" = "Add Model";
 "lng_agent_add_openrouter" = "OpenRouter";
 "lng_agent_add_custom" = "Other provider";
@@ -1472,7 +1472,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_model_prices" = "{input} / {output} per 1M";
 "lng_agent_model_free" = "Free";
 "lng_agent_model_name_title" = "Model Name";
-"lng_agent_model_name_about" = "The name is shown in the list of models above the message field.";
+"lng_agent_model_name_about" = "The name is shown on the model button left of the message field and in its list of models.";
 "lng_agent_error_name" = "Please enter a name.";
 "lng_agent_model_delete_sure" = "Delete the model \"{name}\"? Sessions that use it will switch to the default model.";
 "lng_agent_model_add_menu" = "Add model...";
