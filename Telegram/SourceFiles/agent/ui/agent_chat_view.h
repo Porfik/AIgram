@@ -196,6 +196,7 @@ private:
 		not_null<::HistoryView::TranslateTracker*> tracker) override;
 	::Ui::ElasticScroll *listScrollArea() const override;
 	bool listThanosEffectEnabled() const override;
+	bool listIgnorePaintEvent(QWidget *w, QPaintEvent *e) override;
 
 	void cornerButtonsShowAtPosition(
 		Data::MessagePosition position) override;

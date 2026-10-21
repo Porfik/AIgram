@@ -53,6 +53,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/chat/chat_theme.h"
 #include "ui/image/image_prepare.h"
 #include "ui/layers/generic_box.h"
+#include "ui/layers/layer_widget.h"
 #include "ui/painter.h"
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/elastic_scroll.h"
@@ -1497,6 +1498,16 @@ void ChatView::listAddTranslatedItems(
 
 bool ChatView::listThanosEffectEnabled() const {
 	return false;
+}
+
+bool ChatView::listIgnorePaintEvent(QWidget *w, QPaintEvent *e) {
+	// WHY: the layer that holds the view counts as covering it.
+	for (auto parent = parentWidget(); parent; parent = parent->parentWidget()) {
+		if (dynamic_cast<::Ui::LayerWidget*>(parent)) {
+			return false;
+		}
+	}
+	return WindowListDelegate::listIgnorePaintEvent(w, e);
 }
 
 void ChatView::cornerButtonsShowAtPosition(Data::MessagePosition position) {
