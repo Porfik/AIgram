@@ -110,6 +110,8 @@ namespace {
 		return u"agentName differs"_q;
 	} else if (a.agentPhoto != b.agentPhoto) {
 		return u"agentPhoto differs"_q;
+	} else if (a.showBotIcon != b.showBotIcon) {
+		return u"showBotIcon differs"_q;
 	}
 	return QString();
 }
@@ -559,6 +561,28 @@ std::vector<Check> ProvidersChecks() {
 				|| !plain->agentName.isEmpty()
 				|| !plain->agentPhoto.isEmpty()) {
 				return u"an unset agent name and photo must stay empty"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v10_bot_icon"_q, [] {
+			auto state = SampleState();
+			state.showBotIcon = false;
+			auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v10 failed to deserialize"_q;
+			} else if (restored->showBotIcon) {
+				return u"a hidden bot icon must round-trip"_q;
+			}
+			bytes.chop(4);
+			bytes.replace(0, 4, Written([](QDataStream &stream) {
+				stream << qint32(9);
+			}));
+			const auto old = DeserializeProviders(bytes);
+			if (!old) {
+				return u"v9 data failed to deserialize"_q;
+			} else if (!old->showBotIcon) {
+				return u"v9 data must show the bot icon"_q;
 			}
 			return QString();
 		} },

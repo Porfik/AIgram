@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "dialogs/ui/dialogs_layout.h"
 
+#include "agent/agent_chat.h"
 #include "base/options.h"
 #include "base/unixtime.h"
 #include "core/ui_integration.h"
@@ -70,7 +71,8 @@ const auto kPsaBadgePrefix = "cloud_lng_badge_psa_";
 	return user->isBot()
 		&& !user->isSupport()
 		&& !user->isRepliesChat()
-		&& !user->isVerifyCodes();
+		&& !user->isVerifyCodes()
+		&& Agent::ShowBotIcon(user);
 }
 
 [[nodiscard]] bool ShowSendActionInDialogs(Data::Thread *thread) {

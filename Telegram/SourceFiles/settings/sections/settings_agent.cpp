@@ -885,6 +885,21 @@ void BuildEntryPoints(
 		},
 		.keywords = { u"row"_q, u"preview"_q, u"agent"_q },
 	});
+	const auto botIcon = builder.addButton({
+		.id = u"agent/bot-icon"_q,
+		.title = tr::lng_agent_show_bot_icon(),
+		.toggled = rpl::single(state->providers.showBotIcon),
+		.keywords = { u"bot"_q, u"icon"_q, u"agent"_q },
+	});
+	if (botIcon) {
+		botIcon->toggledChanges(
+		) | rpl::filter([=](bool toggled) {
+			return (toggled != state->providers.showBotIcon);
+		}) | rpl::on_next([=](bool toggled) {
+			state->providers.showBotIcon = toggled;
+			SaveState(state.get());
+		}, botIcon->lifetime());
+	}
 	builder.add([=](const WidgetContext &ctx) {
 		Ui::AddDividerText(
 			ctx.container,

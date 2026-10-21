@@ -37,6 +37,7 @@ struct ScopeActivity;
 [[nodiscard]] bool IsAgentPeer(PeerId id);
 [[nodiscard]] bool IsAgentPeer(const PeerData *peer);
 [[nodiscard]] bool IsAgentHistory(const History *history);
+[[nodiscard]] bool ShowBotIcon(not_null<UserData*> user);
 [[nodiscard]] int CountPinnedForLimit(const std::vector<Dialogs::Key> &order);
 
 [[nodiscard]] QImage DefaultAgentPhoto(int size);
@@ -81,6 +82,7 @@ private:
 	rpl::variable<QString> _name;
 	QByteArray _photoBytes;
 	bool _photoKnown = false;
+	bool _showBotIcon = true;
 	rpl::variable<bool> _shown = false;
 	bool _applyingPin = false;
 	bool _working = false;

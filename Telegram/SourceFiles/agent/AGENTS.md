@@ -560,6 +560,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - Version 9 (stage 5) appends `agentName` and `agentPhoto` (JPEG bytes)
   after `claudePath`; older versions load them empty, which means the
   default name and photo.
+- Version 10 appends `showBotIcon` (`qint32` 0 or 1, default true) after
+  `agentPhoto`. `ShowBotIcon()` is false only for the agent user with it
+  off; `ShowUserBotIcon()` in `dialogs_layout.cpp` checks it, so the chats
+  list and search rows drop the bot icon before the agent's name.
 
 ## Journal (`agent_journal.h`)
 

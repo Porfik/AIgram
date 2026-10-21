@@ -77,6 +77,11 @@ bool IsAgentHistory(const History *history) {
 	return history && IsAgentPeer(history->peer->id);
 }
 
+bool ShowBotIcon(not_null<UserData*> user) {
+	return !IsAgentPeer(user)
+		|| user->session().agent().providers().showBotIcon;
+}
+
 int CountPinnedForLimit(const std::vector<Dialogs::Key> &order) {
 	return int(ranges::count_if(order, [](const Dialogs::Key &key) {
 		return !IsAgentHistory(key.history());
@@ -214,6 +219,10 @@ void AgentChat::refreshProfile() {
 	if (_name.current() != name) {
 		_name = name;
 		_user->setName(name, QString(), QString(), QString());
+	}
+	if (_showBotIcon != providers.showBotIcon) {
+		_showBotIcon = providers.showBotIcon;
+		_session->changes().peerUpdated(_user, Data::PeerUpdate::Flag::Name);
 	}
 	if (_photoKnown && _photoBytes == providers.agentPhoto) {
 		return;

@@ -18,7 +18,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(9);
+constexpr auto kFormatVersion = qint32(10);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 constexpr auto kMaxIgnoredRoutes = 100;
@@ -64,6 +64,7 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 		<< qint64(state.backgroundDailyTokens);
 	stream << state.claudePath;
 	stream << state.agentName << state.agentPhoto;
+	stream << qint32(state.showBotIcon ? 1 : 0);
 	return result;
 }
 
@@ -224,6 +225,14 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 		if (stream.status() != QDataStream::Ok) {
 			return std::nullopt;
 		}
+	}
+	if (version >= 10) {
+		auto showBotIcon = qint32(0);
+		stream >> showBotIcon;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
+		state.showBotIcon = (showBotIcon != 0);
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;

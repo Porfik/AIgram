@@ -1703,6 +1703,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_row_preview_message" = "Last message";
 "lng_agent_row_preview_session" = "Session title";
 "lng_agent_row_preview_hint" = "Hint";
+"lng_agent_show_bot_icon" = "Bot icon in the chat list";
 "lng_agent_attach_too_big" = "The agent takes files up to {size}.";
 "lng_agent_attach_too_many#one" = "The agent takes up to {count} file at once.";
 "lng_agent_attach_too_many#other" = "The agent takes up to {count} files at once.";

@@ -74,6 +74,7 @@ struct ProvidersState {
 	QString claudePath;
 	QString agentName;
 	QByteArray agentPhoto;
+	bool showBotIcon = true;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);
