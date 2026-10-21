@@ -766,30 +766,6 @@ QString ChatView::errorText() const {
 	return tr::lng_agent_failed(tr::now, lt_error, state.error->text);
 }
 
-QString ChatView::turnEndText() const {
-	if (!_session) {
-		return QString();
-	}
-	const auto &state = _session->state();
-	if (state.status != SessionStatus::Idle || !state.lastEnd) {
-		return QString();
-	}
-	switch (*state.lastEnd) {
-	case TurnEnd::Interrupted:
-		return tr::lng_agent_turn_interrupted(tr::now);
-	case TurnEnd::StepLimit:
-		return tr::lng_agent_turn_step_limit(tr::now);
-	case TurnEnd::MaxTokens:
-		return tr::lng_agent_turn_max_tokens(tr::now);
-	case TurnEnd::Refusal:
-		return tr::lng_agent_turn_refusal(tr::now);
-	case TurnEnd::Completed:
-	case TurnEnd::Failed:
-		break;
-	}
-	return QString();
-}
-
 QString ChatView::spendingText() const {
 	if (!_session || !_manager->providers().showSpending) {
 		return QString();
@@ -816,11 +792,13 @@ void ChatView::rebuildMessages() {
 	auto messages = std::vector<Message>();
 	auto summaryUntil = 0;
 	auto cards = std::vector<Card>();
+	auto turnEnds = std::vector<TurnEndMark>();
 	if (_session) {
 		const auto &record = _session->record();
 		messages = record.messages;
 		summaryUntil = record.summaryUntil;
 		cards = record.cards;
+		turnEnds = record.turnEnds;
 		const auto tail = _tail.messages();
 		messages.insert(end(messages), begin(tail), end(tail));
 	}
@@ -828,7 +806,8 @@ void ChatView::rebuildMessages() {
 		messages,
 		summaryUntil,
 		cards,
-		ActionToolNames()));
+		ActionToolNames(),
+		turnEnds));
 	for (auto i = 0; i != int(messages.size()); ++i) {
 		const auto user = (messages[i].role == Role::User);
 		if (!user || passedMessages(i).empty()) {
@@ -859,7 +838,6 @@ void ChatView::rebuildMessages() {
 		extras.queued = state.queued;
 		extras.live = (state.status == SessionStatus::Working);
 		extras.error = errorText();
-		extras.turnEnd = turnEndText();
 		extras.errorSettings = !extras.error.isEmpty()
 			&& state.error
 			&& (state.error->kind == ErrorKind::Auth);

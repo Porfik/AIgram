@@ -747,6 +747,9 @@ void Session::runLoop(const ProviderSettings &provider) {
 		: ContextMessages(_record);
 	_loopLifetime.destroy();
 	_loop = nullptr;
+	_thinkingStarted = 0;
+	_stepStarted = crl::now();
+	_thinkingDurations.clear();
 	_loop = createEngine(provider, std::move(messages));
 	if (!_loop) {
 		failWithoutClaude();
@@ -797,8 +800,49 @@ SessionRecord Session::withAttachedImages() const {
 	return result;
 }
 
+void Session::trackThinking(const EngineEvent &event) {
+	if (std::get_if<ThinkingDelta>(&event)) {
+		if (!_thinkingStarted) {
+			_thinkingStarted = base::take(_stepStarted);
+			if (!_thinkingStarted) {
+				_thinkingStarted = crl::now();
+			}
+		}
+	} else if (std::get_if<ToolCallFinished>(&event)) {
+		_stepStarted = crl::now();
+	} else if (std::get_if<TextDelta>(&event)
+		|| std::get_if<ToolUseStarted>(&event)
+		|| std::get_if<ToolCallRequested>(&event)
+		|| std::get_if<TurnFinished>(&event)) {
+		_stepStarted = 0;
+		if (_thinkingStarted) {
+			_thinkingDurations.push_back(
+				int(crl::now() - base::take(_thinkingStarted)));
+		}
+	}
+}
+
+void Session::markTurnEnd(TurnEnd end) {
+	if (end != TurnEnd::Interrupted
+		&& end != TurnEnd::StepLimit
+		&& end != TurnEnd::MaxTokens
+		&& end != TurnEnd::Refusal) {
+		return;
+	}
+	const auto after = int(_record.messages.size());
+	if (!after) {
+		return;
+	}
+	auto &marks = _record.turnEnds;
+	while (!marks.empty() && marks.back().after >= after) {
+		marks.pop_back();
+	}
+	marks.push_back({ .after = after, .end = end });
+}
+
 void Session::handleEvent(EngineEvent event) {
 	const auto weak = base::make_weak(this);
+	trackThinking(event);
 	if (std::get_if<ToolCallRequested>(&event)
 		|| std::get_if<ToolCallFinished>(&event)) {
 		copyLoopMessages();
@@ -828,6 +872,7 @@ void Session::handleEvent(EngineEvent event) {
 
 bool Session::handleTurnFinished(const TurnFinished &turn) {
 	copyLoopMessages();
+	markTurnEnd(turn.end);
 	const auto failed = (turn.end == TurnEnd::Failed);
 	if (!applyState(
 			failed ? SessionStatus::Failed : SessionStatus::Idle,
@@ -905,6 +950,20 @@ void Session::copyLoopMessages() {
 		message.date = (known < int(dates.size()) && dates[known])
 			? dates[known]
 			: now;
+	}
+	auto thought = 0;
+	for (auto i = _loopBase; i < int(_record.messages.size()); ++i) {
+		for (auto &block : _record.messages[i].blocks) {
+			const auto thinking = std::get_if<ThinkingBlock>(&block);
+			if (!thinking
+				|| thinking->redacted
+				|| thinking->text.trimmed().isEmpty()) {
+				continue;
+			} else if (thought < int(_thinkingDurations.size())) {
+				thinking->durationMs = _thinkingDurations[thought];
+			}
+			++thought;
+		}
 	}
 }
 

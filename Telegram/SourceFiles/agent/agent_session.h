@@ -128,6 +128,8 @@ private:
 	void compactAndResume();
 	void processQueue();
 	void copyLoopMessages();
+	void trackThinking(const EngineEvent &event);
+	void markTurnEnd(TurnEnd end);
 	[[nodiscard]] bool applyState(SessionStatus status);
 	[[nodiscard]] bool applyState(
 		SessionStatus status,
@@ -151,6 +153,9 @@ private:
 	int _loopBase = 0;
 	int _loopContext = 0;
 	int _undoneReported = 0;
+	crl::time _thinkingStarted = 0;
+	crl::time _stepStarted = 0;
+	std::vector<int> _thinkingDurations;
 	bool _titleRequested = false;
 	bool _overflowRetried = false;
 	bool _repairedOnLoad = false;

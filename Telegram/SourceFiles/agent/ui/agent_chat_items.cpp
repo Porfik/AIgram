@@ -145,6 +145,32 @@ void Linkify(std::vector<Block> &blocks) {
 	return result;
 }
 
+[[nodiscard]] QString ThoughtText(int durationMs) {
+	if (durationMs <= 0) {
+		return tr::lng_agent_thinking(tr::now);
+	}
+	const auto seconds = std::max((durationMs + 500) / 1000, 1);
+	return (seconds < 60)
+		? tr::lng_agent_thought_seconds(tr::now, lt_count, seconds)
+		: tr::lng_agent_thought_minutes(
+			tr::now,
+			lt_count,
+			(seconds + 30) / 60);
+}
+
+[[nodiscard]] QString TurnEndText(TurnEnd end) {
+	switch (end) {
+	case TurnEnd::Interrupted: return tr::lng_agent_turn_interrupted(tr::now);
+	case TurnEnd::StepLimit: return tr::lng_agent_turn_step_limit(tr::now);
+	case TurnEnd::MaxTokens: return tr::lng_agent_turn_max_tokens(tr::now);
+	case TurnEnd::Refusal: return tr::lng_agent_turn_refusal(tr::now);
+	case TurnEnd::Completed:
+	case TurnEnd::Failed:
+		break;
+	}
+	return QString();
+}
+
 [[nodiscard]] QString AttachmentLine(const MediaBlock &attachment) {
 	return QString::fromUtf8("\xF0\x9F\x93\x8E ")
 		+ (attachment.name.isEmpty()
@@ -163,8 +189,8 @@ void Linkify(std::vector<Block> &blocks) {
 [[nodiscard]] QString StepTitle(
 		const FeedStep &step,
 		Main::Session *session) {
-	return v::match(step, [](const FeedThinking &) {
-		return tr::lng_agent_thinking(tr::now);
+	return v::match(step, [](const FeedThinking &data) {
+		return ThoughtText(data.durationMs);
 	}, [&](const FeedTool &data) {
 		return ToolTitleText(data.call, data.result, session);
 	});
@@ -224,7 +250,7 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 		const AttachmentPhoto &attachmentPhoto) {
 	return v::match(step, [&](const FeedThinking &data) {
 		return Details(
-			TextWithEntities{ tr::lng_agent_thinking(tr::now) },
+			TextWithEntities{ ThoughtText(data.durationMs) },
 			{ Paragraph(TextWithEntities{ data.text }) });
 	}, [&](const FeedTool &data) {
 		auto title = TextWithEntities{ ToolTitleText(
@@ -281,9 +307,12 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 		const AttachmentPhoto &attachmentPhoto) {
 	auto title = QString();
 	auto failed = 0;
+	auto thought = 0;
 	for (const auto &step : steps) {
 		if (std::holds_alternative<FeedTool>(step)) {
 			title = StepTitle(step, session);
+		} else if (const auto thinking = std::get_if<FeedThinking>(&step)) {
+			thought += thinking->durationMs;
 		}
 		if (StepFailed(step)) {
 			++failed;
@@ -292,7 +321,7 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 	if (live && !steps.empty()) {
 		title = StepTitle(steps.back(), session);
 	} else if (title.isEmpty()) {
-		title = tr::lng_agent_thinking(tr::now);
+		title = ThoughtText(thought);
 	}
 	if (steps.size() > 1) {
 		title += u" · "_q
@@ -785,6 +814,11 @@ bool ChatItems::apply(
 				}
 			}
 		} break;
+		case ChatMessageKind::TurnEnd: {
+			entry.service = true;
+			entry.text = TextWithEntities{ TurnEndText(message.turnEnd) };
+			entry.signature = u"e"_q + entry.text.text;
+		} break;
 		case ChatMessageKind::Summary: {
 			entry.service = true;
 			entry.text = TextWithEntities{ tr::lng_agent_compacted(tr::now) };
@@ -977,15 +1011,6 @@ bool ChatItems::apply(
 		}
 		entry.markup.rows.push_back(std::move(row));
 		prepared.push_back(std::move(entry));
-	}
-	if (!extras.turnEnd.isEmpty()) {
-		prepared.push_back({
-			.key = u"turnend"_q,
-			.signature = extras.turnEnd,
-			.service = true,
-			.date = lastDate(),
-			.text = TextWithEntities{ extras.turnEnd },
-		});
 	}
 	if (!extras.spending.isEmpty()) {
 		prepared.push_back({

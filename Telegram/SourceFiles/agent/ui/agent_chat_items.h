@@ -43,7 +43,6 @@ struct ChatExtras {
 	bool errorSettings = false;
 	bool compacting = false;
 	QString spending;
-	QString turnEnd;
 	std::vector<QString> queued;
 	bool live = false;
 };

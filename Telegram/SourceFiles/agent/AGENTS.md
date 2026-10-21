@@ -2462,6 +2462,20 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   other documents as `File`; a click opens the media viewer) and the
   transcript or description under a bold `lng_agent_tool_transcript`,
   then the arguments and the result.
+- A thinking step is titled `lng_agent_thought_seconds` /
+  `_minutes` with its `durationMs` (rounded, at least one second), or
+  `lng_agent_thinking` when unknown; a steps group of thoughts only
+  sums them. The session measures a thought from the start of its step
+  (the loop start or the last `ToolCallFinished`; the delta itself for a
+  second thought within a step) to the next text delta, tool use or turn
+  end, so a response that arrives in one chunk still counts, and gives
+  the measured durations in order to the non-empty, non-redacted
+  thinking blocks the turn's loop added.
+- Turn ends: the session appends a `TurnEndMark` for every turn that ended
+  `Interrupted`, `StepLimit`, `MaxTokens` or `Refusal` (replacing a mark
+  at the same message count), and `ChatView` passes the marks to
+  `BuildFeed()`, so each such turn keeps its service message
+  (`lng_agent_turn_*`) in the history, also after a restart.
 - Message actions: `AddAgentReplyAction()` and `AddAgentForwardAction()`
   (`agent_menus.*`, hooked at the start of the history context menu's
   reply and forward actions) take over for agent chat items. "Reply" /
