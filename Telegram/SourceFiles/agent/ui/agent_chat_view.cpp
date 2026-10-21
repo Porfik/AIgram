@@ -866,7 +866,6 @@ void ChatView::showCardBox(const QString &toolUseId) {
 	const auto data = *card;
 	const auto weak = base::make_weak(_session);
 	_controller->show(Box([=](not_null<::Ui::GenericBox*> box) {
-		box->setTitle(rpl::single(CardTitleText(data.card.kind)));
 		box->setWidth(st::boxWideWidth);
 		const auto close = crl::guard(box, [=] { box->closeBox(); });
 		box->addRow(
@@ -897,7 +896,11 @@ void ChatView::showCardBox(const QString &toolUseId) {
 					},
 				},
 			}, data),
-			style::margins());
+			style::margins(
+				st::boxRowPadding.left(),
+				st::boxPadding.top(),
+				st::boxRowPadding.right(),
+				0));
 		box->addButton(tr::lng_close(), close);
 	}));
 }
