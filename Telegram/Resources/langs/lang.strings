@@ -1403,7 +1403,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_provider_default" = "Model";
 "lng_agent_provider_title" = "Name";
 "lng_agent_provider_url" = "Base URL";
-"lng_agent_provider_url_placeholder" = "https://openrouter.ai/api/v1";
 "lng_agent_provider_key" = "API key";
 "lng_agent_provider_model" = "Model ID";
 "lng_agent_provider_make_active" = "Default model";

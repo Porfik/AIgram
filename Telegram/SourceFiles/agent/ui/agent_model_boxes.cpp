@@ -1003,17 +1003,11 @@ void EditCustomBox(
 			provider.title),
 		st::boxRowPadding);
 	::Ui::AddSkip(container);
-	container->add(
-		object_ptr<::Ui::FlatLabel>(
-			container,
-			tr::lng_agent_provider_url(),
-			st::boxLabel),
-		st::boxRowPadding);
 	const auto url = container->add(
 		object_ptr<::Ui::InputField>(
 			container,
 			st::defaultInputField,
-			tr::lng_agent_provider_url_placeholder(),
+			tr::lng_agent_provider_url(),
 			provider.baseUrl),
 		st::boxRowPadding);
 	::Ui::AddSkip(container);
