@@ -16,9 +16,12 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/ui/agent_chat_view.h"
 #include "agent/ui/agent_session_rows.h"
 #include "agent/ui/agent_sessions_list.h"
+#include "core/application.h"
+#include "core/core_settings.h"
 #include "data/data_user.h"
 #include "dialogs/dialogs_key.h"
 #include "history/history.h"
+#include "info/info_memento.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mainwidget.h"
@@ -126,6 +129,8 @@ private:
 	void showSession(Session *session);
 	void trackSession(Session *session);
 	void showMenu();
+	void toggleInfoSection();
+	void updateInfoToggleActive();
 	void updateHeader();
 	void updateControlsGeometry();
 
@@ -136,6 +141,7 @@ private:
 	::Ui::IconButton *_back = nullptr;
 	::Ui::UserpicButton *_userpic = nullptr;
 	HeaderTitle *_title = nullptr;
+	::Ui::IconButton *_infoToggle = nullptr;
 	::Ui::IconButton *_menuToggle = nullptr;
 	::Ui::PlainShadow *_shadow = nullptr;
 	::Ui::ScrollArea *_listScroll = nullptr;
@@ -290,6 +296,56 @@ void GeneralAgentSection::setupTopBar() {
 		showMenu();
 	});
 	_menuToggle->show();
+
+	_infoToggle = ::Ui::CreateChild<::Ui::IconButton>(
+		_topBar,
+		st::topBarInfo);
+	_infoToggle->setAccessibleName(tr::lng_settings_section_info(tr::now));
+	_infoToggle->setClickedCallback([=] {
+		toggleInfoSection();
+	});
+	rpl::merge(
+		Core::App().settings().thirdSectionInfoEnabledValue() | rpl::to_empty,
+		Core::App().settings().tabbedReplacedWithInfoValue() | rpl::to_empty,
+		controller()->adaptive().value()
+	) | rpl::on_next([=] {
+		updateInfoToggleActive();
+	}, _infoToggle->lifetime());
+}
+
+void GeneralAgentSection::toggleInfoSection() {
+	const auto window = controller();
+	auto &settings = Core::App().settings();
+	const auto threeColumn = window->adaptive().isThreeColumn();
+	if (threeColumn
+		&& (settings.thirdSectionInfoEnabled()
+			|| settings.tabbedReplacedWithInfo())) {
+		window->closeThirdSection();
+	} else if (!window->canShowThirdSection()) {
+		window->showPeerInfo(_manager->chat().user());
+	} else {
+		settings.setThirdSectionInfoEnabled(true);
+		Core::App().saveSettingsDelayed();
+		if (threeColumn) {
+			window->showSection(
+				Info::Memento::Default(_manager->chat().user()),
+				Window::SectionShow().withThirdColumn());
+		} else {
+			window->resizeForThirdSection();
+			window->updateColumnLayout();
+		}
+	}
+}
+
+void GeneralAgentSection::updateInfoToggleActive() {
+	const auto &settings = Core::App().settings();
+	const auto active = controller()->adaptive().isThreeColumn()
+		&& (settings.thirdSectionInfoEnabled()
+			|| settings.tabbedReplacedWithInfo());
+	const auto icon = active ? &st::topBarInfoActive : nullptr;
+	_infoToggle->setIconOverride(icon, icon);
+	_infoToggle->setRippleColorOverride(
+		active ? &st::lightButtonBgOver : nullptr);
 }
 
 void GeneralAgentSection::setupList() {
@@ -572,7 +628,12 @@ void GeneralAgentSection::updateControlsGeometry() {
 	_userpic->moveToLeft(left, 0);
 	left += _userpic->width();
 	_menuToggle->moveToRight(0, 0);
-	const auto right = _menuToggle->width();
+	auto right = _menuToggle->width();
+	_infoToggle->setVisible(!oneColumn && controller()->canShowThirdSection());
+	if (!_infoToggle->isHidden()) {
+		_infoToggle->moveToRight(right, 0);
+		right += _infoToggle->width();
+	}
 	_title->setGeometry(
 		left,
 		0,

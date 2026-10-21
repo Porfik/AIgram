@@ -2265,8 +2265,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   the state; an unpinned agent sorts by its preview date.
 - The general agent screen is a `Window::SectionWidget` with two modes.
   The list mode shows a chat-like top bar (the agent userpic, the name,
-  the default model or "typing…" / "waiting for your decision…", "⋮"
-  with `FillAgentChatMenu()`; a click on the name opens the profile),
+  the default model or "typing…" / "waiting for your decision…", the
+  third column toggle as in chats, "⋮" with `FillAgentChatMenu()`; a
+  click on the name opens the profile),
   "＋ New session" and `SessionRows` (each session like a dialog row:
   the first touched chat's userpic or the agent's, the title, the date,
   the preview with a read check when outgoing, "typing…" while working,
