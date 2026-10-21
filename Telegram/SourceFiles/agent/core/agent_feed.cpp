@@ -41,7 +41,8 @@ std::vector<FeedItem> BuildFeed(
 		const std::vector<Message> &messages,
 		int summaryUntil,
 		const std::vector<Card> &cards,
-		const base::flat_set<QString> &actionTools) {
+		const base::flat_set<QString> &actionTools,
+		const std::vector<TurnEndMark> &turnEnds) {
 	auto result = std::vector<FeedItem>();
 	result.reserve(messages.size());
 	auto run = std::optional<Run>();
