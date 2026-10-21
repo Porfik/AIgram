@@ -84,9 +84,13 @@ private:
 		FullMsgId id;
 		bool service = false;
 		bool out = false;
+		PhotoData *photo = nullptr;
+		uint64 groupedId = 0;
 	};
 
 	[[nodiscard]] HistoryItem *create(const Prepared &prepared);
+	[[nodiscard]] PhotoData *localPhoto(const MediaBlock &block, TimeId date);
+	[[nodiscard]] uint64 groupIdFor(const QString &key);
 	void update(not_null<HistoryItem*> item, const Prepared &prepared);
 	void destroy(const Entry &entry);
 
@@ -96,6 +100,7 @@ private:
 	std::vector<FullMsgId> _ids;
 	base::flat_map<QString, std::vector<QString>> _undoAll;
 	base::flat_map<QString, PhotoData*> _photos;
+	base::flat_map<QString, uint64> _groupIds;
 	rpl::event_stream<ChatButton> _buttons;
 
 };

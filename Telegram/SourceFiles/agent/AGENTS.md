@@ -2435,9 +2435,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   the composer; closing the box puts its caption back into the composer.
   Too many or too big files show `lng_agent_attach_too_many`
   or `lng_agent_attach_too_big` instead.
-- A user message with one image attachment shows it as a local photo in
-  the bubble; other and further attachments are "📎 name · size" lines
-  above the text.
+- A user message shows its image attachments as local photos: one image
+  is a photo in the bubble, two or more are an album (one local item per
+  image sharing a `groupedId`, the first keeping the message key and the
+  caption, the others keyed `<key>.m<N>`); other attachments and images
+  that can't be read are "📎 name · size" lines above the text.
 - Steps of media tools are titled from the call and its result:
   `lng_agent_tool_view_photo`, `_view_video`, `_view_media`,
   `_view_attachment`, `_listen_voice` and `_listen_audio` (with the

@@ -143,6 +143,16 @@ void Linkify(std::vector<Block> &blocks) {
 	return result;
 }
 
+[[nodiscard]] QString AttachmentLine(const MediaBlock &attachment) {
+	return QString::fromUtf8("\xF0\x9F\x93\x8E ")
+		+ (attachment.name.isEmpty()
+			? attachment.mimeType
+			: attachment.name)
+		+ (attachment.size > 0
+			? (u" · "_q + FormatByteSize(attachment.size))
+			: QString());
+}
+
 [[nodiscard]] bool StepFailed(const FeedStep &step) {
 	const auto tool = std::get_if<FeedTool>(&step);
 	return tool && tool->result && tool->result->error;
@@ -567,6 +577,7 @@ struct ChatItems::Prepared {
 	std::vector<QString> undoAll;
 	PhotoData *photo = nullptr;
 	HistoryItem *forward = nullptr;
+	uint64 groupedId = 0;
 };
 
 ChatItems::ChatItems(not_null<History*> history, ChatItemsDelegate delegate)
@@ -624,6 +635,7 @@ bool ChatItems::apply(
 		};
 		auto missing = 0;
 		auto forwards = std::vector<Prepared>();
+		auto album = std::vector<Prepared>();
 		if (message.kind == ChatMessageKind::User && _delegate.passed) {
 			auto k = 0;
 			for (const auto &id : _delegate.passed(message.index)) {
@@ -647,32 +659,17 @@ bool ChatItems::apply(
 			entry.out = true;
 			entry.text = TextWithEntities{ message.text };
 			entry.signature = u"u"_q + message.text;
+			auto photos = std::vector<PhotoData*>();
 			auto files = QStringList();
 			for (const auto &attachment : message.attachments) {
 				entry.signature += u"|"_q + attachment.attachment;
-				const auto image = (attachment.kind == MediaKind::Image)
-					&& !entry.photo
-					&& (message.attachments.size() == 1);
-				if (image) {
-					const auto i = _photos.find(attachment.attachment);
-					entry.photo = (i != end(_photos))
-						? i->second
-						: _photos.emplace(
-							attachment.attachment,
-							LocalPhoto(
-								&_history->owner(),
-								attachment,
-								entry.date,
-								_delegate.attachment)).first->second;
-				}
-				if (!entry.photo || !image) {
-					files.push_back(QString::fromUtf8("\xF0\x9F\x93\x8E ")
-						+ (attachment.name.isEmpty()
-							? attachment.mimeType
-							: attachment.name)
-						+ (attachment.size > 0
-							? (u" · "_q + FormatByteSize(attachment.size))
-							: QString()));
+				const auto photo = (attachment.kind == MediaKind::Image)
+					? localPhoto(attachment, entry.date)
+					: nullptr;
+				if (photo) {
+					photos.push_back(photo);
+				} else {
+					files.push_back(AttachmentLine(attachment));
 				}
 			}
 			if (missing) {
@@ -684,6 +681,22 @@ bool ChatItems::apply(
 				entry.text = entry.text.empty()
 					? lines
 					: lines.append(u"\n\n"_q).append(entry.text);
+			}
+			if (!photos.empty()) {
+				entry.photo = photos.front();
+			}
+			if (photos.size() > 1) {
+				entry.groupedId = groupIdFor(message.key);
+				for (auto k = 1; k != int(photos.size()); ++k) {
+					album.push_back({
+						.key = message.key + u".m"_q + QString::number(k),
+						.signature = entry.signature,
+						.out = true,
+						.date = entry.date,
+						.photo = photos[k],
+						.groupedId = entry.groupedId,
+					});
+				}
 			}
 		} break;
 		case ChatMessageKind::Summary: {
@@ -810,6 +823,9 @@ bool ChatItems::apply(
 			|| missing) {
 			prepared.push_back(std::move(entry));
 		}
+		for (auto &part : album) {
+			prepared.push_back(std::move(part));
+		}
 		for (auto &forward : forwards) {
 			prepared.push_back(std::move(forward));
 		}
@@ -888,6 +904,8 @@ bool ChatItems::apply(
 			if (item
 				&& i->service == data.service
 				&& i->out == data.out
+				&& i->photo == data.photo
+				&& i->groupedId == data.groupedId
 				&& !(item->isSending() && !data.sending)) {
 				if (i->signature != data.signature) {
 					update(item, data);
@@ -907,6 +925,8 @@ bool ChatItems::apply(
 				.id = item->fullId(),
 				.service = data.service,
 				.out = data.out,
+				.photo = data.photo,
+				.groupedId = data.groupedId,
 			});
 		}
 	}
@@ -922,6 +942,32 @@ bool ChatItems::apply(
 	}
 	_ids = std::move(ids);
 	return true;
+}
+
+PhotoData *ChatItems::localPhoto(const MediaBlock &block, TimeId date) {
+	const auto i = _photos.find(block.attachment);
+	if (i != end(_photos)) {
+		return i->second;
+	}
+	const auto result = LocalPhoto(
+		&_history->owner(),
+		block,
+		date,
+		_delegate.attachment);
+	if (result) {
+		_photos.emplace(block.attachment, result);
+	}
+	return result;
+}
+
+uint64 ChatItems::groupIdFor(const QString &key) {
+	const auto i = _groupIds.find(key);
+	if (i != end(_groupIds)) {
+		return i->second;
+	}
+	return _groupIds.emplace(
+		key,
+		base::RandomValue<uint64>() | 1).first->second;
 }
 
 HistoryItem *ChatItems::create(const Prepared &prepared) {
@@ -953,6 +999,7 @@ HistoryItem *ChatItems::create(const Prepared &prepared) {
 		.flags = flags,
 		.from = prepared.out ? session->userPeerId() : agent->id,
 		.date = prepared.date,
+		.groupedId = prepared.groupedId,
 		.markup = std::move(markup),
 	};
 	const auto item = prepared.forward
@@ -1007,6 +1054,7 @@ void ChatItems::clear() {
 	_ids.clear();
 	_undoAll.clear();
 	_photos.clear();
+	_groupIds.clear();
 }
 
 bool ChatItems::Activate(
