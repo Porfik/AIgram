@@ -90,12 +90,7 @@ PaletteLayer::PaletteLayer(
 , _new(this, st::agentPaletteNew)
 , _open(this, st::agentPaletteOpen)
 , _close(this, st::agentPaletteClose)
-, _view(
-	this,
-	controller,
-	&controller->session().agent(),
-	Scope::Account(),
-	ChatView::PaletteDraftRootId())
+, _view(this, controller, &controller->session().agent(), Scope::Account())
 , _bg(st::boxRadius, st::boxBg) {
 	const auto peer = controller->activeChatCurrent().peer();
 	if (peer && !_manager->exclusions().excluded(peer->id.value)) {

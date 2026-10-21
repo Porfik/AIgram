@@ -61,12 +61,10 @@ public:
 		QWidget *parent,
 		not_null<Window::SessionController*> controller,
 		not_null<Manager*> manager,
-		Scope scope,
-		MsgId draftRootId = MsgId());
+		Scope scope);
 	~ChatView();
 
 	[[nodiscard]] static MsgId DraftRootId(Scope scope);
-	[[nodiscard]] static MsgId PaletteDraftRootId();
 
 	void showSession(Session *session);
 	[[nodiscard]] Session *session() const;
@@ -210,7 +208,6 @@ private:
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	const Scope _scope;
-	const MsgId _draftRootId;
 	const not_null<History*> _history;
 	Session *_session = nullptr;
 	QString _pendingProfileId;
