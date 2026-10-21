@@ -650,6 +650,7 @@ void BuildMedia(
 	builder.addButton({
 		.id = u"agent/media/model"_q,
 		.title = tr::lng_agent_media_model(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(rpl::empty) | rpl::then(
 			state->changed.events()
 		) | rpl::map([=] {
@@ -666,6 +667,7 @@ void BuildMedia(
 	builder.addButton({
 		.id = u"agent/folder"_q,
 		.title = tr::lng_agent_folder(),
+		.st = &st::settingsButtonNoIcon,
 		.onClick = [=] {
 			const auto path = ::Agent::AgentFolderPath(
 				&controller->session());
@@ -810,6 +812,7 @@ void BuildBackground(
 	builder.addButton({
 		.id = u"agent/background/model"_q,
 		.title = tr::lng_agent_background_model(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(rpl::empty) | rpl::then(
 			state->changed.events()
 		) | rpl::map([=] {
@@ -826,6 +829,7 @@ void BuildBackground(
 	builder.addButton({
 		.id = u"agent/background/limit"_q,
 		.title = tr::lng_agent_background_limit(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(rpl::empty) | rpl::then(
 			state->changed.events()
 		) | rpl::map([=] {
@@ -847,6 +851,7 @@ void BuildEntryPoints(
 	builder.addButton({
 		.id = u"agent/profile"_q,
 		.title = tr::lng_agent_profile_button(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(rpl::empty) | rpl::then(
 			state->changed.events()
 		) | rpl::map([=] {
@@ -860,6 +865,7 @@ void BuildEntryPoints(
 	const auto button = builder.addButton({
 		.id = u"agent/show-entry-points"_q,
 		.title = tr::lng_agent_show_entry_points(),
+		.st = &st::settingsButtonNoIcon,
 		.toggled = rpl::single(state->providers.showEntryPoints),
 		.keywords = { u"show"_q, u"agent"_q, u"chats"_q },
 	});
@@ -875,6 +881,7 @@ void BuildEntryPoints(
 	builder.addButton({
 		.id = u"agent/row-preview"_q,
 		.title = tr::lng_agent_row_preview(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(rpl::empty) | rpl::then(
 			state->changed.events()
 		) | rpl::map([=] {
@@ -888,6 +895,7 @@ void BuildEntryPoints(
 	const auto botIcon = builder.addButton({
 		.id = u"agent/bot-icon"_q,
 		.title = tr::lng_agent_show_bot_icon(),
+		.st = &st::settingsButtonNoIcon,
 		.toggled = rpl::single(state->providers.showBotIcon),
 		.keywords = { u"bot"_q, u"icon"_q, u"agent"_q },
 	});
@@ -932,18 +940,21 @@ void BuildSpending(
 	builder.addButton({
 		.id = u"agent/spending/today"_q,
 		.title = tr::lng_agent_spending_today(),
+		.st = &st::settingsButtonNoIcon,
 		.label = label([=] { return spending->today(); }),
 		.keywords = { u"today"_q, u"spending"_q },
 	});
 	builder.addButton({
 		.id = u"agent/spending/month"_q,
 		.title = tr::lng_agent_spending_month(),
+		.st = &st::settingsButtonNoIcon,
 		.label = label([=] { return spending->lastDays(30); }),
 		.keywords = { u"month"_q, u"30"_q, u"spending"_q },
 	});
 	builder.addButton({
 		.id = u"agent/spending/all"_q,
 		.title = tr::lng_agent_spending_all(),
+		.st = &st::settingsButtonNoIcon,
 		.label = label([=] { return spending->allTime(); }),
 		.keywords = { u"all"_q, u"time"_q, u"spending"_q },
 	});
@@ -957,6 +968,7 @@ void BuildSpending(
 	builder.addButton({
 		.id = u"agent/spending/cache"_q,
 		.title = tr::lng_agent_spending_cache(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(cacheText()) | rpl::then(
 			spending->changes() | rpl::map(cacheText)),
 		.keywords = { u"cache"_q, u"prompt"_q, u"spending"_q },
@@ -971,12 +983,14 @@ void BuildSpending(
 		builder.addButton({
 			.id = u"agent/spending/claude/hours"_q,
 			.title = tr::lng_agent_claude_limit_five_hours(),
+			.st = &st::settingsButtonNoIcon,
 			.label = ::Agent::Ui::ClaudeLimitValue(false),
 			.keywords = { u"claude"_q, u"limit"_q, u"subscription"_q },
 		});
 		builder.addButton({
 			.id = u"agent/spending/claude/week"_q,
 			.title = tr::lng_agent_claude_limit_week(),
+			.st = &st::settingsButtonNoIcon,
 			.label = ::Agent::Ui::ClaudeLimitValue(true),
 			.keywords = { u"claude"_q, u"limit"_q, u"week"_q },
 		});
@@ -984,7 +998,7 @@ void BuildSpending(
 	builder.addButton({
 		.id = u"agent/spending/reset"_q,
 		.title = tr::lng_agent_spending_reset(),
-		.icon = { &st::menuIconClear },
+		.st = &st::settingsButtonNoIcon,
 		.onClick = [=] {
 			controller->show(Ui::MakeConfirmBox({
 				.text = tr::lng_agent_spending_reset_sure(),
@@ -999,6 +1013,7 @@ void BuildSpending(
 	const auto button = builder.addButton({
 		.id = u"agent/spending/show"_q,
 		.title = tr::lng_agent_spending_show(),
+		.st = &st::settingsButtonNoIcon,
 		.toggled = rpl::single(state->providers.showSpending),
 		.keywords = { u"spending"_q, u"sessions"_q, u"show"_q },
 	});
@@ -1029,6 +1044,7 @@ void BuildHiddenChats(
 	builder.addButton({
 		.id = u"agent/hidden"_q,
 		.title = tr::lng_agent_hidden_title(),
+		.st = &st::settingsButtonNoIcon,
 		.label = rpl::single(count())
 			| rpl::then(exclusions->changes() | rpl::map(count)),
 		.onClick = [=] {
