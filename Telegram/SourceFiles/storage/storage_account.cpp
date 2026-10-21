@@ -3912,8 +3912,12 @@ std::optional<QByteArray> Account::readAgentValue(const QString &key) {
 	// not a pending operation, so absence is the truthful report.
 	FileReadDescriptor file;
 	if (!ReadEncryptedFile(file, i->second, _basePath, _localKey)) {
-		LOG(("Agent Error: broken agent storage record."));
-		return std::nullopt;
+		// A value written a moment ago may still wait in the write queue.
+		Sync();
+		if (!ReadEncryptedFile(file, i->second, _basePath, _localKey)) {
+			LOG(("Agent Error: broken agent storage record."));
+			return std::nullopt;
+		}
 	}
 	quint32 formatVersion = 0;
 	file.stream >> formatVersion;
