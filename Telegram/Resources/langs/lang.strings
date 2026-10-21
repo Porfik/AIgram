@@ -1528,6 +1528,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_turn_max_tokens" = "The answer was cut off by the output limit.";
 "lng_agent_turn_refusal" = "The model refused to answer.";
 "lng_agent_thinking" = "Thinking";
+"lng_agent_thought_seconds#one" = "Thought for {count} second";
+"lng_agent_thought_seconds#other" = "Thought for {count} seconds";
+"lng_agent_thought_minutes#one" = "Thought for {count} minute";
+"lng_agent_thought_minutes#other" = "Thought for {count} minutes";
 "lng_agent_no_provider" = "Set up an AI provider to start using the agent.";
 "lng_agent_open_settings" = "Open Settings";
 "lng_agent_chat_welcome" = "Ask anything about this chat.";
@@ -1598,6 +1602,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_edited" = "Edited by you";
 "lng_agent_card_handoff_about" = "The general agent will get this session as context.";
 "lng_agent_card_handoff_button" = "Continue in the general agent";
+"lng_agent_card_targets" = "Chats";
+"lng_agent_card_files" = "Files";
+"lng_agent_card_text_title" = "Text";
+"lng_agent_card_choose_chats" = "Choose at least one chat.";
 "lng_agent_undo" = "Undo";
 "lng_agent_undo_all" = "Undo all";
 "lng_agent_undone" = "Undone";
