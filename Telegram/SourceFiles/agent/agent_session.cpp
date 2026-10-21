@@ -83,8 +83,24 @@ void AppendPart(QString &to, const QString &part, const QString &separator) {
 			end(merged.attachments),
 			std::make_move_iterator(begin(request.attachments)),
 			std::make_move_iterator(end(request.attachments)));
+		if (merged.replyTo.isEmpty()) {
+			merged.replyTo = request.replyTo;
+			merged.replyQuote = request.replyQuote;
+			merged.replyText = request.replyText;
+		}
 	}
 	return result;
+}
+
+[[nodiscard]] QString ReplyContextText(const SendRequest &request) {
+	auto quoted = QStringList();
+	for (const auto &line : request.replyText.split('\n')) {
+		quoted.push_back(u"> "_q + line);
+	}
+	return (request.replyQuote.isEmpty()
+		? u"The user replies to this earlier message of the session:\n"_q
+		: u"The user replies to this part of an earlier message:\n"_q)
+		+ quoted.join('\n');
 }
 
 [[nodiscard]] int CountPendingCards(const std::vector<Card> &cards) {
@@ -449,9 +465,18 @@ void Session::dispatch(SendRequest request) {
 		|| !request.hint.isEmpty()
 		|| !request.attachments.empty());
 
-	auto message = Message{ .role = Role::User, .blocks = {} };
+	auto message = Message{
+		.role = Role::User,
+		.blocks = {},
+		.replyTo = request.replyTo,
+		.replyQuote = request.replyQuote,
+	};
 	if (!request.text.isEmpty()) {
 		message.blocks.push_back(TextBlock{ request.text });
+	}
+	if (!request.replyText.isEmpty()) {
+		message.blocks.push_back(
+			TextBlock{ ReplyContextText(request), true });
 	}
 	for (const auto &input : request.attachments) {
 		message.blocks.push_back(_manager->attachments().add(

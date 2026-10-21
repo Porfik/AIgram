@@ -10,15 +10,26 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_chat.h"
 #include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
+#include "agent/ui/agent_chat_items.h"
 #include "agent/ui/agent_section.h"
+#include "api/api_common.h"
+#include "apiwrap.h"
+#include "boxes/share_box.h"
 #include "data/data_peer.h"
+#include "data/data_thread.h"
 #include "data/data_user.h"
+#include "data/data_peer_values.h"
 #include "dialogs/dialogs_key.h"
 #include "history/history.h"
+#include "history/history_item.h"
+#include "history/view/history_view_context_menu.h"
+#include "history/view/history_view_list_widget.h"
 #include "settings/sections/settings_agent.h"
 #include "lang/lang_keys.h"
 #include "main/main_session.h"
+#include "ui/text/text_utilities.h"
 #include "ui/widgets/menu/menu_add_action_callback.h"
+#include "ui/widgets/popup_menu.h"
 #include "window/window_session_controller.h"
 
 #include "styles/style_menu_icons.h"
@@ -106,6 +117,105 @@ void FillFolderMenu(
 			}
 		},
 		listed ? &st::menuIconRestore : &st::menuIconRemove);
+}
+
+bool AddAgentReplyAction(
+		not_null<::Ui::PopupMenu*> menu,
+		const HistoryView::ContextMenuRequest &request,
+		not_null<HistoryView::ListWidget*> list) {
+	const auto item = request.quote.item
+		? request.quote.item
+		: request.item;
+	if (!item || !IsAgentHistory(item->history())) {
+		return false;
+	}
+	const auto info = ChatItems::Info(item);
+	if (!info || info->readOnly || !request.selectedItems.empty()) {
+		return true;
+	}
+	const auto &quote = request.quote.highlight;
+	menu->addAction(
+		(quote.quote.empty()
+			? tr::lng_context_reply_msg
+			: tr::lng_context_quote_and_reply)(tr::now),
+		[=, id = item->fullId()] {
+			list->replyToMessageRequestNotify({
+				.messageId = id,
+				.quote = quote.quote,
+				.quoteOffset = quote.quoteOffset,
+			}, false);
+		},
+		&st::menuIconReply);
+	return true;
+}
+
+bool AddAgentForwardAction(
+		not_null<::Ui::PopupMenu*> menu,
+		const HistoryView::ContextMenuRequest &request,
+		not_null<HistoryView::ListWidget*> list) {
+	const auto item = request.item;
+	if (!item || !IsAgentHistory(item->history())) {
+		return false;
+	}
+	const auto info = ChatItems::Info(item);
+	if (!info
+		|| info->copyText.text.isEmpty()
+		|| !request.selectedItems.empty()) {
+		return true;
+	}
+	const auto controller = list->controller();
+	const auto text = info->copyText;
+	menu->addAction(tr::lng_context_forward_msg(tr::now), [=] {
+		ShowForwardCopyBox(controller, text);
+	}, &st::menuIconForward);
+	return true;
+}
+
+void ShowForwardCopyBox(
+		not_null<Window::SessionController*> controller,
+		TextWithEntities text) {
+	const auto session = &controller->session();
+	const auto show = controller->uiShow();
+	const auto copy = TextWithTags{
+		text.text,
+		TextUtilities::ConvertEntitiesToTextTags(text.entities),
+	};
+	auto submit = [=](
+			std::vector<not_null<Data::Thread*>> &&result,
+			Fn<bool()> checkPaid,
+			TextWithTags &&comment,
+			Api::SendOptions options,
+			Data::ForwardOptions) {
+		if (!checkPaid()) {
+			return;
+		}
+		auto &api = session->api();
+		for (const auto &thread : result) {
+			const auto action = Api::SendAction(thread, options);
+			if (!comment.text.isEmpty()) {
+				auto message = Api::MessageToSend(action);
+				message.textWithTags = comment;
+				message.action.clearDraft = false;
+				api.sendMessage(std::move(message));
+			}
+			auto message = Api::MessageToSend(action);
+			message.textWithTags = copy;
+			message.action.clearDraft = false;
+			api.sendMessage(std::move(message));
+		}
+		show->showToast(tr::lng_share_done(tr::now));
+		show->hideLayer();
+	};
+	auto filter = [](not_null<Data::Thread*> thread) {
+		return !IsAgentPeer(thread->peer())
+			&& Data::CanSendTexts(thread);
+	};
+	controller->show(Box<ShareBox>(ShareBox::Descriptor{
+		.session = session,
+		.submitCallback = std::move(submit),
+		.filterCallback = std::move(filter),
+		.moneyRestrictionError = ShareMessageMoneyRestrictionError(),
+	}));
 }
 
 } // namespace Agent::Ui

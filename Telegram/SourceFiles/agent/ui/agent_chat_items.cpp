@@ -651,6 +651,11 @@ struct ChatItems::Prepared {
 	PhotoData *photo = nullptr;
 	HistoryItem *forward = nullptr;
 	uint64 groupedId = 0;
+	QString replyTo;
+	QString replyQuote;
+	QString replyKey;
+	QString modelText;
+	TextWithEntities copyText;
 };
 
 ChatItems::ChatItems(not_null<History*> history, ChatItemsDelegate delegate)
@@ -731,7 +736,13 @@ bool ChatItems::apply(
 		case ChatMessageKind::User: {
 			entry.out = true;
 			entry.text = TextWithEntities{ message.text };
-			entry.signature = u"u"_q + message.text;
+			entry.signature = u"u"_q + message.text
+				+ u"|r"_q + message.replyTo + u"|"_q + message.replyQuote;
+			entry.replyTo = message.replyTo;
+			entry.replyQuote = message.replyQuote;
+			entry.replyKey = message.key;
+			entry.modelText = message.text;
+			entry.copyText = entry.text;
 			auto photos = std::vector<PhotoData*>();
 			auto files = QStringList();
 			for (const auto &attachment : message.attachments) {
@@ -768,6 +779,8 @@ bool ChatItems::apply(
 						.date = entry.date,
 						.photo = photos[k],
 						.groupedId = entry.groupedId,
+						.replyKey = message.key,
+						.modelText = message.text,
 					});
 				}
 			}
@@ -785,6 +798,8 @@ bool ChatItems::apply(
 				entry.text.append('\n').append(::Ui::Text::Italic(status));
 			}
 			entry.markup = CardMarkup(card);
+			entry.replyKey = message.key;
+			entry.modelText = entry.text.text;
 			entry.signature = u"c"_q
 				+ QString::number(int(card.status))
 				+ entry.text.text
@@ -871,7 +886,13 @@ bool ChatItems::apply(
 				entry.text = *simple;
 			} else if (!page.blocks.empty()) {
 				entry.page = std::make_shared<Iv::RichPage>(std::move(page));
-				entry.text = Iv::FlattenRichPageSummary(entry.page);
+				if (message.text.isEmpty()) {
+					entry.text = Iv::FlattenRichPageSummary(entry.page);
+				} else {
+					auto answer = Iv::RichPage();
+					answer.blocks = MarkdownBlocks(message.text);
+					entry.text = Iv::FlattenRichPageSummary(answer);
+				}
 			} else {
 				entry.text = TextWithEntities{
 					tr::lng_agent_thinking(tr::now) };
@@ -890,6 +911,15 @@ bool ChatItems::apply(
 						message.key) });
 					entry.undoAll = undoable;
 				}
+			}
+			entry.replyKey = message.key;
+			entry.modelText = message.text.isEmpty()
+				? entry.text.text
+				: message.text;
+			if (!message.text.isEmpty()) {
+				auto answer = Iv::RichPage();
+				answer.blocks = MarkdownBlocks(message.text);
+				entry.copyText = Iv::FlattenRichPageToSimpleText(answer);
 			}
 		} break;
 		}
@@ -970,6 +1000,13 @@ bool ChatItems::apply(
 	auto entries = std::vector<Entry>();
 	entries.reserve(prepared.size());
 	_undoAll.clear();
+	const auto findId = [&](const QString &key) {
+		if (key.isEmpty()) {
+			return FullMsgId();
+		}
+		const auto i = ranges::find(entries, key, &Entry::key);
+		return (i != end(entries)) ? i->id : FullMsgId();
+	};
 	for (const auto &data : prepared) {
 		if (!data.undoAll.empty()) {
 			_undoAll.emplace(data.key, data.undoAll);
@@ -987,6 +1024,9 @@ bool ChatItems::apply(
 					update(item, data);
 					i->signature = data.signature;
 				}
+				i->replyKey = data.replyKey;
+				i->modelText = data.modelText;
+				i->copyText = data.copyText;
 				entries.push_back(base::take(*i));
 				_entries.erase(i);
 				continue;
@@ -994,7 +1034,7 @@ bool ChatItems::apply(
 			destroy(*i);
 			_entries.erase(i);
 		}
-		if (const auto item = create(data)) {
+		if (const auto item = create(data, findId(data.replyTo))) {
 			entries.push_back({
 				.key = data.key,
 				.signature = data.signature,
@@ -1003,6 +1043,9 @@ bool ChatItems::apply(
 				.out = data.out,
 				.photo = data.photo,
 				.groupedId = data.groupedId,
+				.replyKey = data.replyKey,
+				.modelText = data.modelText,
+				.copyText = data.copyText,
 			});
 		}
 	}
@@ -1046,7 +1089,27 @@ uint64 ChatItems::groupIdFor(const QString &key) {
 		base::RandomValue<uint64>() | 1).first->second;
 }
 
-HistoryItem *ChatItems::create(const Prepared &prepared) {
+std::optional<ChatItemInfo> ChatItems::Info(
+		not_null<const HistoryItem*> item) {
+	const auto i = Registry().find(item->fullId());
+	if (i == end(Registry())) {
+		return std::nullopt;
+	}
+	const auto &entries = i->second->_entries;
+	const auto j = ranges::find(entries, item->fullId(), &Entry::id);
+	if (j == end(entries) || j->replyKey.isEmpty()) {
+		return std::nullopt;
+	}
+	const auto &delegate = i->second->_delegate;
+	return ChatItemInfo{
+		.key = j->replyKey,
+		.modelText = j->modelText,
+		.copyText = j->copyText,
+		.readOnly = delegate.isRun && delegate.isRun(),
+	};
+}
+
+HistoryItem *ChatItems::create(const Prepared &prepared, FullMsgId replyTo) {
 	const auto session = &_history->session();
 	const auto agent = session->agent().chat().user();
 	auto flags = MessageFlag::Local | MessageFlag::FakeHistoryItem;
@@ -1069,11 +1132,18 @@ HistoryItem *ChatItems::create(const Prepared &prepared) {
 	if (!prepared.markup.isNull()) {
 		flags |= MessageFlag::HasReplyMarkup;
 	}
+	if (replyTo) {
+		flags |= MessageFlag::HasReplyInfo;
+	}
 	auto markup = prepared.markup;
 	auto fields = HistoryItemCommonFields{
 		.id = _history->nextNonHistoryEntryId(),
 		.flags = flags,
 		.from = prepared.out ? session->userPeerId() : agent->id,
+		.replyTo = FullReplyTo{
+			.messageId = replyTo,
+			.quote = TextWithEntities{ prepared.replyQuote },
+		},
 		.date = prepared.date,
 		.groupedId = prepared.groupedId,
 		.markup = std::move(markup),

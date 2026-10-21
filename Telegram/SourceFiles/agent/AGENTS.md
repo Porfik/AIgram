@@ -2452,6 +2452,23 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   other documents as `File`; a click opens the media viewer) and the
   transcript or description under a bold `lng_agent_tool_transcript`,
   then the arguments and the result.
+- Message actions: `AddAgentReplyAction()` and `AddAgentForwardAction()`
+  (`agent_menus.*`, hooked at the start of the history context menu's
+  reply and forward actions) take over for agent chat items. "Reply" /
+  "Quote & Reply" is offered for user, agent and card messages (not in
+  a run's view) and fires the list's native reply request, which
+  `ChatView` puts into the compose controls' reply bar. Sending takes
+  the reply: `SendRequest::replyTo` is the replied `ChatMessage::key`
+  (`ChatItems::Info()`), `replyQuote` the quote and `replyText` the
+  quote or the replied message's text (the agent's markdown, at most
+  2000 characters); the session stores the key and quote in the user
+  message and adds a hidden block "The user replies to …" with the text
+  as `> ` lines. The user's item then shows a native reply with the
+  quote. "Forward" is offered for messages with text and opens
+  `ShowForwardCopyBox()`: the standard `ShareBox` (chats that can take
+  texts, not the agent) whose submit sends the comment and then a copy
+  of the text from the user (`Iv::FlattenRichPageToSimpleText()` of the
+  answer's markdown, without the steps).
 - `Transcribe` cards show the message preview, the trials left
   (`lng_agent_card_transcribe_left`) and the about line with
   "Transcribe" and "Decline".

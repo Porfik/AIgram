@@ -48,6 +48,13 @@ struct ChatExtras {
 	bool live = false;
 };
 
+struct ChatItemInfo {
+	QString key;
+	QString modelText;
+	TextWithEntities copyText;
+	bool readOnly = false;
+};
+
 struct ChatItemsDelegate {
 	Fn<bool(const QString &toolUseId)> canUndo;
 	Fn<bool(const QString &toolUseId)> isUndone;
@@ -75,6 +82,8 @@ public:
 	static bool Activate(
 		not_null<HistoryItem*> item,
 		const HistoryMessageMarkupButton &button);
+	[[nodiscard]] static std::optional<ChatItemInfo> Info(
+		not_null<const HistoryItem*> item);
 
 private:
 	struct Prepared;
@@ -86,9 +95,14 @@ private:
 		bool out = false;
 		PhotoData *photo = nullptr;
 		uint64 groupedId = 0;
+		QString replyKey;
+		QString modelText;
+		TextWithEntities copyText;
 	};
 
-	[[nodiscard]] HistoryItem *create(const Prepared &prepared);
+	[[nodiscard]] HistoryItem *create(
+		const Prepared &prepared,
+		FullMsgId replyTo);
 	[[nodiscard]] PhotoData *localPhoto(const MediaBlock &block, TimeId date);
 	[[nodiscard]] uint64 groupIdFor(const QString &key);
 	void update(not_null<HistoryItem*> item, const Prepared &prepared);

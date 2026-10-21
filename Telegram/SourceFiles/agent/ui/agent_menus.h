@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #pragma once
 
+#include "ui/text/text_entity.h"
+
 class PeerData;
 
 namespace Dialogs {
@@ -16,6 +18,15 @@ struct EntryState;
 namespace Ui::Menu {
 struct MenuCallback;
 } // namespace Ui::Menu
+
+namespace Ui {
+class PopupMenu;
+} // namespace Ui
+
+namespace HistoryView {
+struct ContextMenuRequest;
+class ListWidget;
+} // namespace HistoryView
 
 namespace Window {
 class SessionController;
@@ -35,5 +46,18 @@ void FillFolderMenu(
 	not_null<Window::SessionController*> controller,
 	int folder,
 	const ::Ui::Menu::MenuCallback &addAction);
+
+// Both return true for agent chat messages, which skip the usual action.
+bool AddAgentReplyAction(
+	not_null<::Ui::PopupMenu*> menu,
+	const HistoryView::ContextMenuRequest &request,
+	not_null<HistoryView::ListWidget*> list);
+bool AddAgentForwardAction(
+	not_null<::Ui::PopupMenu*> menu,
+	const HistoryView::ContextMenuRequest &request,
+	not_null<HistoryView::ListWidget*> list);
+void ShowForwardCopyBox(
+	not_null<Window::SessionController*> controller,
+	TextWithEntities text);
 
 } // namespace Agent::Ui

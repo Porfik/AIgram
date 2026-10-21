@@ -78,6 +78,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent::Ui {
 namespace {
 
+constexpr auto kReplyContextLimit = 2000;
+
 constexpr auto kRebuildDelay = crl::time(50);
 
 [[nodiscard]] QString PassedMessagesText(const HistoryItemsList &items) {
@@ -338,6 +340,14 @@ void ChatView::setupComposeControls() {
 		}),
 	});
 	_composeControls->setPasteToastParent(_scroll.data());
+	using ReplyRequest = ::HistoryView::ListWidget::ReplyToMessageRequest;
+	_inner->replyToMessageRequested(
+	) | rpl::on_next([=](const ReplyRequest &request) {
+		if (!(_session && _session->isRun())) {
+			_composeControls->replyToMessage(request.to);
+			_composeControls->focus();
+		}
+	}, lifetime());
 	_composeControls->inputField()->changes(
 	) | rpl::on_next([=] {
 		saveDraft();
@@ -1001,6 +1011,13 @@ void ChatView::sendWithAttachments(
 	auto handoff = base::take(_handoff);
 	auto mentions = _mentions ? _mentions() : std::vector<PeerKey>();
 	auto untrusted = handoff ? handoff->untrusted : QString();
+	const auto reply = _composeControls->replyingToMessage();
+	const auto replied = reply.messageId
+		? _history->owner().message(reply.messageId)
+		: nullptr;
+	const auto replyInfo = replied
+		? ChatItems::Info(replied)
+		: std::optional<ChatItemInfo>();
 	const auto passed = _history->resolveForwardDraft(MsgId(), PeerId());
 	if (!passed.items.empty()) {
 		const auto peer = passed.items.front()->history()->peer;
@@ -1014,13 +1031,24 @@ void ChatView::sendWithAttachments(
 		_history->setForwardDraft(MsgId(), PeerId(), {});
 		_composeControls->updateForwarding();
 	}
+	const auto quote = reply.quote.text;
 	session->send({
 		.text = text,
 		.mentions = std::move(mentions),
 		.hint = _hint ? _hint() : QString(),
 		.untrusted = std::move(untrusted),
 		.attachments = std::move(attachments),
+		.replyTo = replyInfo ? replyInfo->key : QString(),
+		.replyQuote = replyInfo ? quote : QString(),
+		.replyText = !replyInfo
+			? QString()
+			: !quote.isEmpty()
+			? quote
+			: replyInfo->modelText.left(kReplyContextLimit),
 	});
+	if (replyInfo) {
+		_composeControls->cancelReplyMessage();
+	}
 	listScrollTo(_scroll->scrollTopMax());
 }
 

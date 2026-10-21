@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_context_menu.h"
 
+#include "agent/ui/agent_menus.h"
 #include "agent/ui/agent_palette.h"
 #include "api/api_attached_stickers.h"
 #include "api/api_editing.h"
@@ -626,6 +627,9 @@ void AddForwardAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Agent::Ui::AddAgentForwardAction(menu, request, list)) {
+		return;
+	}
 	AddForwardSelectedAction(menu, request, list);
 	AddForwardMessageAction(menu, request, list);
 	if (request.overSelection && !request.selectedItems.empty()) {
@@ -847,6 +851,9 @@ bool AddReplyToMessageAction(
 		not_null<Ui::PopupMenu*> menu,
 		const ContextMenuRequest &request,
 		not_null<ListWidget*> list) {
+	if (Agent::Ui::AddAgentReplyAction(menu, request, list)) {
+		return true;
+	}
 	const auto context = list->elementContext();
 	const auto item = request.quote.item
 		? request.quote.item

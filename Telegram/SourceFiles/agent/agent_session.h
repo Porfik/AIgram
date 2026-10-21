@@ -35,6 +35,9 @@ struct SendRequest {
 	QString hint;
 	QString untrusted;
 	std::vector<AttachmentInput> attachments;
+	QString replyTo;
+	QString replyQuote;
+	QString replyText;
 };
 
 enum class SessionStatus : uchar {
