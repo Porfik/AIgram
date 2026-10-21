@@ -226,12 +226,13 @@ void JournalList::rebuild() {
 			st::agentJournalButton));
 		const auto date = FormatDateTime(
 			QDateTime::fromSecsSinceEpoch(entry.date));
-		auto about = date + u" · "_q + (entry.sessionTitle.isEmpty()
-			? tr::lng_agent_session_untitled(tr::now)
-			: entry.sessionTitle);
+		auto about = date;
 		if (entry.undone) {
 			about += u" · "_q + tr::lng_agent_undone(tr::now);
 		}
+		about += u" · "_q + (entry.sessionTitle.isEmpty()
+			? tr::lng_agent_session_untitled(tr::now)
+			: entry.sessionTitle);
 		const auto label = ::Ui::CreateChild<::Ui::FlatLabel>(
 			button,
 			about,

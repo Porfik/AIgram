@@ -2300,8 +2300,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   onto the Info stack) and "Agent Settings". The journal reads every
   indexed session and every task run record (open sessions from memory),
   shows `BuildJournal(..., ActionToolNames(), 200)` as rows (a ✓ or ✗
-  mark and the action or card text, under it the time, the session title
-  and "Undone"), "Undo" while the session is open and `canUndo()`, and a
+  mark and the action or card text, the description of a Telegram API
+  request, under it the time, "Undone" and the session title), "Undo" while the session is open and `canUndo()`, and a
   click opens the session (a chat session opens its chat); the top bar "Edit" opens
   `ShowEditAgentProfileBox()` (a `UserpicButton` choosing a photo, "Use
   the default photo", the name field; saved as a 320 px JPEG and the name
