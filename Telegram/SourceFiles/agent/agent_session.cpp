@@ -325,7 +325,9 @@ void Session::interrupt() {
 void Session::halt() {
 	const auto weak = base::make_weak(this);
 	_compaction = nullptr;
-	_titleRequest = nullptr;
+	if (base::take(_titleRequest)) {
+		_titleRequested = false;
+	}
 	const auto busy = _loop && _loop->busy();
 	if (busy) {
 		_loop->interrupt();
