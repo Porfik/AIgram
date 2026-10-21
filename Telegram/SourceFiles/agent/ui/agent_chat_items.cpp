@@ -317,6 +317,30 @@ void Linkify(std::vector<Block> &blocks) {
 		: tr::lng_agent_card_confirm(tr::now);
 }
 
+[[nodiscard]] QString CardDetailText(const Card &card) {
+	if (card.detail.isEmpty()) {
+		return QString();
+	}
+	switch (card.kind) {
+	case CardKind::Send:
+		return tr::lng_agent_card_reply_to(tr::now, lt_text, card.detail);
+	case CardKind::Forward:
+		return tr::lng_agent_card_from_chat(tr::now, lt_chat, card.detail);
+	case CardKind::Edit:
+		return tr::lng_agent_card_current_text(tr::now)
+			+ u":\n"_q
+			+ card.detail;
+	case CardKind::Draft:
+		return tr::lng_agent_card_field_text(tr::now)
+			+ u":\n"_q
+			+ card.detail;
+	case CardKind::Download:
+		return tr::lng_agent_card_download_to(tr::now, lt_path, card.detail);
+	default:
+		return QString();
+	}
+}
+
 [[nodiscard]] TextWithEntities CardBody(const Card &card) {
 	auto result = ::Ui::Text::Bold(CardTitle(card));
 	auto lines = QStringList();
@@ -351,8 +375,8 @@ void Linkify(std::vector<Block> &blocks) {
 			TextWithEntities{ shown },
 			EntityType::Blockquote));
 	}
-	if (!card.detail.isEmpty() && card.kind != CardKind::Method) {
-		result.append('\n').append(card.detail);
+	if (const auto detail = CardDetailText(card); !detail.isEmpty()) {
+		result.append('\n').append(detail);
 	}
 	return result;
 }
