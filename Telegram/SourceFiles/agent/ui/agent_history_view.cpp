@@ -101,11 +101,25 @@ void HistoryView::showTab(HistoryTab tab) {
 	if (_tabs->activeSection() != index) {
 		_tabs->setActiveSectionFast(index);
 	}
-	_sessionsScroll->setVisible(tab == HistoryTab::Sessions);
-	_tasksScroll->setVisible(tab == HistoryTab::Tasks);
-	_memoryScroll->setVisible(tab == HistoryTab::Memory);
+	const auto scrolls = {
+		std::pair{ _sessionsScroll, HistoryTab::Sessions },
+		std::pair{ _tasksScroll, HistoryTab::Tasks },
+		std::pair{ _memoryScroll, HistoryTab::Memory },
+	};
+	for (const auto &[scroll, which] : scrolls) {
+		if (which == tab) {
+			scroll->show();
+		}
+	}
+	// WHY: hiding the focused tab first lets Qt pass the focus to the
+	// next field of the window, the chats search, which then opens.
 	if (focused) {
 		setInnerFocus();
+	}
+	for (const auto &[scroll, which] : scrolls) {
+		if (which != tab) {
+			scroll->hide();
+		}
 	}
 }
 
@@ -116,7 +130,9 @@ HistoryTab HistoryView::tab() const {
 void HistoryView::setInnerFocus() {
 	if (_tab == HistoryTab::Memory) {
 		_memory->setFocus();
-	} else if (_tab == HistoryTab::Sessions) {
+	} else if (_tab == HistoryTab::Tasks) {
+		_tasks->setFocus();
+	} else {
 		_sessions->setFocus();
 	}
 }
