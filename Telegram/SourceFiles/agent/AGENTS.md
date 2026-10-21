@@ -1697,9 +1697,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   folder from the agent.", and `reorder_folders` keeps hidden folders in
   their slots. Members and senders inside a visible chat are not hidden.
 - `ResolveChatRef()` takes a chat id (a JSON number or a numeric string,
-  `PeerId::value` as in every tool result), `@username`, or a
-  `t.me/username` link, and finds only peers already loaded in
-  `Data::Session`; otherwise null. `ChatRefUsername()` is the username
+  `PeerId::value` as in every tool result), `@username`, a
+  `t.me/username` link, or `me` / `@me` / `self` for Saved Messages
+  (the chat parameter descriptions name `"me"`), and finds only peers
+  already loaded in `Data::Session`; otherwise null. `ChatRefUsername()` is the username
   such a reference names (4 to 32 letters, digits and `_`, starting with
   a letter), empty for ids and invite links.
 - In the account scope the registry first resolves the usernames of the

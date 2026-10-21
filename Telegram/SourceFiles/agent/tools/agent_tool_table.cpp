@@ -102,6 +102,10 @@ PeerData *ResolveChatRef(
 	if (text.isEmpty()) {
 		return nullptr;
 	}
+	const auto lower = text.toLower();
+	if (lower == u"me"_q || lower == u"@me"_q || lower == u"self"_q) {
+		return session->user().get();
+	}
 	auto ok = false;
 	const auto number = text.toLongLong(&ok);
 	if (ok) {

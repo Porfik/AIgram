@@ -245,11 +245,13 @@ QString DenyText(Decision decision) {
 		chats.insert("minItems", QJsonValue(1));
 		chats.insert("maxItems", QJsonValue(100));
 		chats.insert("description", QJsonValue(
-			u"Target chats: 1 to 100 chat ids or @usernames."_q));
+			u"Target chats: 1 to 100 chat ids or @usernames, \"me\" for"
+			" Saved Messages."_q));
 		properties.insert("chats", chats);
 	} else {
 		properties.insert("chat", StringProperty(
-			u"Target chat: a chat id or an @username."_q));
+			u"Target chat: a chat id, an @username or \"me\" for Saved"
+			" Messages."_q));
 		if (param == ChatParam::One) {
 			auto required = schema.value("required").toArray();
 			if (!required.contains(QJsonValue(u"chat"_q))) {
@@ -572,7 +574,8 @@ void ToolRegistry::executeResolved(
 			const auto resolved = ResolveChatRef(_session, value);
 			if (!resolved) {
 				resolveError = u"Unknown chat: %1. Use a chat id from"
-					" an earlier tool result or an @username."_q
+					" an earlier tool result, an @username or \"me\" for"
+					" Saved Messages."_q
 					.arg(RefName(value));
 				return false;
 			} else if (!_gate->visible(resolved->id.value)) {
