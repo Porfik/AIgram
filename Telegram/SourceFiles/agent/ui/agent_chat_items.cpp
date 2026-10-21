@@ -666,7 +666,7 @@ bool ChatItems::apply(
 								_delegate.attachment)).first->second;
 				}
 				if (!entry.photo || !image) {
-					files.push_back(QString::fromUtf8("ð ")
+					files.push_back(QString::fromUtf8("\xF0\x9F\x93\x8E ")
 						+ (attachment.name.isEmpty()
 							? attachment.mimeType
 							: attachment.name)
