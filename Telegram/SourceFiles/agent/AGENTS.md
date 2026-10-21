@@ -2265,8 +2265,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   one is destroyed, so the last message never becomes unknown. Disabled,
   the history is unpinned and cleared (`ClearType::DeleteChat`). The
   waiting cards of the account scope are the history's unread count;
-  while a session works, a typing action is registered every 5 s and
-  cancelled at the end.
+  while a session works and no card waits, a typing action is registered
+  every 5 s and cancelled at the end. The agent user has a known last
+  seen in the past, since the chats list shows typing only for such
+  users.
 - The pin is local: `ChatState{ pinned, pinnedIndex }` in the agent value
   `chat`. `applyPinned()` puts the history at `pinnedIndex` of the main
   pinned list; on every `pinnedDialogsOrderUpdated()` a missing agent

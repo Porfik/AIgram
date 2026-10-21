@@ -45,6 +45,9 @@ constexpr auto kAgentUserBase = (0xFEULL << 32) + (1ULL << 31) + 0xA6E7ULL;
 		info->inited = true;
 		info->cantJoinGroups = true;
 	}
+	// WHY: chat list rows show "typing" only with a known last seen.
+	result->updateLastseen(Data::LastseenStatus::OnlineTill(
+		Data::kLifeStartDate + 60));
 	result->setLoadedStatus(PeerData::LoadedStatus::Normal);
 	return result;
 }
@@ -311,10 +314,11 @@ void AgentChat::refreshActivity(const ScopeActivity &activity) {
 	if (_history->folderKnown()) {
 		_history->setUnreadCount(activity.pendingCards);
 	}
-	if (_working == activity.working) {
+	const auto working = activity.working && !activity.pendingCards;
+	if (_working == working) {
 		return;
 	}
-	_working = activity.working;
+	_working = working;
 	if (_working) {
 		sendTyping();
 		_typingTimer.callEach(kTypingInterval);
