@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_card.h"
+#include "agent/core/agent_types.h"
 #include "base/basic_types.h"
 
 namespace Window {
@@ -23,6 +24,7 @@ struct CardBoxArgs {
 	bool run = false;
 	Fn<void(CardDecision decision)> decide;
 	Fn<void(QString text)> handoff;
+	Fn<std::optional<MediaBlock>(const QString &attachment)> attachment;
 };
 
 void ShowCardBox(

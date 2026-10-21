@@ -66,7 +66,7 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   turns the feed into chat messages (`BuildChatMessages()`) and keeps the
   live tail of a running turn (`LiveTail`); `core/agent_journal` lists
   the agent's done actions for the journal in the profile.
-- UI: `agent_feed_cards.*` is the card widget of the "Edit..." box,
+- UI: `agent_card_box.*` is the native "Edit..." box of a card,
   `agent_section.*` the general agent screen (sessions list and session
   chat), `agent_session_rows.*` the sessions list rows,
   `agent_chat_view.*` the native session view (`ChatView`),
@@ -2271,16 +2271,24 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   in the Info top bar, added by `SetupPanelTopBar()`. The panel content lies over the Info scroll area,
   which only holds an empty widget reporting the layer height, so the Info
   scroll never moves.
-- `FeedCardWidget` (`agent_feed_cards.*`), the card widget of the old
-  feed, is used only by the "Edit..." / "Details..." box of a card. It
-  shows its kind's title, the targets as checkboxes, the
-  editable text while pending, `detail`, the option and "allow until the
-  end of the request" when offered, and the buttons: "Send (N)", "To
-  draft", "Decline" for `Send`; "Replace", "Append", "Cancel" for
-  `Draft`; "Confirm (N)", "Decline" otherwise; "Continue in the general
-  agent" for `Handoff`. The main button is disabled without checked
-  targets (when there are targets) or with an empty editable text. A
-  final card shows its status line instead of buttons, read-only.
+- `ShowCardBox()` (`agent_card_box.*`) is the native "Edit..." /
+  "Details..." box of a card (plan 11.10): a `GenericBox` titled with the
+  card kind (`text` for a `Change` card) holding everything the card
+  shows: the task rows, the method header with "Show parameters", the
+  change rows with "Was: ...", the detail lines, the send-files previews
+  (`CardBoxArgs::attachment` reads the session's attachments), the
+  download files as checkboxes with the total, the targets as
+  "choose chats" rows (userpic in a `RoundImageCheckbox`, title, preview
+  or error; checkable only while pending with more than one target) under
+  `lng_agent_card_targets`, the editable text under
+  `lng_agent_card_text_title`, the option and "allow until the end of the
+  request". Pending cards get the box buttons: the main one (its count
+  follows the checks; without checked targets it shows
+  `lng_agent_card_choose_chats`, with an empty text it marks the field),
+  the alternate one and "Decline" / "Cancel" on the left in red; a
+  handoff card has "Continue in the general agent"; running and final
+  cards are read-only with "Close". A decision builds the `CardDecision`
+  and closes the box.
 - While a card waits, the headers say the agent waits for a decision.
 - The handoff button calls `ShowGeneralAgent()` with a `HandoffDraft`:
   the card's text, `HandoffText()` of the chat session and the chat.
@@ -2377,9 +2385,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   message with "Retry" (and "Model settings" for auth errors); queued
   messages are outgoing with the sending clock. Buttons carry
   `agent:<action>:<id>` and reach `ChatView` through
-  `ChatItems::buttons()`; "Edit..." shows the old `FeedCardWidget` in a
-  box. Item dates come from `Message::date` (records v9), else the
-  session creation time, and never decrease.
+  `ChatItems::buttons()`; "Edit..." opens `ShowCardBox()`. Item dates
+  come from `Message::date` (records v9), else the session creation time,
+  and never decrease.
 - `HistoryView` is the history pane of the panel and the general screen:
   "Sessions" and "Memory" tabs over a scroll area with the scope's
   compact `SessionRows` or its `MemoryList` (owner `Scope::peer`). With it open
@@ -2585,7 +2593,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `lng_agent_card_method_name` over the method in monospace, its rows
   like a `Change` card, and a "Show parameters" / "Hide parameters" link
   that slides the `proposedText` JSON open in a code block
-  (`MakeCodeBlock()` of the feed items); the state survives rebuilds of
+  (`MakeCodeBlock()` of the card box); the state survives rebuilds of
   the card. Steps read `lng_agent_tool_find_methods`,
   `lng_agent_tool_describe_method` with `name` and
   `lng_agent_tool_call_method` with `method`.

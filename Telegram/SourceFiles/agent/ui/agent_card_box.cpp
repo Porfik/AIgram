@@ -48,6 +48,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <gsl/gsl>
 #include <QtGui/QPainterPath>
+#include <QtCore/QDir>
 #include <QtCore/QTemporaryFile>
 
 #include "styles/style_agent.h"
@@ -269,11 +270,27 @@ int SendFilesPreviewBox::resizeGetHeight(int newWidth) {
 [[nodiscard]] Ui::PreparedList SendFilesPreparedList(
 		not_null<Window::SessionController*> controller,
 		const std::vector<CardFile> &files,
-		std::vector<std::unique_ptr<QTemporaryFile>> &tempFiles) {
+		std::vector<std::unique_ptr<QTemporaryFile>> &tempFiles,
+		const Fn<std::optional<MediaBlock>(const QString &)> &attachment) {
 	const auto session = &controller->session();
 	auto paths = QStringList();
 	for (const auto &file : files) {
 		if (Agent::AttachmentIndex(file.ref) > 0) {
+			const auto block = attachment
+				? attachment(file.ref)
+				: std::nullopt;
+			if (!block) {
+				continue;
+			}
+			auto temp = std::make_unique<QTemporaryFile>(
+				QDir::tempPath() + u"/agent-XXXXXX-"_q + file.name);
+			if (!temp->open()) {
+				continue;
+			}
+			temp->write(block->bytes);
+			temp->flush();
+			paths.push_back(temp->fileName());
+			tempFiles.push_back(std::move(temp));
 			continue;
 		}
 		const auto path = Agent::ResolveAgentFile(session, file.ref);
@@ -979,7 +996,8 @@ void CardBoxState::buildSendFilesPreview() {
 	auto list = SendFilesPreparedList(
 		_controller,
 		_card.files,
-		_tempFiles);
+		_tempFiles,
+		_args.attachment);
 	if (list.error != Ui::PreparedList::Error::None
 		|| list.files.empty()) {
 		for (const auto &file : _card.files) {

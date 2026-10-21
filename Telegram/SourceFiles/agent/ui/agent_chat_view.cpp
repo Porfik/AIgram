@@ -945,8 +945,15 @@ void ChatView::showCardBox(const QString &toolUseId) {
 				strong->decideCard(data.card.toolUseId, std::move(decision));
 			}
 		},
-		.handoff = [=](QString text) {
+		.handoff = crl::guard(this, [=](QString text) {
 			handoffRequested(text);
+		}),
+		.attachment = [=, manager = _manager](
+				const QString &id) -> std::optional<MediaBlock> {
+			const auto strong = weak.get();
+			return strong
+				? manager->attachments().read(strong->id(), id)
+				: std::nullopt;
 		},
 	});
 }
