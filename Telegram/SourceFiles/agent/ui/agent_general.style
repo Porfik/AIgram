@@ -108,14 +108,14 @@ agentProfileStatus: FlatLabel(defaultFlatLabel) {
 agentProfileResetPadding: margins(22px, 8px, 22px, 12px);
 agentJournalButton: SettingsButton(settingsButtonNoIcon) {
 	height: 40px;
-	padding: margins(22px, 8px, 22px, 26px);
+	padding: margins(22px, 10px, 22px, 12px);
 }
 agentJournalAbout: FlatLabel(defaultFlatLabel) {
 	textFg: windowSubTextFg;
 	minWidth: 40px;
 	maxHeight: 20px;
 }
-agentJournalAboutTop: 32px;
+agentJournalAboutTop: 33px;
 agentJournalEmptyPadding: margins(22px, 20px, 22px, 12px);
 
 agentModelRowPadding: margins(22px, 9px, 22px, 9px);

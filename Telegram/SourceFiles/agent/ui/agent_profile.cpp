@@ -176,7 +176,8 @@ QString JournalList::entryText(const JournalEntry &entry) const {
 			}
 		}
 		const auto &card = *entry.card;
-		const auto title = (card.kind == CardKind::Change
+		const auto title = ((card.kind == CardKind::Change
+					|| card.kind == CardKind::Method)
 				&& !card.text.isEmpty())
 			? card.text
 			: CardTitleText(card.kind);
