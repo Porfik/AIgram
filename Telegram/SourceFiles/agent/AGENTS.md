@@ -591,9 +591,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   message per `FeedUser`; an agent message collects the steps and actions
   that come before a text and ends with that text, so steps or actions
   after a text start a new agent message; a card or a user message ends
-  the pending agent message; summaries are their own messages. Keys are
-  the kind letter (`u`, `a`, `c`, `s`) and the first record index, with
-  `.N` added for repeats, so they stay stable while a turn grows.
+  the pending agent message; summaries are their own messages, and so is
+  a `FeedTurnEnd` (kind `TurnEnd` with its `turnEnd`), which also ends
+  the pending agent message. A user message copies `replyTo` and
+  `replyQuote`. Keys are the kind letter (`u`, `a`, `c`, `s`, `e`) and
+  the first record index, with `.N` added for repeats, so they stay
+  stable while a turn grows.
 - `LiveTail` folds engine events of the running step into an assistant
   message (text and thinking deltas joined, tool uses filled by
   `ToolCallRequested`) and a user message of tool results; the view
@@ -789,6 +792,23 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   of every message after `cacheWriteTokens`; older records load zero.
   The session stamps a user message when it is sent and every message
   copied from the loop the first time it appears.
+- Version 10 (stage 5f) writes `durationMs` (`qint32`) after `redacted`
+  of every thinking block, then appends, after the message dates,
+  `replyTo` and `replyQuote` of every message and `turnEnds` (a `qint32`
+  count, then `after` and `end` as `qint32` of each mark). Older records
+  load zero durations, empty replies and no marks. A mark with `after`
+  outside `[1, messages.size()]`, an `after` not greater than the
+  previous mark's, or an `end` that is not `Interrupted`, `StepLimit`,
+  `MaxTokens` or `Refusal` makes the record deserialize to
+  `std::nullopt`. The index stays version 6.
+- `ThinkingBlock::durationMs` is how long the model thought (0 when
+  unknown); adapters never send it. `Message::replyTo` is the
+  `ChatMessage::key` of the message a user message replies to and
+  `replyQuote` the quoted part (empty for the whole message); both are
+  display only, the model reads the quote from a hidden text block.
+  `turnEnds` marks the turns that ended without completing: `after` is
+  the message count when the turn ended. The session replaces a mark
+  with the same `after`.
 - `MakeSessionPreview()` is the last message with visible text, its text
   blocks joined, Markdown markers (`**`, `__`, `~~`, backticks, leading
   `#` and `>`) removed, whitespace simplified and capped at 120
@@ -816,6 +836,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `FeedSteps` item, also across messages, so a whole run of tool rounds is
   one item. Its `index` is the message of the first step. Visible user text,
   assistant text and `FeedSummary` end the run; hidden text does not.
+- `FeedThinking::durationMs` copies the block's `durationMs`;
+  `FeedUser::replyTo` and `replyQuote` copy the message's.
+- Every mark of `turnEnds` gives a `FeedTurnEnd` (`index` is `after - 1`)
+  right after all items of `messages[0, after)`, before a `FeedSummary`
+  standing at `after`. It ends a steps run like visible text, so steps
+  after it start a new `FeedSteps` item.
 - `FeedSummary` stands before the item of `messages[summaryUntil]` when
   `summaryUntil > 0`, or last when everything is summarized.
 - A tool use with a card in `cards` becomes a `FeedCard` at its place, with

@@ -54,6 +54,7 @@ struct ThinkingBlock {
 	QString text;
 	QByteArray signature;
 	bool redacted = false;
+	int durationMs = 0;
 };
 
 struct ToolUseBlock {
@@ -82,6 +83,8 @@ struct Message {
 	Role role = Role::User;
 	std::vector<Block> blocks;
 	qint64 date = 0;
+	QString replyTo;
+	QString replyQuote;
 };
 
 struct ToolSpec {

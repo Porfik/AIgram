@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_card.h"
+#include "agent/core/agent_engine.h"
 #include "agent/core/agent_scope.h"
 #include "agent/core/agent_types.h"
 
@@ -41,6 +42,7 @@ struct SessionRecord {
 	std::vector<Card> cards;
 	std::vector<QString> loadedGroups;
 	std::vector<QString> undone;
+	std::vector<TurnEndMark> turnEnds;
 };
 
 [[nodiscard]] QString GenerateSessionId();

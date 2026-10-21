@@ -20,6 +20,7 @@ enum class ChatMessageKind : uchar {
 	Agent,
 	Card,
 	Summary,
+	TurnEnd,
 };
 
 struct ChatMessage {
@@ -31,6 +32,9 @@ struct ChatMessage {
 	std::vector<FeedStep> steps;
 	std::vector<FeedTool> actions;
 	std::optional<FeedCard> card;
+	QString replyTo;
+	QString replyQuote;
+	TurnEnd turnEnd = TurnEnd::Interrupted;
 };
 
 [[nodiscard]] std::vector<ChatMessage> BuildChatMessages(

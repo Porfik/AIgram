@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include "agent/core/agent_card.h"
+#include "agent/core/agent_engine.h"
 #include "agent/core/agent_types.h"
 #include "base/flat_set.h"
 
@@ -21,6 +22,8 @@ struct FeedUser {
 	int index = 0;
 	QString text;
 	std::vector<MediaBlock> attachments;
+	QString replyTo;
+	QString replyQuote;
 };
 
 struct FeedAssistant {
@@ -31,6 +34,7 @@ struct FeedAssistant {
 struct FeedThinking {
 	int index = 0;
 	QString text;
+	int durationMs = 0;
 };
 
 struct FeedTool {
@@ -62,18 +66,25 @@ struct FeedCard {
 	Card card;
 };
 
+struct FeedTurnEnd {
+	int index = 0;
+	TurnEnd end = TurnEnd::Interrupted;
+};
+
 using FeedItem = std::variant<
 	FeedUser,
 	FeedAssistant,
 	FeedSteps,
 	FeedSummary,
 	FeedActions,
-	FeedCard>;
+	FeedCard,
+	FeedTurnEnd>;
 
 [[nodiscard]] std::vector<FeedItem> BuildFeed(
 	const std::vector<Message> &messages,
 	int summaryUntil,
 	const std::vector<Card> &cards = {},
-	const base::flat_set<QString> &actionTools = {});
+	const base::flat_set<QString> &actionTools = {},
+	const std::vector<TurnEndMark> &turnEnds = {});
 
 } // namespace Agent

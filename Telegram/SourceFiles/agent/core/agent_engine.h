@@ -43,6 +43,11 @@ struct TurnFinished {
 	std::optional<Error> error;
 };
 
+struct TurnEndMark {
+	int after = 0;
+	TurnEnd end = TurnEnd::Interrupted;
+};
+
 using EngineEvent = std::variant<
 	TextDelta,
 	ThinkingDelta,

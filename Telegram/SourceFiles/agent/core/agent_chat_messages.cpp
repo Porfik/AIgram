@@ -20,6 +20,7 @@ namespace {
 	case ChatMessageKind::Agent: return u'a';
 	case ChatMessageKind::Card: return u'c';
 	case ChatMessageKind::Summary: return u's';
+	case ChatMessageKind::TurnEnd: return u'e';
 	}
 	return u'x';
 }
@@ -94,6 +95,7 @@ std::vector<ChatMessage> BuildChatMessages(
 				.kind = ChatMessageKind::Summary,
 				.index = data.until,
 			});
+		}, [&](const FeedTurnEnd &) {
 		});
 	}
 	flush();
