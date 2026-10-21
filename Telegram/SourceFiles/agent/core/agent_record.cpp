@@ -739,7 +739,9 @@ std::optional<SessionRecord> DeserializeSession(const QByteArray &bytes) {
 	if (version >= 10) {
 		auto markCount = qint32(0);
 		stream >> markCount;
-		if (stream.status() != QDataStream::Ok || markCount < 0) {
+		if (stream.status() != QDataStream::Ok
+			|| markCount < 0
+			|| markCount > record.messages.size()) {
 			return std::nullopt;
 		}
 		record.turnEnds.reserve(markCount);

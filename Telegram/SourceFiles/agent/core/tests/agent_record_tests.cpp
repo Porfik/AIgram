@@ -1053,7 +1053,7 @@ std::vector<Check> RecordChecks() {
 			record.info.id = u"aaaaaaaaaaaaaaaa"_q;
 			record.cards.push_back(SampleCard());
 			auto bytes = SerializeSession(record);
-			bytes.chop(12);
+			bytes.chop(16);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1075,7 +1075,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(20);
+			bytes.chop(32);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1136,7 +1136,7 @@ std::vector<Check> RecordChecks() {
 				.blocks = { TextBlock{ u"hi"_q } },
 			});
 			auto bytes = SerializeSession(record);
-			bytes.chop(16);
+			bytes.chop(28);
 			{
 				QDataStream stream(&bytes, QIODevice::ReadWrite);
 				stream.setVersion(QDataStream::Qt_5_1);
@@ -1383,10 +1383,18 @@ std::vector<Check> RecordChecks() {
 				stream << qint32(1);
 				stream << qint32(Role::Assistant) << qint32(1);
 				stream << quint8(3) << u"t"_q << QByteArray("s") << qint32(0);
-				WriteHandTail(stream, 0);
-				stream << qint32(0) << qint32(0) << qint32(0);
-				stream << qint32(0) << QString() << QString();
-				stream << qint32(0) << qint64(0);
+				stream << qint32(0) << QString();
+				stream << qint32(10) << qint32(20) << qint32(5);
+				stream << double(0.) << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << qint32(0);
+				stream << QString();
+				stream << QString();
+				stream << qint32(0);
+				stream << qint64(0);
 			});
 			const auto restored = DeserializeSession(bytes);
 			if (!restored) {
