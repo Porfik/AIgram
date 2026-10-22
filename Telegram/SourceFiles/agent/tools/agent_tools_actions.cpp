@@ -330,6 +330,9 @@ void RunForwardMessages(not_null<PendingCall*> call) {
 		call->fail(u"The user hid this chat from the agent. Tell the user"
 			" you can't see it and don't try to reach it another way."_q);
 		return;
+	} else if (!call->gate->inFrame(from->id.value)) {
+		call->fail(u"from_chat is outside the chats this task may read."_q);
+		return;
 	}
 	WithMessages(call, from, ids, [=](HistoryItemsList items) {
 		auto previews = QStringList();

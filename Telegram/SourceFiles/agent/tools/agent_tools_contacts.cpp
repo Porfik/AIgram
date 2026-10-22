@@ -48,13 +48,13 @@ constexpr auto kContactsLoadTimeout = crl::time(20 * 1000);
 }
 
 [[nodiscard]] std::vector<not_null<UserData*>> MatchedContacts(
-		not_null<Main::Session*> session,
+		not_null<PendingCall*> call,
 		const QString &query) {
 	auto result = std::vector<not_null<UserData*>>();
-	for (const auto &row : session->data().contactsList()->all()) {
+	for (const auto &row : call->session->data().contactsList()->all()) {
 		const auto history = row->history();
 		const auto user = history ? history->peer->asUser() : nullptr;
-		if (!user) {
+		if (!user || !call->gate->inFrame(user->id.value)) {
 			continue;
 		}
 		if (!query.isEmpty()
@@ -118,7 +118,7 @@ void RunListContacts(not_null<PendingCall*> call) {
 		) | rpl::filter([](bool loaded) {
 			return loaded;
 		}) | rpl::take(1) | rpl::on_next([=] {
-			DeliverContacts(call, MatchedContacts(session, query), limit, offset);
+			DeliverContacts(call, MatchedContacts(call, query), limit, offset);
 		}, call->lifetime);
 		QTimer::singleShot(
 			kContactsLoadTimeout,
@@ -128,7 +128,7 @@ void RunListContacts(not_null<PendingCall*> call) {
 			}));
 		return;
 	}
-	DeliverContacts(call, MatchedContacts(session, query), limit, offset);
+	DeliverContacts(call, MatchedContacts(call, query), limit, offset);
 }
 
 void RunListBlocked(not_null<PendingCall*> call) {
@@ -162,7 +162,7 @@ void RunListBlocked(not_null<PendingCall*> call) {
 					break;
 				}
 				const auto peer = session->data().peerLoaded(item.id);
-				if (!peer) {
+				if (!peer || !call->gate->inFrame(peer->id.value)) {
 					continue;
 				}
 				auto entry = QJsonObject();

@@ -641,6 +641,23 @@ std::vector<Check> PolicyChecks() {
 				Verdict::Deny,
 				DenyReason::OutOfScope);
 		} },
+		{ u"policy_in_frame"_q, [] {
+			const auto gate = FrameGate(Scope::Account(), {}, { 5 });
+			const auto normal = PolicyGate(Scope::Account());
+			const auto empty = PolicyGate(
+				Scope::Account(),
+				nullptr,
+				false,
+				GateFrame());
+			if (!gate.inFrame(5) || gate.inFrame(6)) {
+				return u"a frame must hold only its chats"_q;
+			} else if (!normal.inFrame(6)) {
+				return u"without a frame every chat is in it"_q;
+			} else if (empty.inFrame(5)) {
+				return u"a null contains holds no chat"_q;
+			}
+			return QString();
+		} },
 		{ u"policy_frame_null_contains"_q, [] {
 			const auto gate = PolicyGate(
 				Scope::Account(),

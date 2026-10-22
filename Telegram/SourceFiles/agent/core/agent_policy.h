@@ -92,6 +92,7 @@ public:
 
 	[[nodiscard]] bool available(const ToolPolicy &policy) const;
 	[[nodiscard]] bool visible(PeerKey peer) const;
+	[[nodiscard]] bool inFrame(PeerKey peer) const;
 	[[nodiscard]] Decision check(const ActionRequest &request) const;
 	void allowForTurn(const ActionRequest &request);
 

@@ -894,6 +894,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   scope `ToolPolicy::chat`.
 - `visible(peer)`: false for zero and excluded peers; in the chat scope true
   only for the scope peer.
+- `inFrame(peer)`: true without a frame, else `GateFrame::contains`
+  (false for a null one). Tools that list or read chats beyond their chat
+  parameters use it next to `visible()`.
 - `check()` decides in this order: not available, `NotInMode`; risk
   `Forbidden`, `Forbidden`; any excluded peer, `Excluded`; a zero peer or, in
   the chat scope, any other peer, `OutOfScope`. `Read` and `Reversible` are
@@ -2076,7 +2079,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `DenyReason::Excluded`, fail with "The user hid this chat from the
   agent." plus a request to tell the user and not to look for it another
   way. Lists and searches skip excluded chats silently: `list_chats`, the
-  global `search_messages`, folder chat lists. `list_folders` skips
+  global `search_messages`, folder chat lists. In a background run they
+  also skip chats outside the frame (`inFrame()`): `list_chats`, the
+  global `search_messages`, `list_contacts` and `list_blocked` (a person
+  by their private chat) and the linked chat of `get_peer_info`;
+  `forward_messages` fails when `from_chat` is outside the frame. `list_folders` skips
   hidden folders, the folder tools fail on them with "The user hid this
   folder from the agent.", and `reorder_folders` keeps hidden folders in
   their slots. Members and senders inside a visible chat are not hidden.

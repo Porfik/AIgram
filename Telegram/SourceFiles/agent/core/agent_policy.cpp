@@ -152,6 +152,10 @@ bool PolicyGate::visible(PeerKey peer) const {
 	return (_scope.kind == ScopeKind::Account) || (peer == _scope.peer);
 }
 
+bool PolicyGate::inFrame(PeerKey peer) const {
+	return !_frame || peersInFrame({ peer });
+}
+
 const PolicyGate::Allowance *PolicyGate::findAllowance(
 		const QString &tool) const {
 	const auto i = std::find_if(

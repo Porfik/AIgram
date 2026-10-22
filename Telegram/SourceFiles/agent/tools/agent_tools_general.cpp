@@ -192,7 +192,8 @@ void RunListChats(not_null<PendingCall*> call) {
 			if (!seen.emplace(peer->id.value).second) {
 				continue;
 			}
-			if (!call->gate->visible(peer->id.value)) {
+			if (!call->gate->visible(peer->id.value)
+				|| !call->gate->inFrame(peer->id.value)) {
 				continue;
 			}
 			const auto unread = history->unreadCountKnown()

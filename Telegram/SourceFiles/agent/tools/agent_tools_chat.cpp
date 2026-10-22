@@ -205,7 +205,9 @@ constexpr auto kDefaultMembersLimit = 50;
 		}
 	}
 	if (const auto linked = PeerLinkedChat(peer);
-			linked && gate->visible(linked->id.value)) {
+			linked
+				&& gate->visible(linked->id.value)
+				&& gate->inFrame(linked->id.value)) {
 		auto json = QJsonObject();
 		json.insert("id", QJsonValue(qint64(linked->id.value)));
 		json.insert("title", linked->name());
@@ -381,7 +383,8 @@ void DeliverGlobalSearch(
 		auto messages = QJsonArray();
 		for (auto i = parsed.items.rbegin(); i != parsed.items.rend(); ++i) {
 			const auto peer = (*i)->history()->peer;
-			if (!call->gate->visible(peer->id.value)) {
+			if (!call->gate->visible(peer->id.value)
+				|| !call->gate->inFrame(peer->id.value)) {
 				continue;
 			}
 			messages.push_back(ToolFormat::SerializeMessageWithChat(*i));
