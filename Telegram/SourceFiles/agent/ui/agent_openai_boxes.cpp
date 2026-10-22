@@ -749,6 +749,7 @@ void EditChatGptBox(
 			state->current.priceCached = 0.;
 			state->current.priceCacheWrite = 0.;
 		});
+	AddEffortRow(container, controller, state);
 	Settings::AddButtonWithLabel(
 		container,
 		tr::lng_agent_chatgpt_account(),
