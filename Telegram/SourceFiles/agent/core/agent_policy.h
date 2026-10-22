@@ -95,12 +95,18 @@ public:
 	[[nodiscard]] bool visible(PeerKey peer) const;
 	[[nodiscard]] bool inFrame(PeerKey peer) const;
 	[[nodiscard]] Decision check(const ActionRequest &request) const;
-	void allowForTurn(const ActionRequest &request);
+	void allowForTurn(
+		const ActionRequest &request,
+		const std::vector<QString> &targets = {});
+	[[nodiscard]] bool coversTargets(
+		const QString &tool,
+		const std::vector<QString> &targets) const;
 
 private:
 	struct Allowance {
 		QString tool;
 		std::vector<PeerKey> peers;
+		std::vector<QString> targets;
 	};
 
 	[[nodiscard]] const Allowance *findAllowance(const QString &tool) const;

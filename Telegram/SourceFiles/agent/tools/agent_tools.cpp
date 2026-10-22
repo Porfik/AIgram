@@ -723,6 +723,16 @@ void ToolRegistry::confirmCall(
 	call.execute = std::move(execute);
 	card.toolUseId = toolUseId;
 	card.status = CardStatus::Pending;
+	const auto beyondAllowance = (call.verdict == Verdict::Allow)
+		&& (call.policy.risk == Risk::Visible)
+		&& !_gate->background()
+		&& !_gate->coversTargets(
+			call.tool,
+			CardAllowanceKeys(card, false));
+	if (beyondAllowance) {
+		call.verdict = Verdict::Confirm;
+		call.canAllowForTurn = true;
+	}
 	if (CardAlwaysAsks(card.kind)) {
 		call.canAllowForTurn = false;
 	}
@@ -892,7 +902,7 @@ void ToolRegistry::decide(
 			(card.kind == CardKind::Change || card.kind == CardKind::Method)
 				? call.peers
 				: CheckedPeers(card),
-		});
+		}, CardAllowanceKeys(card, true));
 	}
 	call.card = card;
 	call.approved = true;

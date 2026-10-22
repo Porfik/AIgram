@@ -74,6 +74,65 @@ std::vector<Check> CardChecks() {
 			}
 			return QString();
 		} },
+		{ u"card_allowance_keys_targets"_q, [] {
+			auto card = Card{ .kind = CardKind::Change };
+			card.targets = {
+				CardTarget{ .peer = 5, .title = u"Ann"_q },
+				CardTarget{ .peer = 6, .title = u"Bob"_q, .checked = false },
+				CardTarget{ .peer = 7, .messageId = 3, .title = u"Cid"_q },
+			};
+			const auto all = CardAllowanceKeys(card, false);
+			const auto checked = CardAllowanceKeys(card, true);
+			if (all.size() != 3 || checked.size() != 2) {
+				return u"one key per target, checked ones on demand"_q;
+			} else if (checked[0] != all[0] || checked[1] != all[2]) {
+				return u"checked keys must match the target keys"_q;
+			} else if (all[0] == all[1] || all[0] == all[2]) {
+				return u"different targets must give different keys"_q;
+			}
+			auto again = card;
+			again.text = u"Another title"_q;
+			again.rows.push_back({ u"Rights"_q, u"ban_users"_q });
+			if (CardAllowanceKeys(again, false) != all) {
+				return u"target keys must not depend on the content"_q;
+			}
+			return QString();
+		} },
+		{ u"card_allowance_keys_content"_q, [] {
+			auto card = Card{ .kind = CardKind::Change };
+			card.text = u"Change your profile"_q;
+			card.detail = u"update_profile"_q;
+			card.rows.push_back({ u"Bio"_q, u"Hello"_q, u"Hi"_q });
+			const auto keys = CardAllowanceKeys(card, true);
+			if (keys.size() != 1) {
+				return u"a card without targets gives one key"_q;
+			}
+			auto same = card;
+			same.toolUseId = u"other"_q;
+			auto changed = card;
+			changed.rows.front().value = u"Leaked"_q;
+			if (CardAllowanceKeys(same, true) != keys) {
+				return u"the same action must give the same key"_q;
+			} else if (CardAllowanceKeys(changed, true) == keys) {
+				return u"another value must give another key"_q;
+			}
+			auto method = Card{ .kind = CardKind::Method };
+			method.detail = u"account.updateUsername"_q;
+			method.proposedText = u"{\"username\": \"a\"}"_q;
+			method.text = u"Set the username"_q;
+			auto described = method;
+			described.text = u"Another description"_q;
+			auto params = method;
+			params.proposedText = u"{\"username\": \"b\"}"_q;
+			if (CardAllowanceKeys(described, true)
+					!= CardAllowanceKeys(method, true)) {
+				return u"a method key must not depend on the description"_q;
+			} else if (CardAllowanceKeys(params, true)
+					== CardAllowanceKeys(method, true)) {
+				return u"a method key must depend on the parameters"_q;
+			}
+			return QString();
+		} },
 		{ u"card_decision_decline"_q, [] {
 			const auto card = SampleCard();
 			const auto decided = ApplyDecision(card, CardDecision{

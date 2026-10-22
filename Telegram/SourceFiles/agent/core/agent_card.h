@@ -112,6 +112,9 @@ struct CardDecision {
 [[nodiscard]] Card ApplyDecision(Card card, const CardDecision &decision);
 [[nodiscard]] std::vector<PeerKey> CheckedPeers(const Card &card);
 [[nodiscard]] int CheckedCount(const Card &card);
+[[nodiscard]] std::vector<QString> CardAllowanceKeys(
+	const Card &card,
+	bool checkedOnly);
 [[nodiscard]] CardStatus TargetsStatus(const Card &card);
 [[nodiscard]] QString CardResultText(const Card &card);
 

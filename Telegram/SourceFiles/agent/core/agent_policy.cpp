@@ -181,6 +181,21 @@ bool PolicyGate::coversPeers(
 	});
 }
 
+bool PolicyGate::coversTargets(
+		const QString &tool,
+		const std::vector<QString> &targets) const {
+	const auto allowance = findAllowance(tool);
+	if (!allowance) {
+		return false;
+	}
+	const auto &covered = allowance->targets;
+	return std::all_of(targets.begin(), targets.end(), [&](
+			const QString &target) {
+		return std::find(covered.begin(), covered.end(), target)
+			!= covered.end();
+	});
+}
+
 bool PolicyGate::hasUnnamedPeer(const std::vector<PeerKey> &peers) const {
 	return std::any_of(peers.begin(), peers.end(), [&](PeerKey peer) {
 		return std::find(_named.begin(), _named.end(), peer) == _named.end();
@@ -248,7 +263,9 @@ Decision PolicyGate::check(const ActionRequest &request) const {
 	return { Verdict::Confirm, DenyReason::None, !blocked };
 }
 
-void PolicyGate::allowForTurn(const ActionRequest &request) {
+void PolicyGate::allowForTurn(
+		const ActionRequest &request,
+		const std::vector<QString> &targets) {
 	auto i = std::find_if(
 		_allowances.begin(),
 		_allowances.end(),
@@ -257,6 +274,12 @@ void PolicyGate::allowForTurn(const ActionRequest &request) {
 		});
 	if (i == _allowances.end()) {
 		i = _allowances.insert(_allowances.end(), { request.tool, {} });
+	}
+	for (const auto &target : targets) {
+		if (std::find(i->targets.begin(), i->targets.end(), target)
+				== i->targets.end()) {
+			i->targets.push_back(target);
+		}
 	}
 	for (const auto peer : request.peers) {
 		if (peer

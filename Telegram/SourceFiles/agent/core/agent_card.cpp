@@ -136,6 +136,35 @@ int CheckedCount(const Card &card) {
 	return result;
 }
 
+std::vector<QString> CardAllowanceKeys(const Card &card, bool checkedOnly) {
+	auto result = std::vector<QString>();
+	if (card.targets.empty()) {
+		auto parts = QStringList{
+			QString::number(int(card.kind)),
+			card.detail,
+			(card.kind == CardKind::Method) ? QString() : card.text,
+			card.proposedText,
+		};
+		for (const auto &row : card.rows) {
+			parts.push_back(row.label + u'=' + row.value);
+		}
+		for (const auto &file : card.files) {
+			parts.push_back(u"file="_q + file.ref);
+		}
+		result.push_back(u"c:"_q + parts.join(QChar('\n')));
+		return result;
+	}
+	for (const auto &target : card.targets) {
+		if (!checkedOnly || target.checked) {
+			result.push_back(u"t:%1:%2:%3"_q
+				.arg(target.peer)
+				.arg(target.messageId)
+				.arg(target.title));
+		}
+	}
+	return result;
+}
+
 CardStatus TargetsStatus(const Card &card) {
 	for (const auto &target : card.targets) {
 		if (target.checked && target.error.isEmpty()) {

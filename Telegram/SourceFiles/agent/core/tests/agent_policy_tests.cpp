@@ -364,6 +364,30 @@ std::vector<Check> PolicyChecks() {
 			}
 			return QString();
 		} },
+		{ u"policy_allowance_targets"_q, [] {
+			auto gate = PolicyGate(Scope::Account());
+			if (gate.coversTargets(u"ban"_q, {})) {
+				return u"no allowance covers nothing"_q;
+			}
+			gate.allowForTurn(
+				Request(u"ban"_q, Policy(Risk::Visible), { 5 }),
+				{ u"t:1"_q, u"t:2"_q });
+			gate.allowForTurn(
+				Request(u"ban"_q, Policy(Risk::Visible), { 5 }),
+				{ u"t:3"_q });
+			if (!gate.coversTargets(u"ban"_q, { u"t:1"_q, u"t:3"_q })) {
+				return u"allowed targets must be covered"_q;
+			} else if (gate.coversTargets(u"ban"_q, { u"t:1"_q, u"t:4"_q })) {
+				return u"a new target must not be covered"_q;
+			} else if (gate.coversTargets(u"promote"_q, { u"t:1"_q })) {
+				return u"targets of another tool must not be covered"_q;
+			}
+			gate.beginTurn({});
+			if (gate.coversTargets(u"ban"_q, { u"t:1"_q })) {
+				return u"a new turn must drop the targets"_q;
+			}
+			return QString();
+		} },
 		{ u"policy_begin_turn_drops_allowances"_q, [] {
 			auto gate = PolicyGate(Scope::Account());
 			gate.allowForTurn(

@@ -918,7 +918,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `call_method`, `edit_message`, `update_profile`, `set_profile_photo`,
   `edit_chat_info`, `set_chat_photo`, `create_chat`,
   `create_invite_link`, `edit_invite_link` and `add_contact`.
-- `allowForTurn()` adds the request's peers to the tool's allowance.
+- `allowForTurn()` adds the request's peers, and the given target keys,
+  to the tool's allowance. `coversTargets(tool, keys)` is true when the
+  tool has an allowance whose target keys include every given key.
   `beginTurn()` replaces the named peers and drops all allowances.
 - Taint is sticky for the session: `markTainted()` is never undone, and the
   session persists it in `SessionRecord::tainted`, because content read
@@ -991,6 +993,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   name, or none; no targets. Done, it ends with the tool's own result.
 - `TargetsStatus()` is `Done` without targets or when a checked target
   has no error, otherwise `Failed`.
+- `CardAllowanceKeys()` names what an approved card allows for the
+  turn: one key per target (`t:<peer>:<messageId>:<title>`, only the
+  checked ones with `checkedOnly`), or, for a card without targets, one
+  key of its content (kind, `detail`, `text` except for `Method`,
+  `proposedText`, the rows' labels and values, the files' refs), so only
+  the same action again matches.
 - `Expired` is a final status: a background task's card nobody answered
   for `kTaskCardExpireSeconds`; nothing was done.
 - `CardTextEditable()` is true for `Send`, `Draft`, `Edit`, `SendFiles`,
@@ -2177,8 +2185,13 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   (or that peer is not loaded) is not listed and is not loaded by
   `load_tools`; in both scopes a call whose resolved `peer` or `peers`
   include a chat `forPeer` rejects fails with `forPeerError`.
-- When a `Change` card is allowed for the turn, the allowance covers the
-  call's chats (the gate's peers of the call), not the card targets.
+- When a `Change` card is allowed for the turn, the gate allowance covers
+  the call's chats (the gate's peers of the call), not the card targets.
+  Every allowance is also bound to the card: `decide()` passes
+  `CardAllowanceKeys(card, true)`, and a later `Visible` call the gate
+  allows in a normal session is approved without asking only when
+  `coversTargets()` holds for all keys of its new card; otherwise the
+  card is shown (offering "allow for the turn" again).
 - In a background run (`PolicyGate::background()`, set up with
   `setBackground()`) `tools()` lists every entry the gate makes available,
   group entries included, without `load_tools`; media abilities are those
