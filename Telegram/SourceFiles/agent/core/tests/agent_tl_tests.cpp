@@ -1161,6 +1161,74 @@ std::vector<Check> TlChecks() {
 			}
 			return QString();
 		} },
+		{ u"tl_scrub_ids_and_folders"_q, [] {
+			const auto excluded = [](const QString &kind, int64 id) {
+				return (kind == u"channel" && id == 5)
+					|| (kind == u"chat" && id == 7)
+					|| (kind == u"user" && id == 8)
+					|| (kind == u"folder" && id == 3);
+			};
+			const auto object = [](QString type, QString field, int id) {
+				return QJsonObject{
+					{ u"_"_q, type },
+					{ field, QJsonValue(id) } };
+			};
+			auto scrubbed = ScrubExcludedPeers(
+				QJsonArray{
+					object(u"chatFull"_q, u"id"_q, 7),
+					object(u"channelFull"_q, u"id"_q, 5),
+					object(u"chatFull"_q, u"id"_q, 9),
+					object(u"dialogFilter"_q, u"id"_q, 3),
+					object(u"dialogFilterChatlist"_q, u"id"_q, 4) },
+				excluded);
+			auto list = scrubbed.toArray();
+			if (list.size() != 2
+				|| list[0].toObject().value(u"id"_q).toInt() != 9
+				|| list[1].toObject().value(u"id"_q).toInt() != 4) {
+				return u"full chats and folders must be scrubbed by id"_q;
+			}
+			const auto filter = QJsonObject{
+				{ u"_"_q, u"dialogFilter"_q },
+				{ u"id"_q, 2 },
+				{ u"include_peers"_q, QJsonArray{
+					object(u"inputPeerChat"_q, u"chat_id"_q, 7),
+					object(u"inputPeerChannel"_q, u"channel_id"_q, 5),
+					object(u"inputPeerUser"_q, u"user_id"_q, 8),
+					object(u"inputPeerUser"_q, u"user_id"_q, 9) } } };
+			list = ScrubExcludedPeers(filter, excluded).toObject().value(
+				u"include_peers"_q).toArray();
+			if (list.size() != 1
+				|| list[0].toObject().value(u"user_id"_q).toInt() != 9) {
+				return u"input peers of hidden chats must go"_q;
+			}
+			const auto forwarded = QJsonObject{
+				{ u"_"_q, u"messageFwdHeader"_q },
+				{ u"from_id"_q, object(u"peerChannel"_q, u"channel_id"_q, 5) },
+				{ u"date"_q, 1 } };
+			const auto header = ScrubExcludedPeers(forwarded, excluded)
+				.toObject();
+			if (!header.value(u"from_id"_q).isNull()
+				|| header.value(u"date"_q).toInt() != 1) {
+				return u"a hidden channel reference must become null"_q;
+			}
+			const auto member = QJsonObject{
+				{ u"_"_q, u"messageFwdHeader"_q },
+				{ u"from_id"_q, object(u"peerUser"_q, u"user_id"_q, 8) } };
+			if (ScrubExcludedPeers(member, excluded) != QJsonValue(member)) {
+				return u"people must stay outside chat fields"_q;
+			}
+			const auto update = QJsonObject{
+				{ u"_"_q, u"updateChatParticipants"_q },
+				{ u"participants"_q, object(
+					u"chatParticipants"_q,
+					u"chat_id"_q,
+					7) } };
+			if (!ScrubExcludedPeers(update, excluded).toObject().value(
+					u"participants"_q).isNull()) {
+				return u"an object with a hidden chat_id must go"_q;
+			}
+			return QString();
+		} },
 		{ u"tl_schema_utilities"_q, [] {
 			if (!TlIsBuiltinType(u"int"_q) || !TlIsBuiltinType(u"long"_q)
 				|| !TlIsBuiltinType(u"double"_q)

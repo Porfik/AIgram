@@ -422,7 +422,11 @@ void FinishCall(
 		ApplySpans(call->session, bytes, spans);
 	}
 	const auto gate = call->gate;
+	const auto session = call->session;
 	const auto excluded = [=](const QString &kind, int64 id) {
+		if (kind == u"folder"_q) {
+			return session->agent().exclusions().folderExcluded(int(id));
+		}
 		const auto peer = (kind == u"user"_q)
 			? peerFromUser(UserId(uint64(id)))
 			: (kind == u"chat"_q)

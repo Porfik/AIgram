@@ -897,14 +897,36 @@ struct PeerRef {
 		}
 	}
 	const auto type = object.value(u"_"_q).toString();
-	const auto kind = (type == u"chat" || type == u"chatForbidden")
+	const auto kind = (type == u"chat"
+			|| type == u"chatForbidden"
+			|| type == u"chatFull")
 		? u"chat"_q
-		: (type == u"channel" || type == u"channelForbidden")
+		: (type == u"channel"
+			|| type == u"channelForbidden"
+			|| type == u"channelFull")
 		? u"channel"_q
+		: (type == u"dialogFilter" || type == u"dialogFilterChatlist")
+		? u"folder"_q
 		: QString();
 	if (!kind.isEmpty()) {
 		const auto id = ParsePeerId(object.value(u"id"_q));
 		if (id && excluded(kind, *id)) {
+			return true;
+		}
+	}
+	const auto fields = {
+		std::pair{ u"chat_id"_q, u"chat"_q },
+		std::pair{ u"channel_id"_q, u"channel"_q },
+	};
+	for (const auto &[field, fieldKind] : fields) {
+		const auto id = ParsePeerId(object.value(field));
+		if (id && excluded(fieldKind, *id)) {
+			return true;
+		}
+	}
+	if (type == u"inputPeerUser") {
+		const auto id = ParsePeerId(object.value(u"user_id"_q));
+		if (id && excluded(u"user"_q, *id)) {
 			return true;
 		}
 	}

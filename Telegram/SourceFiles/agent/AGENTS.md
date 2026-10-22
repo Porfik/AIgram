@@ -1466,12 +1466,19 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   object with a field `peer_id`, `peer` or `saved_peer_id` holding
   `peerUser` (`user_id`), `peerChat` (`chat_id`) or `peerChannel`
   (`channel_id`) for which `excluded(kind, id)` is true (`kind` `user`,
-  `chat` or `channel`), and a `chat`, `chatForbidden`, `channel` or
-  `channelForbidden` object whose `id` is excluded (`kind` `chat` for the
-  first two, `channel` for the others). A removed array item disappears
+  `chat` or `channel`); a `chat`, `chatForbidden`, `chatFull`,
+  `channel`, `channelForbidden` or `channelFull` object whose `id` is
+  excluded (`kind` `chat` for the first three, `channel` for the
+  others); any object with a `chat_id` (`chat`) or `channel_id`
+  (`channel`) field that is excluded, which also removes `peerChat`,
+  `peerChannel`, `inputPeerChat` and `inputPeerChannel` references
+  anywhere; an `inputPeerUser` whose `user_id` is excluded (`user`); and
+  a `dialogFilter` or `dialogFilterChatlist` whose `id` is excluded
+  (`kind` `folder`). A removed array item disappears
   from the array; a removed field value becomes `null`; when the value
-  itself is removed the result is `null`. `user` objects stay: people
-  are hidden only as chats, never as members.
+  itself is removed the result is `null`. `user` objects and `peerUser`
+  outside `peer_id` / `peer` / `saved_peer_id` (a forward's author, a
+  member) stay: people are hidden only as chats, never as members.
 
 ## MTProto methods (`agent_mtproto.h`, stage 3c)
 
