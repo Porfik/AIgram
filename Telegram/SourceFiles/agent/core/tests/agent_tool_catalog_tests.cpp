@@ -185,7 +185,7 @@ std::vector<Check> ToolCatalogChecks() {
 		{ u"rank_plural_finds_singular"_q, [] {
 			return Same(
 				RankToolDocuments(u"messages"_q, SampleDocuments(), 10),
-				u"1, 0, 3"_q);
+				u"0, 1, 3"_q);
 		} },
 		{ u"rank_camel_case_query"_q, [] {
 			return Same(
@@ -251,12 +251,12 @@ std::vector<Check> ToolCatalogChecks() {
 				u"messages"_q,
 				SampleDocuments(),
 				2);
-			if (const auto error = Same(limited, u"1, 0"_q); !error.isEmpty()) {
+			if (const auto error = Same(limited, u"0, 1"_q); !error.isEmpty()) {
 				return error;
 			}
 			if (const auto error = Same(
 				RankToolDocuments(u"messages"_q, SampleDocuments(), 1),
-				u"1"_q); !error.isEmpty()) {
+				u"0"_q); !error.isEmpty()) {
 				return error;
 			}
 			if (!RankToolDocuments(u"messages"_q, SampleDocuments(), 0).empty()
@@ -273,6 +273,218 @@ std::vector<Check> ToolCatalogChecks() {
 				return u"no documents must return nothing"_q;
 			}
 			return QString();
+		} },
+		{ u"nearest_separator_insensitive"_q, [] {
+			const auto names = std::vector<QString>{
+				u"read_history"_q,
+				u"search_messages"_q };
+			return Same(
+				NearestToolNames(u"Search-Messages"_q, names, 10),
+				u"search_messages"_q);
+		} },
+		{ u"nearest_distance_order"_q, [] {
+			const auto names = std::vector<QString>{
+				u"read_historyzzz"_q,
+				u"read_historyz"_q,
+				u"read_historyzz"_q };
+			return Same(
+				NearestToolNames(u"read_history"_q, names, 10),
+				u"read_historyz, read_historyzz, read_historyzzz"_q);
+		} },
+		{ u"nearest_shared_word"_q, [] {
+			const auto names = std::vector<QString>{
+				u"read_history"_q,
+				u"list_chats"_q,
+				u"get_message"_q };
+			return Same(
+				NearestToolNames(u"get_history"_q, names, 10),
+				u"read_history, get_message"_q);
+		} },
+		{ u"nearest_tier_order"_q, [] {
+			const auto names = std::vector<QString>{
+				u"read_history"_q,
+				u"get_history_"_q };
+			return Same(
+				NearestToolNames(u"get_history"_q, names, 10),
+				u"get_history_, read_history"_q);
+		} },
+		{ u"nearest_no_self_no_duplicates"_q, [] {
+			const auto names = std::vector<QString>{
+				u"read_history"_q,
+				u"READ_HISTORY"_q,
+				u"read_history"_q };
+			return Same(
+				NearestToolNames(u"read_history"_q, names, 10),
+				QString());
+		} },
+		{ u"nearest_limit"_q, [] {
+			const auto names = std::vector<QString>{
+				u"get_history"_q,
+				u"read_history"_q,
+				u"get_message"_q,
+				u"scan_history"_q };
+			if (const auto error = Same(
+				NearestToolNames(u"get_history"_q, names, 1),
+				u"read_history"_q); !error.isEmpty()) {
+				return error;
+			}
+			if (const auto error = Same(
+				NearestToolNames(u"get_history"_q, names, 2),
+				u"read_history, get_message"_q); !error.isEmpty()) {
+				return error;
+			}
+			return Same(
+				NearestToolNames(u"get_history"_q, names, 0),
+				QString());
+		} },
+		{ u"snippet_short_unchanged"_q, [] {
+			if (const auto error = Same(
+				MatchSnippet(u"short text"_q, { u"zzz"_q }, 20),
+				u"short text"_q); !error.isEmpty()) {
+				return error;
+			}
+			if (const auto error = Same(
+				MatchSnippet(u"exact"_q, {}, 5),
+				u"exact"_q); !error.isEmpty()) {
+				return error;
+			}
+			return Same(MatchSnippet(u"abc"_q, {}, 0), u"abc"_q);
+		} },
+		{ u"snippet_match_in_middle"_q, [] {
+			const auto text = u"aaa bbb ccc ddd eee fff ggg hhh"_q;
+			return Same(
+				MatchSnippet(text, { u"eee"_q }, 16),
+				u"…ddd eee fff…"_q);
+		} },
+		{ u"snippet_match_at_start"_q, [] {
+			const auto text = u"aaa bbb ccc ddd eee fff ggg hhh"_q;
+			return Same(
+				MatchSnippet(text, { u"aaa"_q }, 10),
+				u"aaa bbb…"_q);
+		} },
+		{ u"snippet_match_at_end"_q, [] {
+			const auto text = u"aaa bbb ccc ddd eee fff ggg hhh"_q;
+			return Same(
+				MatchSnippet(text, { u"hhh"_q }, 12),
+				u"…fff ggg hhh"_q);
+		} },
+		{ u"snippet_no_match"_q, [] {
+			const auto text = u"aaa bbb ccc ddd eee fff ggg hhh"_q;
+			return Same(
+				MatchSnippet(text, { u"zzz"_q }, 10),
+				u"aaa bbb…"_q);
+		} },
+		{ u"snippet_earliest_query_match"_q, [] {
+			const auto text = u"aaa bbb ccc ddd eee fff ggg hhh"_q;
+			return Same(
+				MatchSnippet(text, { u"fff"_q, u"bbb"_q }, 10),
+				u"…bbb…"_q);
+		} },
+		{ u"snippet_edges_stay_without_whitespace"_q, [] {
+			const auto text = QString(30, 'x')
+				+ u" needle "_q
+				+ QString(60, 'y');
+			return Same(
+				MatchSnippet(text, { u"needle"_q }, 66),
+				u"…"_q
+					+ QString(21, 'x')
+					+ u" needle "_q
+					+ QString(37, 'y')
+					+ u"…"_q);
+		} },
+		{ u"snippet_surrogate_pair_at_left_edge"_q, [] {
+			return Same(
+				MatchSnippet(
+					u"a\U0001F600bcdefghij"_q,
+					{ u"bcdefghij"_q },
+					5),
+				u"…bcde…"_q);
+		} },
+		{ u"snippet_surrogate_pair_at_right_edge"_q, [] {
+			return Same(
+				MatchSnippet(
+					u"abcdefghij\U0001F600kl"_q,
+					{ u"abcdefghij"_q },
+					11),
+				u"abcdefghij…"_q);
+		} },
+		{ u"snippet_cyrillic_case"_q, [] {
+			return Same(
+				MatchSnippet(
+					u"Пример истории сообщений"_q,
+					{ u"ИСТОРИИ"_q },
+					10),
+				u"…истории…"_q);
+		} },
+		{ u"snippet_latin_case"_q, [] {
+			return Same(
+				MatchSnippet(
+					u"Example of message history"_q,
+					{ u"HISTORY"_q },
+					10),
+				u"…history"_q);
+		} },
+		{ u"turn_context_full"_q, [] {
+			auto context = TurnContext();
+			context.now = QDateTime(QDate(2026, 10, 22), QTime(14, 30));
+			context.zone = u"UTC+3"_q;
+			context.loadedGroups = { u"chat"_q, u"memory"_q };
+			context.topic = u"Project talk"_q;
+			context.pendingCards = 2;
+			return Same(
+				FormatTurnContext(context),
+				u"Now: 2026-10-22 14:30, Thursday, UTC+3.\n"
+				u"Loaded tool groups: chat, memory.\n"
+				u"The user has Project talk open.\n"
+				u"Waiting for the user's decision: 2 cards."_q);
+		} },
+		{ u"turn_context_only_now"_q, [] {
+			auto context = TurnContext();
+			context.now = QDateTime(QDate(2026, 10, 22), QTime(14, 30));
+			context.zone = u"UTC+3"_q;
+			return Same(
+				FormatTurnContext(context),
+				u"Now: 2026-10-22 14:30, Thursday, UTC+3."_q);
+		} },
+		{ u"turn_context_zone_empty"_q, [] {
+			auto context = TurnContext();
+			context.now = QDateTime(QDate(2026, 10, 22), QTime(9, 5));
+			return Same(
+				FormatTurnContext(context),
+				u"Now: 2026-10-22 09:05, Thursday."_q);
+		} },
+		{ u"turn_context_invalid_now"_q, [] {
+			auto context = TurnContext();
+			context.loadedGroups = { u"chat"_q };
+			context.pendingCards = 1;
+			return Same(
+				FormatTurnContext(context),
+				u"Loaded tool groups: chat.\n"
+				u"Waiting for the user's decision: 1 card."_q);
+		} },
+		{ u"turn_context_cards"_q, [] {
+			auto one = TurnContext();
+			one.pendingCards = 1;
+			if (const auto error = Same(
+				FormatTurnContext(one),
+				u"Waiting for the user's decision: 1 card."_q
+			); !error.isEmpty()) {
+				return error;
+			}
+			auto several = TurnContext();
+			several.pendingCards = 5;
+			if (const auto error = Same(
+				FormatTurnContext(several),
+				u"Waiting for the user's decision: 5 cards."_q
+			); !error.isEmpty()) {
+				return error;
+			}
+			auto zero = TurnContext();
+			zero.pendingCards = 0;
+			return Same(FormatTurnContext(zero), QString());
+		} },
+		{ u"turn_context_empty"_q, [] {
+			return Same(FormatTurnContext(TurnContext()), QString());
 		} },
 	};
 }
