@@ -187,7 +187,9 @@ QString MediaDescription(not_null<HistoryItem*> item) {
 	return u"media"_q;
 }
 
-QJsonObject SerializeMessage(not_null<HistoryItem*> item) {
+QJsonObject SerializeMessage(
+		not_null<HistoryItem*> item,
+		int maxTextChars) {
 	auto result = QJsonObject();
 	result.insert("id", QJsonValue(qint64(item->id.bare)));
 	result.insert(
@@ -211,7 +213,18 @@ QJsonObject SerializeMessage(not_null<HistoryItem*> item) {
 		}
 		result.insert("from", from);
 	}
-	result.insert("text", EntitiesToMarkdown(item->originalText()));
+	const auto text = EntitiesToMarkdown(item->originalText());
+	if (maxTextChars > 0 && text.size() > maxTextChars) {
+		auto cut = maxTextChars;
+		if (text[cut - 1].isHighSurrogate()) {
+			--cut;
+		}
+		result.insert("text", text.left(cut) + QString::fromUtf8("\xE2\x80\xA6"));
+		result.insert("truncated", QJsonValue(true));
+		result.insert("length", QJsonValue(int(text.size())));
+	} else {
+		result.insert("text", text);
+	}
 	if (const auto replyTo = item->replyToId()) {
 		result.insert("reply_to", QJsonValue(qint64(replyTo.bare)));
 	}
@@ -237,8 +250,10 @@ QJsonObject SerializeMessage(not_null<HistoryItem*> item) {
 	return result;
 }
 
-QJsonObject SerializeMessageWithChat(not_null<HistoryItem*> item) {
-	auto result = SerializeMessage(item);
+QJsonObject SerializeMessageWithChat(
+		not_null<HistoryItem*> item,
+		int maxTextChars) {
+	auto result = SerializeMessage(item, maxTextChars);
 	const auto peer = item->history()->peer;
 	auto chat = QJsonObject();
 	chat.insert("id", QJsonValue(qint64(peer->id.value)));

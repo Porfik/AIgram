@@ -236,7 +236,7 @@ QString DenyText(Decision decision) {
 		return schema;
 	}
 	auto properties = schema.value("properties").toObject();
-	if (param == ChatParam::Many) {
+	if (param == ChatParam::Many || param == ChatParam::OptionalMany) {
 		auto item = QJsonObject();
 		item.insert("type", QJsonValue(u"string"_q));
 		auto chats = QJsonObject();
@@ -244,10 +244,19 @@ QString DenyText(Decision decision) {
 		chats.insert("items", item);
 		chats.insert("minItems", QJsonValue(1));
 		chats.insert("maxItems", QJsonValue(100));
-		chats.insert("description", QJsonValue(
-			u"Target chats: 1 to 100 chat ids or @usernames, \"me\" for"
-			" Saved Messages."_q));
+		chats.insert("description", QJsonValue((param == ChatParam::Many)
+			? u"Target chats: 1 to 100 chat ids or @usernames, \"me\" for"
+				" Saved Messages."_q
+			: u"Chats to look in: 1 to 100 chat ids or @usernames, \"me\""
+				" for Saved Messages. Omit to look in all chats."_q));
 		properties.insert("chats", chats);
+		if (param == ChatParam::Many) {
+			auto required = schema.value("required").toArray();
+			if (!required.contains(QJsonValue(u"chats"_q))) {
+				required.push_back(u"chats"_q);
+				schema.insert("required", required);
+			}
+		}
 	} else {
 		properties.insert("chat", StringProperty(
 			u"Target chat: a chat id, an @username or \"me\" for Saved"
@@ -372,6 +381,10 @@ void ToolRegistry::setProvider(
 
 void ToolRegistry::setBackground(Fn<void(QString text)> notify) {
 	_notify = std::move(notify);
+}
+
+void ToolRegistry::beginTurn() {
+	_seen.clear();
 }
 
 std::vector<ToolSpec> ToolRegistry::tools() const {
@@ -528,6 +541,12 @@ void ToolRegistry::executeResolved(
 	};
 	pending->sessionId = _sessionId;
 	pending->notify = _notify;
+	pending->seen = [this](FullMsgId id) {
+		return _seen.contains(id);
+	};
+	pending->markSeen = [this](FullMsgId id) {
+		_seen.emplace(id);
+	};
 	const auto abilities = ComputeAbilities(
 		_session,
 		_provider ? _provider() : std::nullopt);
@@ -605,8 +624,17 @@ void ToolRegistry::executeResolved(
 			}
 			break;
 		}
-		case ChatParam::Many: {
-			const auto value = call.input.value("chats");
+		case ChatParam::Many:
+		case ChatParam::OptionalMany: {
+			auto value = call.input.value("chats");
+			if (entry.chatParam == ChatParam::OptionalMany
+				&& (value.isUndefined() || value.isNull())) {
+				const auto single = call.input.value("chat");
+				if (single.isUndefined() || single.isNull()) {
+					break;
+				}
+				value = QJsonArray{ single };
+			}
 			if (!value.isArray()) {
 				resolveError = u"chats must be an array of chat ids or"
 					" @usernames."_q;

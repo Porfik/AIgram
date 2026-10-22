@@ -10,8 +10,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_card.h"
 #include "agent/core/agent_media.h"
 #include "agent/core/agent_policy.h"
+#include "agent/core/agent_tool_catalog.h"
 #include "agent/core/agent_types.h"
 #include "base/weak_ptr.h"
+#include "data/data_msg_id.h"
 #include "mtproto/core_types.h"
 #include "mtproto/sender.h"
 
@@ -37,6 +39,7 @@ enum class ChatParam : uchar {
 	One,
 	OptionalOne,
 	Many,
+	OptionalMany,
 };
 
 enum class MediaNeed : uchar {
@@ -58,6 +61,8 @@ struct ToolEntry {
 	QString name;
 	QString description;
 	QString generalDescription;
+	QString snippet;
+	CatalogSection section = CatalogSection::Other;
 	QJsonObject inputSchema;
 	QJsonObject generalSchema;
 	ToolPolicy policy;
@@ -105,6 +110,8 @@ struct PendingCall final : base::has_weak_ptr {
 		Fn<void(QString text, QString error)> done)> askMediaModel;
 	Fn<std::optional<MediaBlock>(QString id)> readAttachment;
 	Fn<void(QString text)> notify;
+	Fn<bool(FullMsgId id)> seen;
+	Fn<void(FullMsgId id)> markSeen;
 	mtpRequestId historiesRequestId = 0;
 
 	void setRequestId(mtpRequestId id);

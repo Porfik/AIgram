@@ -26,12 +26,21 @@ struct ChatBrief {
 	bool canWrite = false;
 };
 
+enum class PromptFamily : uchar {
+	Generic,
+	Glm,
+};
+
+[[nodiscard]] PromptFamily PromptFamilyForModel(const QString &model);
+
 struct PromptContext {
 	Scope scope;
 	QString account;
 	QString instructions;
 	QString memory;
 	std::optional<ChatBrief> chat;
+	QString catalog;
+	PromptFamily family = PromptFamily::Generic;
 };
 
 struct TaskPromptContext {
@@ -42,6 +51,8 @@ struct TaskPromptContext {
 	QString task;
 	QString frame;
 	std::optional<ChatBrief> chat;
+	QString catalog;
+	PromptFamily family = PromptFamily::Generic;
 };
 
 [[nodiscard]] QString SystemPrompt(const PromptContext &context);

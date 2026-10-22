@@ -46,6 +46,7 @@ namespace {
 	append(ClaudeChecks());
 	append(ResponsesChecks());
 	append(ChatGptChecks());
+	append(ToolCatalogChecks());
 	return result;
 }
 

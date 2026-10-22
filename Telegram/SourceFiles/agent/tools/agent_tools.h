@@ -69,6 +69,7 @@ public:
 
 	void setProvider(Fn<std::optional<ProviderSettings>()> provider);
 	void setBackground(Fn<void(QString text)> notify);
+	void beginTurn();
 	void decide(const QString &toolUseId, CardDecision decision);
 	void expire(const QString &toolUseId);
 	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
@@ -122,6 +123,7 @@ private:
 	rpl::event_stream<HelperUsage> _helperUsage;
 	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _pending;
 	std::vector<QString> _loadedGroups;
+	base::flat_set<FullMsgId> _seen;
 	rpl::event_stream<Card> _cardUpdates;
 	rpl::event_stream<> _loadedGroupsChanges;
 	std::map<QString, Call, std::less<>> _calls;

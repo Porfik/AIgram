@@ -23,7 +23,11 @@ namespace Agent::ToolFormat {
 [[nodiscard]] QString PeerUsername(not_null<PeerData*> peer);
 [[nodiscard]] QString EntitiesToMarkdown(const TextWithEntities &text);
 [[nodiscard]] QString MediaDescription(not_null<HistoryItem*> item);
-[[nodiscard]] QJsonObject SerializeMessage(not_null<HistoryItem*> item);
-[[nodiscard]] QJsonObject SerializeMessageWithChat(not_null<HistoryItem*> item);
+[[nodiscard]] QJsonObject SerializeMessage(
+	not_null<HistoryItem*> item,
+	int maxTextChars = 0);
+[[nodiscard]] QJsonObject SerializeMessageWithChat(
+	not_null<HistoryItem*> item,
+	int maxTextChars = 0);
 
 } // namespace Agent::ToolFormat

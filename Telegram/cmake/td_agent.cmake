@@ -74,6 +74,8 @@ PRIVATE
     agent/core/agent_tl_codec.h
     agent/core/agent_tl_schema.cpp
     agent/core/agent_tl_schema.h
+    agent/core/agent_tool_catalog.cpp
+    agent/core/agent_tool_catalog.h
     agent/core/agent_transport.h
     agent/core/agent_types.cpp
     agent/core/agent_types.h
@@ -123,6 +125,7 @@ PRIVATE
     agent/core/tests/agent_tests.h
     agent/core/tests/agent_tests_main.cpp
     agent/core/tests/agent_tl_tests.cpp
+    agent/core/tests/agent_tool_catalog_tests.cpp
 )
 
 target_include_directories(td_agent_test

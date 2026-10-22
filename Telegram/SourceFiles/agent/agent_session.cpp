@@ -525,6 +525,7 @@ void Session::dispatch(SendRequest request) {
 		}
 	}
 	_gate->beginTurn(std::move(named));
+	_tools->beginTurn();
 	if (!request.untrusted.isEmpty()
 		|| !request.attachments.empty()) {
 		_gate->markTainted();
