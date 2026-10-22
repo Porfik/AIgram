@@ -70,6 +70,7 @@ public:
 	void setProvider(Fn<std::optional<ProviderSettings>()> provider);
 	void setBackground(Fn<void(QString text)> notify);
 	void beginTurn();
+	[[nodiscard]] QString catalog() const;
 	void decide(const QString &toolUseId, CardDecision decision);
 	void expire(const QString &toolUseId);
 	[[nodiscard]] bool canUndo(const QString &toolUseId) const;
@@ -93,6 +94,9 @@ private:
 		not_null<PendingCall*> call);
 	void finishCard(const QString &toolUseId, Card card);
 	void loadGroup(const QString &toolUseId, QString group);
+	void findTools(const QString &toolUseId, QString query);
+	[[nodiscard]] bool groupAvailable(const QString &group) const;
+	[[nodiscard]] QString groupsText() const;
 	void deliver(
 		const QString &toolUseId,
 		QString content,
@@ -124,6 +128,7 @@ private:
 	std::map<QString, std::unique_ptr<PendingCall>, std::less<>> _pending;
 	std::vector<QString> _loadedGroups;
 	base::flat_set<FullMsgId> _seen;
+	base::flat_map<QString, QString> _turnReads;
 	rpl::event_stream<Card> _cardUpdates;
 	rpl::event_stream<> _loadedGroupsChanges;
 	std::map<QString, Call, std::less<>> _calls;

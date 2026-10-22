@@ -112,46 +112,115 @@ struct CallAbilities {
 	return names.join(u", "_q);
 }
 
-[[nodiscard]] QString LoadToolsDescription(bool account) {
-	struct Group {
-		QString name;
-		QString about;
-	};
-	const auto groups = std::vector<Group>{
-		{ kFoldersGroup, QString() },
-		{ kFilesGroup, QString() },
-		{ kTasksGroup, u"background tasks that run on new messages or on"
-			" a schedule"_q },
-		{ kAdminGroup, account
-			? u"administering groups and channels"_q
-			: u"administering this chat"_q },
-		{ kContactsGroup, account
-			? u"contacts and blocking"_q
-			: u"contacts and blocking, only in a private chat"_q },
-		{ kProfileGroup, u"the user's own profile"_q },
-		{ kTelegramAiGroup, u"Telegram's own AI: summaries, translation,"
-			" rewriting"_q },
-		{ kMtprotoGroup, u"the raw Telegram API, only for what no other"
-			" tool does"_q },
-	};
-	auto parts = QStringList();
-	auto names = QStringList();
-	for (const auto &group : groups) {
-		const auto tools = GroupToolNames(group.name, account);
-		if (tools.isEmpty()) {
-			continue;
-		}
-		names.push_back(u"\"%1\""_q.arg(group.name));
-		parts.push_back(group.about.isEmpty()
-			? u"\"%1\": %2."_q.arg(group.name, tools)
-			: u"\"%1\" (%2): %3."_q.arg(group.name, group.about, tools));
+[[nodiscard]] QString GroupWhen(const QString &group, bool account) {
+	if (group == kFoldersGroup) {
+		return account
+			? u"create, rename, fill, reorder or delete chat folders"_q
+			: u"put this chat into a folder or take it out"_q;
+	} else if (group == kFilesGroup) {
+		return u"save photos and files of messages to the computer, send"
+			" files from the agent folder or list it"_q;
+	} else if (group == kTasksGroup) {
+		return u"remind later, repeat on a schedule or act on new messages"
+			" in the background"_q;
+	} else if (group == kAdminGroup) {
+		return account
+			? u"members, admins, invite links, join requests, a chat's"
+				" title, photo and permissions; create, join or leave chats"_q
+			: u"members, admins, invite links, join requests, this chat's"
+				" title, photo and permissions; leave it"_q;
+	} else if (group == kContactsGroup) {
+		return account
+			? u"list, add, rename or delete contacts; block or unblock"_q
+			: u"add, rename or delete this person as a contact; block"_q;
+	} else if (group == kProfileGroup) {
+		return u"the user's own name, bio, photo and emoji status"_q;
+	} else if (group == kTelegramAiGroup) {
+		return u"Telegram's own summaries, translation and text rewriting"_q;
+	} else if (group == kMtprotoGroup) {
+		return u"the raw Telegram API, only for what no other tool does"_q;
 	}
-	return u"Load an additional group of tools: %1. %2"_q.arg(
-		names.join(u", "_q),
-		parts.join(u' '));
+	return QString();
+}
+
+[[nodiscard]] QString LoadToolsDescription(bool account) {
+	auto names = QStringList();
+	for (const auto &group : GroupNames()) {
+		if (!GroupToolNames(group, account).isEmpty()) {
+			names.push_back(group);
+		}
+	}
+	return u"Load a group of tools by its name (%1), or find tools by a"
+		" few English words of what you need, which loads their groups."
+		" The tool catalog shows the group of each tool. Loaded tools stay"
+		" for the whole session."_q.arg(names.join(u", "_q));
 }
 
 const std::vector<ToolEntry> &ToolsTable();
+
+[[nodiscard]] QString UnknownToolText(const QString &name) {
+	auto names = std::vector<QString>();
+	for (const auto &entry : ToolsTable()) {
+		names.push_back(entry.name);
+	}
+	auto suggestions = QStringList();
+	for (const auto &suggestion : NearestToolNames(name, names, 3)) {
+		const auto i = ranges::find(
+			ToolsTable(),
+			suggestion,
+			&ToolEntry::name);
+		suggestions.push_back(i->group.isEmpty()
+			? suggestion
+			: u"%1 (group %2)"_q.arg(suggestion, i->group));
+	}
+	return suggestions.isEmpty()
+		? u"Unknown tool: %1. Use only tools of the tool catalog."_q.arg(
+			name)
+		: u"Unknown tool: %1. Did you mean %2? Tools of a group work after"
+			" load_tools."_q.arg(name, suggestions.join(u", "_q));
+}
+
+[[nodiscard]] QString PropertyType(const QJsonObject &property) {
+	const auto type = property.value("type").toString();
+	if (type == u"array"_q) {
+		const auto items = property.value("items").toObject();
+		const auto item = items.value("type").toString();
+		return item.isEmpty() ? type : (u"array of "_q + item);
+	}
+	return type.isEmpty() ? u"value"_q : type;
+}
+
+[[nodiscard]] QString CallSignature(
+		const QString &name,
+		const QJsonObject &schema) {
+	const auto properties = schema.value("properties").toObject();
+	const auto required = schema.value("required").toArray();
+	auto parts = QStringList();
+	for (const auto &key : required) {
+		const auto property = properties.value(key.toString()).toObject();
+		parts.push_back(key.toString() + u": "_q + PropertyType(property));
+	}
+	for (auto i = properties.begin(); i != properties.end(); ++i) {
+		if (!required.contains(QJsonValue(i.key()))) {
+			parts.push_back(i.key()
+				+ u"?: "_q
+				+ PropertyType(i.value().toObject()));
+		}
+	}
+	return name + '(' + parts.join(u", "_q) + ')';
+}
+
+[[nodiscard]] QString MissingRequired(
+		const QJsonObject &schema,
+		const QJsonObject &input) {
+	for (const auto &key : schema.value("required").toArray()) {
+		const auto value = input.value(key.toString());
+		if (value.isUndefined() || value.isNull()) {
+			return key.toString();
+		}
+	}
+	return QString();
+}
 
 [[nodiscard]] std::vector<QString> UnresolvedUsernames(
 		not_null<Main::Session*> session,
@@ -276,11 +345,13 @@ QString DenyText(Decision decision) {
 ToolEntry LoadToolsEntry() {
 	auto properties = QJsonObject();
 	properties.insert("group", StringProperty(
-		u"The tool group to load."_q));
+		u"A group name, or a few English words describing the tools you"
+		" need."_q));
 	return ToolEntry{
 		.name = u"load_tools"_q,
 		.description = LoadToolsDescription(false),
 		.generalDescription = LoadToolsDescription(true),
+		.snippet = u"load a tool group, or find tools by words"_q,
 		.inputSchema = ToolSchema(
 			std::move(properties),
 			QJsonArray{ QJsonValue(u"group"_q) }),
@@ -385,6 +456,7 @@ void ToolRegistry::setBackground(Fn<void(QString text)> notify) {
 
 void ToolRegistry::beginTurn() {
 	_seen.clear();
+	_turnReads.clear();
 }
 
 std::vector<ToolSpec> ToolRegistry::tools() const {
@@ -492,7 +564,7 @@ void ToolRegistry::executeResolved(
 		done(ToolResultBlock{
 			.toolUseId = call.id,
 			.content = CapToolResult(
-				u"Unknown tool: %1."_q.arg(call.name),
+				UnknownToolText(call.name),
 				kToolResultMaxChars),
 			.error = true,
 		});
@@ -507,6 +579,27 @@ void ToolRegistry::executeResolved(
 			.content = CapToolResult(
 				u"Tool %1 is not loaded. Call load_tools with group"
 				" \"%2\" first."_q.arg(call.name, entry.group),
+				kToolResultMaxChars),
+			.error = true,
+		});
+		return;
+	}
+	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	const auto schema = account
+		? WithChatParam(
+			entry.chatParam,
+			(entry.generalSchema.isEmpty()
+				? entry.inputSchema
+				: entry.generalSchema))
+		: entry.inputSchema;
+	if (const auto missing = MissingRequired(schema, call.input)
+		; !missing.isEmpty()) {
+		done(ToolResultBlock{
+			.toolUseId = call.id,
+			.content = CapToolResult(
+				u"Missing required parameter \"%1\". Call it as %2."_q.arg(
+					missing,
+					CallSignature(entry.name, schema)),
 				kToolResultMaxChars),
 			.error = true,
 		});
@@ -709,6 +802,25 @@ void ToolRegistry::executeResolved(
 		deliver(call.id, DenyText(decision), true);
 		return;
 	}
+	if (gatePolicy.risk != Risk::Read) {
+		_turnReads.clear();
+	} else if (entry.name != u"load_tools"_q) {
+		const auto key = gateTool + ' ' + QString::fromUtf8(
+			QJsonDocument(call.input).toJson(QJsonDocument::Compact));
+		const auto earlier = _turnReads.find(key);
+		if (earlier != end(_turnReads)) {
+			deliver(
+				call.id,
+				u"You already called %1 with the same arguments in this"
+				" request (call %2). Use that result, or change the"
+				" arguments or the approach."_q.arg(
+					entry.name,
+					earlier->second),
+				true);
+			return;
+		}
+		_turnReads.emplace(key, call.id);
+	}
 	raw->peer = peer;
 	raw->peers = std::move(peers);
 	const auto weak = base::make_weak(this);
@@ -837,21 +949,138 @@ void ToolRegistry::finishCard(const QString &toolUseId, Card card) {
 		untrusted);
 }
 
+bool ToolRegistry::groupAvailable(const QString &group) const {
+	return ranges::any_of(ToolsTable(), [&](const ToolEntry &entry) {
+		return (entry.group == group)
+			&& _gate->available(entry.policy)
+			&& ForScopePeer(_session, *_gate, entry);
+	});
+}
+
+QString ToolRegistry::groupsText() const {
+	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	auto lines = QStringList();
+	for (const auto &group : GroupNames()) {
+		if (groupAvailable(group)) {
+			lines.push_back(u"\"%1\": %2"_q.arg(
+				group,
+				GroupWhen(group, account)));
+		}
+	}
+	return lines.join(u"; "_q);
+}
+
+void ToolRegistry::findTools(const QString &toolUseId, QString query) {
+	query = query.trimmed();
+	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	auto entries = std::vector<const ToolEntry*>();
+	auto documents = std::vector<ToolDocument>();
+	for (const auto &entry : ToolsTable()) {
+		if (entry.group.isEmpty()
+			|| !_gate->available(entry.policy)
+			|| !ForScopePeer(_session, *_gate, entry)) {
+			continue;
+		}
+		const auto schema = (account && !entry.generalSchema.isEmpty())
+			? entry.generalSchema
+			: entry.inputSchema;
+		auto text = QStringList{
+			entry.name,
+			QString(entry.name).replace('_', ' '),
+			entry.snippet,
+			((account && !entry.generalDescription.isEmpty())
+				? entry.generalDescription
+				: entry.description),
+			entry.group,
+		};
+		const auto properties = schema.value("properties").toObject();
+		for (auto i = properties.begin(); i != properties.end(); ++i) {
+			text.push_back(i.key());
+		}
+		entries.push_back(&entry);
+		documents.push_back({ entry.name, text.join(' ') });
+	}
+	const auto found = query.isEmpty()
+		? std::vector<int>()
+		: RankToolDocuments(query, documents, 5);
+	if (found.empty()) {
+		deliver(
+			toolUseId,
+			u"No tools match \"%1\". Load a group by its name: %2."_q.arg(
+				query,
+				groupsText()),
+			true);
+		return;
+	}
+	auto tools = QJsonArray();
+	auto loaded = QJsonArray();
+	auto added = false;
+	for (const auto index : found) {
+		const auto entry = entries[index];
+		auto tool = QJsonObject();
+		tool.insert("name", entry->name);
+		tool.insert("group", entry->group);
+		tool.insert("snippet", entry->snippet);
+		tools.push_back(tool);
+		if (!loaded.contains(QJsonValue(entry->group))) {
+			loaded.push_back(entry->group);
+		}
+		if (!ranges::contains(_loadedGroups, entry->group)) {
+			_loadedGroups.push_back(entry->group);
+			added = true;
+		}
+	}
+	auto json = QJsonObject();
+	json.insert("query", query);
+	json.insert("tools", tools);
+	json.insert("loaded", loaded);
+	if (added) {
+		const auto weak = base::make_weak(this);
+		_loadedGroupsChanges.fire({});
+		if (!weak) {
+			return;
+		}
+	}
+	deliverJson(toolUseId, std::move(json));
+}
+
+QString ToolRegistry::catalog() const {
+	const auto background = _gate->background();
+	const auto account = (_gate->scope().kind == ScopeKind::Account);
+	const auto abilities = ComputeAbilities(
+		_session,
+		_provider ? _provider() : std::nullopt);
+	auto entries = std::vector<CatalogEntry>();
+	auto groups = std::vector<CatalogGroup>();
+	for (const auto &entry : ToolsTable()) {
+		if (!_gate->available(entry.policy)
+			|| !NeedsMet(entry.needs, abilities)
+			|| !ForScopePeer(_session, *_gate, entry)) {
+			continue;
+		}
+		entries.push_back({
+			.name = entry.name,
+			.snippet = entry.snippet,
+			.group = background ? QString() : entry.group,
+			.section = entry.section,
+		});
+	}
+	if (!background) {
+		for (const auto &group : GroupNames()) {
+			if (groupAvailable(group)) {
+				groups.push_back({ group, GroupWhen(group, account) });
+			}
+		}
+	}
+	return FormatToolCatalog(entries, groups);
+}
+
 void ToolRegistry::loadGroup(const QString &toolUseId, QString group) {
 	if (!_pending.contains(toolUseId)) {
 		return;
 	}
 	if (!ranges::contains(GroupNames(), group)) {
-		auto names = QStringList();
-		for (const auto &name : GroupNames()) {
-			names.push_back(u"\"%1\""_q.arg(name));
-		}
-		deliver(
-			toolUseId,
-			u"Unknown tool group: %1. The groups are %2."_q.arg(
-				group.isEmpty() ? u"(empty)"_q : group,
-				names.join(u", "_q)),
-			true);
+		findTools(toolUseId, group);
 		return;
 	}
 	auto json = QJsonObject();

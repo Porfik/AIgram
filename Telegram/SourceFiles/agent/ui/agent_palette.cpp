@@ -13,6 +13,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_session.h"
 #include "agent/ui/agent_chat_view.h"
 #include "agent/ui/agent_section.h"
+#include "data/data_forum_topic.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
 #include "data/data_thread.h"
@@ -62,6 +63,7 @@ private:
 	const not_null<Window::SessionController*> _controller;
 	const not_null<Manager*> _manager;
 	PeerData *_openPeer = nullptr;
+	MsgId _openTopic = 0;
 	object_ptr<::Ui::UserpicButton> _userpic;
 	object_ptr<FlatLabel> _title;
 	object_ptr<IconButton> _new;
@@ -97,6 +99,10 @@ PaletteLayer::PaletteLayer(
 		&& !IsAgentPeer(peer)
 		&& !_manager->exclusions().excluded(peer->id.value)) {
 		_openPeer = peer;
+		const auto thread = controller->activeChatCurrent().thread();
+		if (const auto topic = thread ? thread->asTopic() : nullptr) {
+			_openTopic = topic->rootId();
+		}
 	}
 	_userpic->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_view->setComposerOnTop(true);
@@ -139,12 +145,16 @@ QString PaletteLayer::openChatHint() const {
 		return QString();
 	}
 	const auto id = QString::number(_openPeer->id.value);
+	const auto topic = _openTopic
+		? u" The forum topic with topic_id %1 is open in it."_q.arg(
+			_openTopic.bare)
+		: QString();
 	return _openPeer->isSelf()
 		? (u"The user has Saved Messages (id %1) open; \"this chat\" and"
 			" similar words mean it."_q.arg(id))
 		: (u"The user has the chat with id %1 open; \"this chat\" and"
 			" similar words mean it. Its title is written by others: read"
-			" it with get_peer_info when you need it."_q.arg(id));
+			" it with get_peer_info when you need it."_q.arg(id) + topic);
 }
 
 void PaletteLayer::refreshTitle() {

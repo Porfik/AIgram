@@ -1808,7 +1808,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   next turn. `retry()` resumes a failed turn whose history ends with a user
   message.
 - A dispatch builds the user message (the text, then the hint as a hidden
-  block), starts a policy turn with the mentions plus `FindNamedPeers()`,
+  block; the hint gets the undo line, then `FormatTurnContext()` with the
+  local time, `ZoneText()` (the system time zone id and `UTC±hh:mm`), the
+  loaded groups and the record's pending cards, then the chat counters),
+  starts a policy turn with the mentions plus `FindNamedPeers()`,
   compacts first when `PlanCompaction()` asks, and recreates the `Loop` from
   `ContextMessages()` with a fresh system prompt and the session's
   provider.
@@ -2259,12 +2262,31 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   description names each group with the tools the scope may use; a group
   with none of them in the scope (for the chat scope also by `forPeer`)
   fails to load. Loading an already loaded group is a no-op success.
-  Stage 7: `load_tools` takes a `query` instead of a `group`:
-  `RankToolDocuments()` over the group tools available in the scope
-  (document: name, snippet, description, parameter names, group), at
-  most 5 matches; it loads every group with a match and returns
-  `{"query", "tools": [{"name", "group", "snippet"}], "loaded": [groups]}`;
-  without matches it fails listing the groups with their `when` lines.
+  Stage 7: `group` takes a group name or a few English words; words
+  that are not a group name are a query: `RankToolDocuments()` over the
+  group tools available in the scope (document: name, the name with
+  spaces, snippet, description, parameter names, group), at most 5
+  matches; it loads every group with a match and returns `{"query",
+  "tools": [{"name", "group", "snippet"}], "loaded": [groups]}`; without
+  matches it fails listing the available groups with their `when` lines
+  (`GroupWhen()`, also used by the catalog).
+- `ToolRegistry::catalog()` is `FormatToolCatalog()` of every table entry
+  the gate makes available whose media needs are met (`NeedsMet()`) and
+  that works with the scope peer, with its group (no group in background
+  runs, where every tool is listed) and the available groups with their
+  `when` lines (none in runs). The session passes it to both prompts.
+- Before running a call the registry checks the `required` parameters
+  of the scope's schema: a missing one fails with `Missing required
+  parameter "<p>". Call it as <name>(<p>: <type>, <q>?: <type>, ...).`
+  An unknown tool name fails with up to three `NearestToolNames()` (with
+  their groups) or, without any, "Use only tools of the tool catalog."
+- Repeated reads: after the gate allows a `Read` call (by the gate's
+  policy, so `call_method` reads count), the same tool key with the same
+  compact JSON input earlier in the turn fails without running ("You
+  already called <tool> with the same arguments in this request (call
+  <id>). Use that result, or change the arguments or the approach.");
+  `load_tools` is exempt. Any non-`Read` call clears the turn's reads,
+  since state may have changed; `beginTurn()` clears them too.
 - `ToolEntry::forPeer`, when set, says which chats the tool works with.
   In the chat scope an entry whose `forPeer` is false for the scope peer
   (or that peer is not loaded) is not listed and is not loaded by
@@ -3232,6 +3254,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   "Open in the agent" closes the palette and opens the session with
   `ShowGeneralAgentSession()`. Escape, the close button and a click
   outside close it; the session keeps working.
+- The palette also names the open forum topic by `topic_id` (stage 7).
 - The palette knows the chat open in the window when it opened (unless
   it is hidden from the agent or is the agent chat itself): every request
   adds the hint `The user

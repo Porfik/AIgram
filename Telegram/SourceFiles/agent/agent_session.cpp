@@ -23,6 +23,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_prompts.h"
 #include "agent/core/agent_request.h"
 #include "agent/core/agent_spending.h"
+#include "agent/core/agent_tool_catalog.h"
 #include "agent/tools/agent_tools.h"
 #include "base/algorithm.h"
 #include "base/unixtime.h"
@@ -33,8 +34,22 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include <rpl/producer.h>
 
+#include <QtCore/QDateTime>
+#include <QtCore/QTimeZone>
+
 namespace Agent {
 namespace {
+
+[[nodiscard]] QString ZoneText() {
+	const auto offset = QDateTime::currentDateTime().offsetFromUtc();
+	const auto minutes = std::abs(offset) / 60;
+	const auto utc = u"UTC%1%2:%3"_q
+		.arg((offset < 0) ? '-' : '+')
+		.arg(minutes / 60, 2, 10, QChar('0'))
+		.arg(minutes % 60, 2, 10, QChar('0'));
+	const auto id = QString::fromUtf8(QTimeZone::systemTimeZoneId());
+	return id.isEmpty() ? utc : (id + u", "_q + utc);
+}
 
 constexpr auto kProvisionalTitleLimit = 60;
 
@@ -497,6 +512,15 @@ void Session::dispatch(SendRequest request) {
 		}
 	};
 	addHint(undoHint());
+	addHint(FormatTurnContext({
+		.now = QDateTime::currentDateTime(),
+		.zone = ZoneText(),
+		.loadedGroups = _tools->loadedGroups(),
+		.pendingCards = int(ranges::count(
+			_record.cards,
+			CardStatus::Pending,
+			&Card::status)),
+	}));
 	if (_record.info.scope.kind == ScopeKind::Chat) {
 		if (const auto peer = _manager->session().data().peerLoaded(
 				PeerId(_record.info.scope.peer))) {
@@ -599,6 +623,10 @@ QString Session::buildSystem() const {
 			brief = MakeChatBrief(peer);
 		}
 	}
+	const auto provider = currentProvider();
+	const auto family = provider
+		? PromptFamilyForModel(provider->model)
+		: PromptFamily::Generic;
 	if (_run) {
 		return TaskSystemPrompt({
 			.scope = _record.info.scope,
@@ -608,6 +636,8 @@ QString Session::buildSystem() const {
 			.task = _run->task.instruction,
 			.frame = _run->frame,
 			.chat = brief,
+			.catalog = _tools->catalog(),
+			.family = family,
 		});
 	}
 	return SystemPrompt({
@@ -617,6 +647,8 @@ QString Session::buildSystem() const {
 		.memory = FormatMemory(
 			_manager->memories().get(_record.info.scope.peer)),
 		.chat = brief,
+		.catalog = _tools->catalog(),
+		.family = family,
 	});
 }
 
