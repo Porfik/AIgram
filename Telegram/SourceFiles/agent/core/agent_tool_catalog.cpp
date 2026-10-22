@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_tool_catalog.h"
 
 #include "base/basic_types.h"
+#include "base/flat_map.h"
 #include "base/flat_set.h"
 
 #include <QtCore/QLocale>
@@ -148,6 +149,137 @@ QString FormatToolCatalog(
 		}
 	}
 	return lines.join(u'\n');
+}
+
+std::vector<int> RankToolDocuments(
+		const QString &query,
+		const std::vector<ToolDocument> &documents,
+		int limit) {
+	const auto queryWords = Words(query);
+	if (queryWords.isEmpty() || documents.empty() || limit <= 0) {
+		return {};
+	}
+	auto terms = std::vector<QString>();
+	{
+		auto seen = base::flat_set<QString>();
+		for (const auto &word : queryWords) {
+			if (IsStopWord(word)) {
+				continue;
+			}
+			const auto stem = Stem(word);
+			if (seen.insert(stem).second) {
+				terms.push_back(stem);
+			}
+		}
+	}
+	if (terms.empty()) {
+		return {};
+	}
+	const auto count = int(documents.size());
+	auto frequencies = std::vector<base::flat_map<QString, int>>();
+	frequencies.reserve(count);
+	auto lengths = std::vector<int>(count, 0);
+	auto totalLength = 0;
+	for (auto i = 0; i != count; ++i) {
+		auto words = Words(documents[i].name);
+		words += Words(documents[i].text);
+		auto map = base::flat_map<QString, int>();
+		for (const auto &word : words) {
+			if (IsStopWord(word)) {
+				continue;
+			}
+			++map[Stem(word)];
+		}
+		for (const auto &[term, tf] : map) {
+			lengths[i] += tf;
+		}
+		totalLength += lengths[i];
+		frequencies.push_back(std::move(map));
+	}
+	if (!totalLength) {
+		return {};
+	}
+	auto dfs = base::flat_map<QString, int>();
+	for (const auto &term : terms) {
+		auto df = 0;
+		for (const auto &map : frequencies) {
+			if (map.contains(term)) {
+				++df;
+			}
+		}
+		dfs.emplace(term, df);
+	}
+	auto rarest = QString();
+	auto rarestDf = 0;
+	auto answerable = 0;
+	for (const auto &term : terms) {
+		const auto df = dfs[term];
+		if (!df) {
+			continue;
+		}
+		++answerable;
+		if (!rarestDf || df < rarestDf) {
+			rarest = term;
+			rarestDf = df;
+		}
+	}
+	if (!rarestDf) {
+		return {};
+	}
+	constexpr auto kK1 = 1.2;
+	constexpr auto kB = 0.75;
+	const auto avgdl = float64(totalLength) / count;
+	struct Match {
+		int index = 0;
+		float64 score = 0.;
+	};
+	auto matches = std::vector<Match>();
+	matches.reserve(count);
+	for (auto i = 0; i != count; ++i) {
+		const auto &map = frequencies[i];
+		if (!map.contains(rarest)) {
+			continue;
+		} else if (answerable >= 4) {
+			auto present = 0;
+			for (const auto &term : terms) {
+				if (dfs[term] && map.contains(term)) {
+					++present;
+				}
+			}
+			if (present * 2 < answerable + 1) {
+				continue;
+			}
+		}
+		auto score = 0.;
+		for (const auto &[term, tf] : map) {
+			const auto dfIt = dfs.find(term);
+			if (dfIt == dfs.end() || !dfIt->second) {
+				continue;
+			}
+			const auto idf = std::log(
+				1.0 + (count - dfIt->second + 0.5) / (dfIt->second + 0.5));
+			score += idf * tf * (kK1 + 1)
+				/ (tf + kK1 * (1 - kB + kB * lengths[i] / avgdl));
+		}
+		if (score > 0) {
+			matches.push_back({ i, score });
+		}
+	}
+	std::stable_sort(
+		matches.begin(),
+		matches.end(),
+		[](const Match &a, const Match &b) {
+			return a.score > b.score;
+		});
+	if (matches.size() > limit) {
+		matches.resize(limit);
+	}
+	auto result = std::vector<int>();
+	result.reserve(matches.size());
+	for (const auto &match : matches) {
+		result.push_back(match.index);
+	}
+	return result;
 }
 
 } // namespace Agent
