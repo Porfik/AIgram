@@ -1428,7 +1428,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   every turn end.
 - A turn that fails with a context overflow is compacted and resumed once.
   After the first completed turn of a session without a final title a
-  `TitleRequest()` names it.
+  `TitleRequest()` names it; Stop cancels a title request still in
+  flight, and the next completed turn asks again.
 - `record()` changes fire `recordChanges()`; `live()` forwards the running
   turn's engine events for streaming; `state()` changes fire
   `stateChanges()`.
@@ -2380,9 +2381,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   all"; cards are their title, targets, rows and quoted text with the
   status line in italics and inline buttons by state ("Send (N)" /
   "Confirm (N)" primary, "To draft" / "Append", "Edit..." or
-  "Details..." for cards a box adds to, "Decline" danger; "Continue in
-  the general agent" for a handoff; "Show in Folder" for a done
-  download); the summary, the handoff note, "Summarizing…" and the
+  "Details..." for cards a box adds to, "Decline" danger, on the first
+  row next to the main button when the card has neither a box nor an
+  alternate; "Continue in the general agent" for a handoff; "Show in
+  Folder" for a done download); the summary, the handoff note, "Summarizing…" and the
   session spending are service messages; a failed turn is an incoming
   message with "Retry" (and "Model settings" for auth errors); queued
   messages are outgoing with the sending clock. Buttons carry
@@ -2673,7 +2675,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `ShowGeneralAgentSession()`. Escape, the close button and a click
   outside close it; the session keeps working.
 - The palette knows the chat open in the window when it opened (unless
-  it is hidden from the agent): every request adds the hint `The user
+  it is hidden from the agent or is the agent chat itself): every request
+  adds the hint `The user
   has the chat "<title>" (id <id>) open; "this chat" and similar words
   mean it.` and the chat to `mentions`.
 - `CanPassToAgent()` is true for regular non-service messages of one
