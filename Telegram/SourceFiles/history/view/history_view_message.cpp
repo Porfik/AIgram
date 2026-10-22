@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "history/view/history_view_message.h"
 
+#include "agent/agent_chat.h"
 #include "api/api_suggest_post.h"
 #include "api/api_transcribes.h"
 #include "base/options.h"
@@ -3945,7 +3946,9 @@ TextState Message::textState(
 		keyboardHeight = keyboard->naturalHeight();
 		g.setHeight(g.height() - st::msgBotKbButton.margin - keyboardHeight);
 
-		if (item->isHistoryEntry() || item->isAdminLogEntry()) {
+		if (item->isHistoryEntry()
+			|| item->isAdminLogEntry()
+			|| Agent::IsAgentHistory(item->history())) {
 			const auto keyboardPosition = QPoint(g.left(), g.top() + g.height() + st::msgBotKbButton.margin);
 			if (QRect(keyboardPosition, QSize(g.width(), keyboardHeight)).contains(point)) {
 				AddTextStateOffset(&result, visibleMediaTextLen + visibleTextLen);

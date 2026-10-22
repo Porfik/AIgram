@@ -107,7 +107,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   `Section::Type::Agent`, the agent profile; `thirdSectionIsAgentPanel()`
   skips it, so leaving the agent chat shows the next chat's profile) and
   `Api::ActivateBotButton()` (`ChatItems::Activate()` handles the inline
-  buttons of agent items). `Exclusions::excluded()` is true for the agent
+  buttons of agent items) and `HistoryView::Message::textState()` (agent
+  items are no history entries, so their inline keyboard is hit-tested
+  like an admin log entry's). `Exclusions::excluded()` is true for the agent
   peer, so tools never see it.
 - `HistoryView::ComposeControlsDescriptor` has `customMenuText` /
   `customMenuClicked` (a bot-menu-style button left of the field, the
