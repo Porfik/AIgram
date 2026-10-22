@@ -3036,8 +3036,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - The palette knows the chat open in the window when it opened (unless
   it is hidden from the agent or is the agent chat itself): every request
   adds the hint `The user
-  has the chat "<title>" (id <id>) open; "this chat" and similar words
-  mean it.` and the chat to `mentions`.
+  has the chat with id <id> open; "this chat" and similar words mean
+  it.` plus a note that its title is written by others and comes from
+  `get_peer_info` (the title never goes into this trusted hint; for
+  Saved Messages the hint names them), and the chat to `mentions`.
 - `CanPassToAgent()` is true for regular non-service messages of one
   chat that is not hidden from the agent, while `Manager::enabled()`.
   `PassToAgent()` resolves the ids (a single id expands to its album),

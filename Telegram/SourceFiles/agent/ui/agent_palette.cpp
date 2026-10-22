@@ -138,12 +138,13 @@ QString PaletteLayer::openChatHint() const {
 	if (!_openPeer) {
 		return QString();
 	}
-	return u"The user has the chat \"%1\" (id %2) open; \"this chat\" and"
-		" similar words mean it."_q.arg(
-			(_openPeer->isSelf()
-				? tr::lng_saved_messages(tr::now)
-				: _openPeer->name()),
-			QString::number(_openPeer->id.value));
+	const auto id = QString::number(_openPeer->id.value);
+	return _openPeer->isSelf()
+		? (u"The user has Saved Messages (id %1) open; \"this chat\" and"
+			" similar words mean it."_q.arg(id))
+		: (u"The user has the chat with id %1 open; \"this chat\" and"
+			" similar words mean it. Its title is written by others: read"
+			" it with get_peer_info when you need it."_q.arg(id));
 }
 
 void PaletteLayer::refreshTitle() {
