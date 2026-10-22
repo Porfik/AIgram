@@ -685,7 +685,8 @@ void ToolRegistry::executeResolved(
 	raw->peers = std::move(peers);
 	const auto weak = base::make_weak(this);
 	if (decision.verdict == Verdict::Confirm
-		&& gatePolicy.risk == Risk::Reversible) {
+		&& gatePolicy.risk == Risk::Reversible
+		&& !gatePolicy.taintedAsks) {
 		confirmAction(call.id, entry, raw);
 		if (!weak) {
 			return;

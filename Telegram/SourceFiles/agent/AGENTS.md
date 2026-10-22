@@ -904,7 +904,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `check()` decides in this order: not available, `NotInMode`; risk
   `Forbidden`, `Forbidden`; any excluded peer, `Excluded`; a zero peer or, in
   the chat scope, any other peer, `OutOfScope`. `Read` and `Reversible` are
-  allowed. `Visible` is allowed only when this turn's allowances for the same
+  allowed, except a `Reversible` policy with `taintedAsks` in a tainted
+  gate: `Confirm` without "allow for the turn". `Visible` is allowed only when this turn's allowances for the same
   tool cover every requested peer (any allowance for the tool covers an
   empty peer list) and the taint rule does not block it; otherwise it is
   `Confirm`.
@@ -2187,7 +2188,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   result text. `ToolPolicyByName()` is the policy of a table entry.
 - Reversible tools never ask by themselves, so when the gate says
   `Confirm` for one (an action outside a run's frame), the registry asks
-  an `Action` card first and runs the tool only after the user approves. Tools that are only
+  an `Action` card first and runs the tool only after the user approves.
+  A `taintedAsks` tool is the exception: it runs and asks its own card
+  whenever its gate is tainted. Tools that are only
   for normal sessions have `background` false: `load_tools`, the memory
   tools, `find_setting`, `open`, `continue_in_general`, `set_draft`,
   `draft_files` and the `tasks` group.
@@ -2200,6 +2203,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   "title": ...}`, `reorder_folders` returns `{"order": [ids]}`.
 - `ActionToolNames()` lists the names of entries with `action`.
 - Memory tools work on the scope's own memory (owner `Scope::peer`).
+  `memory_add` and `memory_update` have `taintedAsks`: while the session
+  has read nothing others wrote they run at once (an action row with
+  Undo); once the gate is tainted they first ask a `Change` card
+  (`lng_agent_card_title_memory_add` or `_memory_update`, one
+  `lng_agent_card_row_fact` row with the normalized text and, for an
+  update, the old text as `previous`; an unknown id fails before the
+  card), then run and finish with their own result and undo.
+  `memory_remove` never asks.
   `memory_add`, `memory_update` and `memory_remove` return
   `{"fact": {"id": ..., "text": ...}, "count": n, "limit": 50}` with the
   added, updated or removed fact, fail with `MemoryErrorText()`, and

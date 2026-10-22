@@ -31,6 +31,7 @@ struct ToolPolicy {
 	bool background = true;
 	bool interactive = true;
 	bool chatTask = false;
+	bool taintedAsks = false;
 };
 
 struct ActionRequest {

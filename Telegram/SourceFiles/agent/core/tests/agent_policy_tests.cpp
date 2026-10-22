@@ -480,6 +480,29 @@ std::vector<Check> PolicyChecks() {
 			}
 			return QString();
 		} },
+		{ u"policy_tainted_asks"_q, [] {
+			auto policy = Policy(Risk::Reversible);
+			policy.taintedAsks = true;
+			auto clean = PolicyGate(Scope::Chat(5));
+			auto tainted = PolicyGate(Scope::Chat(5), nullptr, true);
+			if (const auto diff = ExpectDecision(
+					clean.check(Request(u"memory"_q, policy, {})),
+					Verdict::Allow);
+				!diff.isEmpty()) {
+				return u"clean: "_q + diff;
+			} else if (const auto diff = ExpectDecision(
+					tainted.check(Request(u"memory"_q, policy, {})),
+					Verdict::Confirm);
+				!diff.isEmpty()) {
+				return u"tainted: "_q + diff;
+			}
+			return ExpectDecision(
+				tainted.check(Request(
+					u"mute"_q,
+					Policy(Risk::Reversible),
+					{ 5 })),
+				Verdict::Allow);
+		} },
 		{ u"policy_taint_only_in_account_scope"_q, [] {
 			const auto outbound = Policy(Risk::Visible, true, true, true);
 			auto gate = PolicyGate(Scope::Chat(5), nullptr, true);

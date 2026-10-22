@@ -231,7 +231,11 @@ Decision PolicyGate::check(const ActionRequest &request) const {
 			? Decision{ Verdict::Allow, DenyReason::None, false }
 			: Decision{ Verdict::Confirm, DenyReason::None, false };
 	}
-	if (request.policy.risk != Risk::Visible) {
+	if (request.policy.risk == Risk::Reversible
+		&& request.policy.taintedAsks
+		&& _tainted) {
+		return { Verdict::Confirm, DenyReason::None, false };
+	} else if (request.policy.risk != Risk::Visible) {
 		return { Verdict::Allow, DenyReason::None, false };
 	}
 	const auto blocked = _tainted

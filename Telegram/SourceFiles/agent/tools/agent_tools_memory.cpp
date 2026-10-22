@@ -12,6 +12,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_memory.h"
 #include "agent/core/agent_scope.h"
 #include "data/data_peer.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
 
 #include <QtCore/QJsonArray>
@@ -52,9 +53,24 @@ void DeliverFact(not_null<PendingCall*> call, const MemoryFact &fact) {
 	return id;
 }
 
-void RunMemoryAdd(not_null<PendingCall*> call) {
+[[nodiscard]] Card MemoryCard(
+		const QString &title,
+		const QString &tool,
+		const QString &text,
+		const QString &previous) {
+	auto card = Card{ .kind = CardKind::Change };
+	card.text = title;
+	card.detail = tool;
+	card.rows.push_back({
+		.label = tr::lng_agent_card_row_fact(tr::now),
+		.value = text,
+		.previous = previous,
+	});
+	return card;
+}
+
+void AddFact(not_null<PendingCall*> call, const QString &text) {
 	const auto owner = MemoryOwner(call);
-	const auto text = call->input.value("text").toString();
 	const auto result = call->session->agent().memories().add(owner, text);
 	if (result.error != MemoryError::None) {
 		call->fail(MemoryErrorText(result.error));
@@ -73,15 +89,27 @@ void RunMemoryAdd(not_null<PendingCall*> call) {
 	DeliverFact(call, result.fact);
 }
 
-void RunMemoryUpdate(not_null<PendingCall*> call) {
-	auto error = QString();
-	const auto id = MemoryId(call, error);
-	if (!error.isEmpty()) {
-		call->fail(error);
+void RunMemoryAdd(not_null<PendingCall*> call) {
+	const auto text = call->input.value("text").toString();
+	if (!call->gate->tainted()) {
+		AddFact(call, text);
 		return;
 	}
+	auto card = MemoryCard(
+		tr::lng_agent_card_title_memory_add(tr::now),
+		u"memory_add"_q,
+		NormalizeMemoryText(text),
+		QString());
+	call->confirm(std::move(card), [=](Card) {
+		AddFact(call, text);
+	});
+}
+
+void UpdateFact(
+		not_null<PendingCall*> call,
+		const QString &id,
+		const QString &text) {
 	const auto owner = MemoryOwner(call);
-	const auto text = call->input.value("text").toString();
 	const auto result = call->session->agent().memories().update(
 		owner,
 		id,
@@ -101,6 +129,35 @@ void RunMemoryUpdate(not_null<PendingCall*> call) {
 			: MemoryErrorText(back.error));
 	});
 	DeliverFact(call, result.fact);
+}
+
+void RunMemoryUpdate(not_null<PendingCall*> call) {
+	auto error = QString();
+	const auto id = MemoryId(call, error);
+	if (!error.isEmpty()) {
+		call->fail(error);
+		return;
+	}
+	const auto text = call->input.value("text").toString();
+	if (!call->gate->tainted()) {
+		UpdateFact(call, id, text);
+		return;
+	}
+	const auto &memory = call->session->agent().memories().get(
+		MemoryOwner(call));
+	const auto i = ranges::find(memory.facts, id, &MemoryFact::id);
+	if (i == end(memory.facts)) {
+		call->fail(MemoryErrorText(MemoryError::UnknownId));
+		return;
+	}
+	auto card = MemoryCard(
+		tr::lng_agent_card_title_memory_update(tr::now),
+		u"memory_update"_q,
+		NormalizeMemoryText(text),
+		i->text);
+	call->confirm(std::move(card), [=](Card) {
+		UpdateFact(call, id, text);
+	});
 }
 
 void RunMemoryRemove(not_null<PendingCall*> call) {
@@ -195,6 +252,7 @@ std::vector<ToolEntry> Entries() {
 			.general = true,
 			.chat = true,
 			.background = false,
+			.taintedAsks = true,
 		},
 		.untrusted = false,
 		.action = true,
@@ -214,6 +272,7 @@ std::vector<ToolEntry> Entries() {
 			.general = true,
 			.chat = true,
 			.background = false,
+			.taintedAsks = true,
 		},
 		.untrusted = false,
 		.action = true,

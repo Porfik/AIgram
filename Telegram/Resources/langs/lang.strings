@@ -1970,6 +1970,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_title_delete_contacts" = "Delete contacts";
 "lng_agent_card_title_block" = "Block";
 "lng_agent_card_title_mark_read" = "Mark as read";
+"lng_agent_card_title_memory_add" = "Remember";
+"lng_agent_card_title_memory_update" = "Change a memory fact";
 "lng_agent_card_title_unblock" = "Unblock";
 "lng_agent_card_title_update_profile" = "Change your profile";
 "lng_agent_card_title_profile_photo" = "Change your profile photo";
@@ -1977,6 +1979,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_title_emoji_status" = "Set an emoji status";
 "lng_agent_card_title_clear_emoji_status" = "Clear the emoji status";
 "lng_agent_card_row_chat" = "Chat";
+"lng_agent_card_row_fact" = "Fact";
 "lng_agent_card_row_title" = "Title";
 "lng_agent_card_row_description" = "Description";
 "lng_agent_card_row_first_name" = "First name";
