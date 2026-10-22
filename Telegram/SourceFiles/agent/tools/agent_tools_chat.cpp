@@ -1777,35 +1777,63 @@ std::vector<ToolEntry> Entries() {
 	};
 	push(
 		u"get_context"_q,
-		u"Get the current time and a summary of this chat."_q,
-		u"Get the current time and your account details."_q,
+		u"Get the user's account and a summary of this chat. The [Context]"
+		" line of every message already gives the local date and time."_q,
+		u"Get the user's account: id, name and username. The [Context] line"
+		" of every message already gives the local date and time."_q,
 		ToolSchema(std::move(empty), QJsonArray()),
 		ChatParam::None,
 		RunGetContext);
 	push(
 		u"read_history"_q,
-		u"Read messages of this chat, oldest to newest. Give at most"
-		" one of around_id, before_id, after_id, from_date, or pass"
-		" ids to read those messages in full. Reading never marks"
-		" anything read."_q,
-		u"Read messages of the chat, oldest to newest. Give at most"
-		" one of around_id, before_id, after_id, from_date, or pass"
-		" ids to read those messages in full. Reading never marks"
-		" anything read."_q,
+		u"Read messages of this chat, oldest to newest: the latest ones, a"
+		" window with around_id, before_id or after_id, a period with"
+		" from_date (YYYY-MM-DD or YYYY-MM-DD HH:MM, then page on with"
+		" after_id), or ids to read those messages in full. Long texts are"
+		" cut in pages of history; read them by ids. Use it to summarize a"
+		" period or see the context of a message; to find messages by words"
+		" use search_messages. Reading never marks anything read."_q,
+		u"Read messages of a chat, oldest to newest: the latest ones, a"
+		" window with around_id, before_id or after_id, a period with"
+		" from_date (YYYY-MM-DD or YYYY-MM-DD HH:MM, then page on with"
+		" after_id), or ids to read those messages in full. Long texts are"
+		" cut in pages of history; read them by ids. Use it to summarize a"
+		" period or see the context of a message; to find messages by words"
+		" use search_messages. Reading never marks anything read."_q,
 		ToolSchema(std::move(historyProperties), QJsonArray()),
 		ChatParam::One,
 		RunReadHistory);
 	push(
 		u"search_messages"_q,
-		u"Search messages in this chat, newest matches first. Supports"
-		" several queries, media and date filters, context and a counts"
-		" mode. Page older results with offset_id from"
-		" next_offset_id."_q,
-		u"Search messages in the chat, or in all chats when no chat"
-		" is given, newest matches first. Supports several queries,"
-		" media and chat type filters, context and a counts mode. Page"
-		" older results with offset_id from next_offset_id in one chat,"
-		" or with offset from next_offset when searching all chats."_q,
+		u"Find messages in this chat and get short hits (id, date, sender,"
+		" media, a snippet around the match); read full texts with"
+		" read_history ids. Telegram matches whole words and their forms,"
+		" not parts of words: \"ivanova\" doesn't find"
+		" \"ivanovaanna@mail.ru\", so search an e-mail by its domain"
+		" (\"mail.ru\") and add the Latin spelling of names and logins to"
+		" queries. Give up to 5 queries in one call instead of one call per"
+		" spelling. With media (photo, video, document, voice, round_video,"
+		" url ...) or dates the word can be left out, for example to find"
+		" pictures without text. After 2-3 empty searches change the"
+		" approach: other words, a media filter, or read the history around"
+		" a found mention. Example: {\"queries\": [\"почта\", \"mail.ru\"],"
+		" \"min_date\": \"2025-09-01\"}."_q,
+		u"Find messages in the given chats (chats) or in all chats and get"
+		" short hits (chat, id, date, sender, media, a snippet around the"
+		" match); read full texts with read_history ids. Search the chats"
+		" the user named before all chats; chat_types narrows all chats to"
+		" private, group, channel or bot chats; mode counts tells how many"
+		" matches each chat has. Telegram matches whole words and their"
+		" forms, not parts of words: \"ivanova\" doesn't find"
+		" \"ivanovaanna@mail.ru\", so search an e-mail by its domain"
+		" (\"mail.ru\") and add the Latin spelling of names and logins to"
+		" queries. Give up to 5 queries in one call instead of one call per"
+		" spelling. With media (photo, video, document, voice, round_video,"
+		" url ...) or dates the word can be left out, for example to find"
+		" pictures without text. After 2-3 empty searches change the"
+		" approach: other words, other chats, a media filter, or read the"
+		" history around a found mention. Example: {\"chats\":"
+		" [\"@some_group\"], \"queries\": [\"почта\", \"mail.ru\"]}."_q,
 		ToolSchema(
 			std::move(searchProperties),
 			QJsonArray()),
@@ -1813,10 +1841,11 @@ std::vector<ToolEntry> Entries() {
 		RunSearchMessages);
 	push(
 		u"get_peer_info"_q,
-		u"Get details about this chat: title, kind, description,"
-		" members, your role and rights."_q,
-		u"Get details about the chat: title, kind, description,"
-		" members, your role and rights."_q,
+		u"Get details of this chat: title, kind, description or bio, members"
+		" count, the user's role and rights."_q,
+		u"Get details of a chat or a person: title or name, kind, username,"
+		" description or bio, members count, the user's role and rights. To"
+		" find a chat by its title use list_chats with query."_q,
 		ToolSchema(QJsonObject(), QJsonArray()),
 		ChatParam::One,
 		RunGetPeerInfo);

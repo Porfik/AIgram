@@ -2340,13 +2340,16 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
     all chats with `messages.searchGlobal` (`users_only` for only
     `private`, `groups_only` for only `group`, `broadcasts_only` for only
     `channel`, no flag otherwise; hits are then filtered by kind, bots
-    being `bot` and other users `private`). Every query runs against
-    every target, one request at a time; hidden and out-of-frame chats
-    are skipped as before.
+    being `bot` and other users `private`). Every query (one empty query
+    when only media or dates are given) runs against every target, one
+    request at a time; hidden and out-of-frame chats are skipped as
+    before. With several chats a chat whose request fails goes to
+    `"failed": [{"chat", "error"}]` and the others go on; with one target
+    the call fails.
   - Hits are deduplicated by chat and id, sorted newest first, at most
     `limit`; each is `{"chat": {"id", "title"}` (when not searching one
     chat), `"id", "date", "from"` (as `SerializeMessage()`), `"media"`,
-    `"reply_to"`, `"topic_id"` (when set), `"snippet"`
+    `"reply_to"`, `"topic_id"`, `"forwarded_from"` (when set), `"snippet"`
     (`MatchSnippet()` of the Markdown text with the queries, width 300),
     `"length"` (the text size) and `"matched"` (the first query that
     found it, only with several queries)`}`. Hits the model already saw
@@ -2355,7 +2358,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   - With `context` > 0 the first 10 hits get `"before"` and `"after"`
     arrays of up to `context` neighbor messages (id, date, from, text cut
     at 300 characters), from loaded items when present, otherwise one
-    history request per hit.
+    history request around the hit (`offset_id` the hit, `add_offset`
+    `-context`, limit `2 * context + 1`). Hits come back as `"hits"`.
   - One query and one chat page with `next_offset_id`, one query in all
     chats with `next_offset`; otherwise `"has_more": true` when any
     request returned a full page.
@@ -2376,9 +2380,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `view_media` (stage 7) takes `message_ids` (1–10, with `chat` in the
   account scope) instead of `message_id`: each message is handled like a
   single one, except that videos go as their cover when there are
-  several; one result `{"items": [<the single result of each>]}` with
-  every image block attached, items that fail carrying `"error"`. The
-  download card counts the total size.
+  several; one result `{"results": [<the single result of each>]}` with
+  every image block attached, items that fail (not found, no media, too
+  big, a failed load) carrying `"error"` instead. The download card
+  counts the total size of the files to load.
 - `set_draft` (stage 7) takes `reply_to`, a message id of the chat: the
   draft is set as a reply to it (also through the `Draft` card).
 - Action results (entries with `action`, shown as action rows) are

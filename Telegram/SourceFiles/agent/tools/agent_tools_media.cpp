@@ -1004,11 +1004,12 @@ std::vector<ToolEntry> Entries() {
 	readProperties.insert("question", question);
 	result.push_back(ToolEntry{
 		.name = u"view_media"_q,
-		.description = u"Look at a photo, image file, sticker, GIF, video"
-			" or round video of a message in this chat, or at an image"
-			" or video the user attached. You see it until the end of"
-			" this request. Pass message_ids (1 to 10) with chat to view"
-			" media of several messages at once."_q,
+		.description = u"Look at photos, image files, stickers, GIFs, videos"
+			" and round videos of messages (message_id, or message_ids for"
+			" up to 10 at once) or at attached images and videos"
+			" (attachment). Text inside images is read this way too. To"
+			" find pictures without text, search_messages with media photo"
+			" first."_q,
 		.generalDescription = u"Look at a photo, image file, sticker,"
 			" GIF, video or round video of a message, or at an image or"
 			" video the user attached. You see it until the end of this"
@@ -1022,9 +1023,10 @@ std::vector<ToolEntry> Entries() {
 	});
 	result.push_back(ToolEntry{
 		.name = u"listen_audio"_q,
-		.description = u"Listen to a voice message, audio file, round"
-			" video or video of a message in this chat, or to audio or"
-			" video the user attached, 5 minutes per call."_q,
+		.description = u"Listen to a voice message, audio file, round video"
+			" or the sound of a video, 5 minutes per call (from_seconds for"
+			" the next part). For the words of a voice message"
+			" transcribe_voice is usually cheaper."_q,
 		.generalDescription = u"Listen to a voice message, audio file,"
 			" round video or video of a message, or to audio or video the"
 			" user attached, 5 minutes per call."_q,
@@ -1038,11 +1040,11 @@ std::vector<ToolEntry> Entries() {
 	});
 	result.push_back(ToolEntry{
 		.name = u"transcribe_voice"_q,
-		.description = u"Get Telegram's own transcription of a voice or"
-			" round video message in this chat. The transcript also"
-			" shows under the message in the chat. Without Telegram"
-			" Premium the user confirms spending a trial"
-			" transcription."_q,
+		.description = u"Get Telegram's transcript of a voice or round video"
+			" message; it also shows under the message in the chat. Use it"
+			" when you need the words; use listen_audio for music or tone,"
+			" or when no trial transcriptions are left. Without Telegram"
+			" Premium the user confirms spending a trial."_q,
 		.generalDescription = u"Get Telegram's own transcription of a"
 			" voice or round video message. The transcript also shows"
 			" under the message in the chat. Without Telegram Premium the"
@@ -1056,9 +1058,9 @@ std::vector<ToolEntry> Entries() {
 	});
 	result.push_back(ToolEntry{
 		.name = u"read_file"_q,
-		.description = u"Read a document of a message in this chat, or a"
-			" file the user attached: text and code files, docx, xlsx,"
-			" pptx, odt, ods, odp and PDF. Long text comes in pages."_q,
+		.description = u"Read a document of a message or an attached file:"
+			" text and code files, docx, xlsx, pptx, odt, ods, odp and PDF;"
+			" long text comes in pages (offset). Images go to view_media."_q,
 		.generalDescription = u"Read a document of a message, or a file"
 			" the user attached: text and code files, docx, xlsx, pptx,"
 			" odt, ods, odp and PDF. Long text comes in pages."_q,

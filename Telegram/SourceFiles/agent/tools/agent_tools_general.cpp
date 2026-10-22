@@ -415,11 +415,12 @@ std::vector<ToolEntry> BuildEntries() {
 	};
 	push(
 		u"list_chats"_q,
-		u"List the account's chats with titles, kinds, unread counts"
-		" and last message dates. Filters narrow the list; query"
-		" matches titles and usernames. Page with limit and offset."
-		" complete=false means the chat list is still loading and the"
-		" result may miss chats."_q,
+		u"List the user's chats with titles, kinds, unread counts and last"
+		" message dates. query finds chats by title or username (part of"
+		" the title is enough); other filters: folder, unread, kind,"
+		" archived; page with limit and offset. complete=false means the"
+		" chat list is still loading and may miss chats. To find messages"
+		" use search_messages."_q,
 		ToolSchema(std::move(listProperties), QJsonArray()),
 		ToolPolicy{ .general = true, .chat = false },
 		ChatParam::None,
@@ -450,8 +451,10 @@ std::vector<ToolEntry> BuildEntries() {
 		RunOpen);
 	push(
 		u"continue_in_general"_q,
-		u"Hand the current conversation over to the general agent."
-		" Use it when the user wants something outside this chat."_q,
+		u"Hand the request over to the general agent when the user wants"
+		" something outside this chat: other chats, the chat list or"
+		" settings. The general agent has the same kinds of tools for all"
+		" chats and nothing more. The user gets a button to continue there."_q,
 		ToolSchema(
 			std::move(handoffProperties),
 			QJsonArray{ QJsonValue(u"request"_q) }),

@@ -665,9 +665,11 @@ std::vector<ToolEntry> BuildEntries() {
 		u"Reply to this message id; only with exactly one chat."_q));
 	push({
 		.name = u"send_message"_q,
-		.description = u"Send a text message to one or more chats. The"
-			" user confirms it on a card, may edit the text, and may"
-			" put it into the chats' drafts instead."_q,
+		.description = u"Send a text message to one or more chats,"
+			" optionally as a reply (reply_to, with exactly one chat). The"
+			" user confirms it on a card and may edit the text or put it"
+			" into the chats' drafts instead, so don't ask for confirmation"
+			" in text first."_q,
 		.inputSchema = ToolSchema(
 			std::move(send),
 			QJsonArray{ QJsonValue(u"text"_q) }),
@@ -681,10 +683,11 @@ std::vector<ToolEntry> BuildEntries() {
 		u"Make the draft a reply to this message id."_q));
 	push({
 		.name = u"set_draft"_q,
-		.description = u"Put a message draft into this chat's message"
-			" field; the user sends it. It can be a reply to a message"
-			" (reply_to). If the field already has text, the user"
-			" chooses to replace it, append to it or cancel."_q,
+		.description = u"Put a text into this chat's message field,"
+			" optionally as a reply to a message (reply_to); the user sends"
+			" it. This is how a chat agent writes into its chat. If the"
+			" field already has text, the user chooses to replace it,"
+			" append to it or cancel."_q,
 		.inputSchema = ToolSchema(
 			std::move(draft),
 			QJsonArray{ QJsonValue(u"text"_q) }),
@@ -704,8 +707,9 @@ std::vector<ToolEntry> BuildEntries() {
 		u"Ids of the messages to forward, 1 to 100."_q));
 	push({
 		.name = u"forward_messages"_q,
-		.description = u"Forward messages from one chat to one or more"
-			" chats. The user confirms it on a card."_q,
+		.description = u"Forward messages of one chat (from_chat,"
+			" message_ids) to one or more chats. The user confirms it on a"
+			" card. To share only a text, use send_message."_q,
 		.inputSchema = ToolSchema(
 			std::move(forward),
 			QJsonArray{
@@ -722,8 +726,8 @@ std::vector<ToolEntry> BuildEntries() {
 	edit.insert("text", StringProperty(u"The new message text."_q));
 	push({
 		.name = u"edit_message"_q,
-		.description = u"Edit the text of one of your own messages in this"
-			" chat. The user confirms it on a card."_q,
+		.description = u"Edit the text of one of the user's own messages."
+			" The user confirms it on a card."_q,
 		.generalDescription = u"Edit the text of one of your own messages"
 			" in the chat. The user confirms it on a card."_q,
 		.inputSchema = ToolSchema(
@@ -741,9 +745,10 @@ std::vector<ToolEntry> BuildEntries() {
 		u"Ids of your own messages to delete, 1 to 100."_q));
 	push({
 		.name = u"delete_messages"_q,
-		.description = u"Delete your own messages in this chat. The user"
-			" confirms it on a card and chooses whether to delete them"
-			" for everyone."_q,
+		.description = u"Delete the user's own messages, for everyone where"
+			" Telegram allows it. To delete other people's messages as an"
+			" admin use delete_chat_messages (group admin). The user"
+			" confirms it on a card."_q,
 		.generalDescription = u"Delete your own messages in the chat. The"
 			" user confirms it on a card and chooses whether to delete"
 			" them for everyone."_q,
@@ -761,8 +766,8 @@ std::vector<ToolEntry> BuildEntries() {
 		u"One reaction emoji allowed in the chat, like \"👍\"."_q));
 	push({
 		.name = u"react"_q,
-		.description = u"Set a reaction on messages in this chat. The user"
-			" confirms it on a card."_q,
+		.description = u"Set a reaction emoji on messages. The user confirms"
+			" it on a card."_q,
 		.generalDescription = u"Set a reaction on messages in the chat. The"
 			" user confirms it on a card."_q,
 		.inputSchema = ToolSchema(
@@ -782,9 +787,10 @@ std::vector<ToolEntry> BuildEntries() {
 		u"True to unpin the message instead."_q));
 	push({
 		.name = u"pin_message"_q,
-		.description = u"Pin or unpin a message in this chat. The user"
-			" confirms it on a card and chooses whether to notify"
-			" members."_q,
+		.description = u"Pin or unpin (unpin = true) a message inside a"
+			" chat; the user chooses whether members get notified. To pin a"
+			" chat in the chat list use set_pinned. The user confirms it on"
+			" a card."_q,
 		.generalDescription = u"Pin or unpin a message in the chat. The"
 			" user confirms it on a card and chooses whether to notify"
 			" members."_q,
