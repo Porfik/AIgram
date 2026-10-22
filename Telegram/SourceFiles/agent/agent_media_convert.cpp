@@ -155,6 +155,7 @@ std::optional<std::vector<OfficeEntry>> UnzipOffice(
 		return std::nullopt;
 	}
 	constexpr auto kMaxEntrySize = int(50 * 1024 * 1024);
+	constexpr auto kMaxTotalSize = int(64 * 1024 * 1024);
 	constexpr auto kMaxName = 128;
 
 	auto reader = zlib::FileToRead(zip);
@@ -162,6 +163,7 @@ std::optional<std::vector<OfficeEntry>> UnzipOffice(
 		return std::nullopt;
 	}
 	auto result = std::vector<OfficeEntry>();
+	auto total = 0;
 	do {
 		auto info = unz_file_info();
 		char name[kMaxName + 1] = { 0 };
@@ -178,11 +180,17 @@ std::optional<std::vector<OfficeEntry>> UnzipOffice(
 		const auto path = QString::fromUtf8(name);
 		if (WantOfficeEntry(kind, path)
 			&& info.uncompressed_size <= uint32(kMaxEntrySize)) {
-			auto bytes = reader.readCurrentFileContent(kMaxEntrySize);
+			const auto left = kMaxTotalSize - total;
+			if (info.uncompressed_size > uint32(left)) {
+				return std::nullopt;
+			}
+			auto bytes = reader.readCurrentFileContent(
+				std::min(kMaxEntrySize, left));
 			if (reader.error() != UNZ_OK
 				|| (bytes.isEmpty() && info.uncompressed_size > 0)) {
 				return std::nullopt;
 			}
+			total += int(bytes.size());
 			result.push_back({ path, bytes });
 		}
 		const auto jump = reader.goToNextFile();

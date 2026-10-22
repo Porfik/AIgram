@@ -1968,7 +1968,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   meant for `crl::async`.
 - `UnzipOffice()` returns the entries `WantOfficeEntry()` wants, in
   archive order, skipping entries over 50 MB unpacked; nothing for a
-  broken archive.
+  broken archive or when the wanted entries unpack to more than 64 MB in
+  total (a zip bomb).
 - `AgentFolderPath()` is `AIgram Agent/` inside the client's download
   folder (`Core::App().settings().downloadPath()`, or
   `File::DefaultDownloadPath()` when that is empty or the temp folder),
