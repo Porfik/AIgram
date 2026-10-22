@@ -24,6 +24,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/boxes/confirm_box.h"
 #include "ui/layers/generic_box.h"
 #include "ui/vertical_list.h"
+#include "ui/widgets/buttons.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/widgets/fields/input_field.h"
 #include "ui/widgets/fields/password_input.h"
@@ -305,14 +306,21 @@ void ChatGptSetupBox(
 			container,
 			object_ptr<::Ui::VerticalLayout>(container)));
 	const auto continueInner = continueWrap->entity();
-	Settings::AddButtonWithIcon(
-		continueInner,
-		tr::lng_agent_chatgpt_continue(),
-		st::agentChatGptButton,
-		{ &st::agentChatGptButtonIcon }
-	)->setClickedCallback([=] {
+	const auto continueButton = continueInner->add(
+		object_ptr<::Ui::RoundButton>(
+			continueInner,
+			tr::lng_agent_chatgpt_continue(),
+			st::agentChatGptButton),
+		st::boxRowPadding);
+	continueButton->setClickedCallback([=] {
 		(*start)();
 	});
+	box->widthValue(
+	) | rpl::on_next([=](int width) {
+		const auto &padding = st::boxRowPadding;
+		continueButton->setFullWidth(
+			width - padding.left() - padding.right());
+	}, continueButton->lifetime());
 	continueWrap->toggle(true, anim::type::instant);
 	const auto failed = [=](QString error) {
 		state->login = nullptr;
