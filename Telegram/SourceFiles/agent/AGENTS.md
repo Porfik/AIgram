@@ -1437,6 +1437,15 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   accepted only for `inputPeerEmpty`, `inputPeerSelf`, `inputUserEmpty`,
   `inputUserSelf` and `inputChannelEmpty`; any other fails with "Pass
   chats as ids or @usernames, not objects.". This holds at any depth.
+- Bare ids: when `refs.bare` is set, every `long` parameter named
+  `chat_id` (any constructor or function) and the `Vector<long>` items of
+  `messages.getChats` `id`, `inputPrivacyValueAllowChatParticipants` and
+  `inputPrivacyValueDisallowChatParticipants` `chats` (kind `chat`) and
+  `contacts.editCloseFriends` `id` and
+  `phone.deleteConferenceCallParticipants` `ids` (kind `user`) go to
+  `refs.bare(kind, id, error)` before they are written; `false` fails
+  with its error. Values that are not integers are left to the type
+  check.
 - The model never sees `access_hash` and `file_reference`, so an input
   object whose constructor has a parameter with one of these names fails
   ("<constructor> needs an access_hash the agent never sees; ..."), and
@@ -2470,7 +2479,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   a `Write` method without a description, `ForbiddenParamsError()` of
   the params, and any `EncodeTlCall()` error; otherwise the key is `call_method <method>`, the policy `Read`
   or `Visible` by `ClassifyMethod()` (always `outbound`), and the peers
-  are every chat the references name. References resolve by
+  are every chat the references name, plus the loaded chats and people
+  of the bare ids (an unloaded one that is hidden fails the call as
+  hidden). References resolve by
   `ParsePeerRef()`: `None` through `ResolveChatRef()`, `Peer` as a
   `PeerId`, typed ids as that kind, a `Bare` id as a user for
   `InputUser`, a channel for `InputChannel`, and for `InputPeer` the one

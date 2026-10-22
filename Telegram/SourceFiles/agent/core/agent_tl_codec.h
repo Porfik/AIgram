@@ -22,6 +22,7 @@ struct TlRefs {
 		const QString &type,
 		const QJsonValue &ref,
 		QString &error)> input;
+	Fn<bool(const QString &kind, int64 id, QString &error)> bare;
 };
 
 [[nodiscard]] std::optional<QByteArray> EncodeTlCall(

@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_tl_schema.h"
 
 #include <QtCore/QJsonArray>
+#include <QtCore/QStringList>
 #include <algorithm>
 
 namespace Agent::Tests {
@@ -791,6 +792,68 @@ std::vector<Check> TlChecks() {
 					"00000000" "00000000" "00000000"
 					"0a000000" "00000000" "00000000"
 					"0000000000000000"));
+		} },
+		{ u"tl_encode_bare_ids"_q, [] {
+			const auto parsed = Parse(ReadApiTl());
+			if (!parsed.schema) {
+				return u"api.tl must parse: "_q + parsed.error;
+			}
+			const auto &schema = *parsed.schema;
+			auto seen = QStringList();
+			auto refs = TlRefs();
+			refs.bare = [&](const QString &kind, int64 id, QString &error) {
+				seen.push_back(kind + u":"_q + QString::number(id));
+				if (id == 13) {
+					error = u"hidden"_q;
+					return false;
+				}
+				return true;
+			};
+			auto error = QString();
+			const auto encode = [&](QString method, QJsonObject params) {
+				error = QString();
+				return EncodeTlCall(schema, method, params, refs, error)
+					.has_value();
+			};
+			if (encode(u"messages.getFullChat"_q, {
+					{ u"chat_id"_q, 13 } })
+				|| !error.contains(u"hidden"_q)) {
+				return u"a hidden chat_id must fail: "_q + error;
+			} else if (!encode(u"messages.getChats"_q, {
+					{ u"id"_q, QJsonArray{ 1, u"2"_q } } })) {
+				return u"getChats: "_q + error;
+			} else if (!encode(u"contacts.editCloseFriends"_q, {
+					{ u"id"_q, QJsonArray{ 7 } } })) {
+				return u"editCloseFriends: "_q + error;
+			} else if (!encode(u"account.setPrivacy"_q, {
+					{ u"key"_q, QJsonObject{
+						{ u"_"_q, u"inputPrivacyKeyStatusTimestamp"_q } } },
+					{ u"rules"_q, QJsonArray{ QJsonObject{
+						{ u"_"_q,
+							u"inputPrivacyValueAllowChatParticipants"_q },
+						{ u"chats"_q, QJsonArray{ 5 } } } } } })) {
+				return u"setPrivacy: "_q + error;
+			}
+			const auto expected = QStringList{
+				u"chat:13"_q,
+				u"chat:1"_q,
+				u"chat:2"_q,
+				u"user:7"_q,
+				u"chat:5"_q,
+			};
+			if (seen != expected) {
+				return u"seen "_q + seen.join(u", "_q);
+			}
+			error = QString();
+			if (!EncodeTlCall(
+					schema,
+					u"messages.getFullChat"_q,
+					QJsonObject{ { u"chat_id"_q, 13 } },
+					TlRefs(),
+					error)) {
+				return u"without a bare check: "_q + error;
+			}
+			return QString();
 		} },
 		{ u"tl_decode_roundtrip"_q, [] {
 			const auto parsed = CodecSchema();

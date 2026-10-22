@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/tools/agent_tool_table.h"
 
+#include "agent/agent_exclusions.h"
 #include "agent/agent_manager.h"
 #include "agent/core/agent_mtproto.h"
 #include "agent/core/agent_tl_codec.h"
@@ -223,6 +224,24 @@ PeerData *ResolveRef(
 			result.peers.push_back(peer);
 		}
 		return PeerBytes(peer, type);
+	}, [&](const QString &kind, int64 id, QString &error) {
+		if (id <= 0) {
+			return true;
+		}
+		const auto peerId = (kind == u"user"_q)
+			? peerFromUser(UserId(uint64(id)))
+			: peerFromChat(ChatId(uint64(id)));
+		if (const auto peer = session->data().peerLoaded(peerId)) {
+			if (!ranges::contains(result.peers, not_null(peer))) {
+				result.peers.push_back(peer);
+			}
+		} else if (session->agent().exclusions().excluded(peerId.value)) {
+			error = u"The user hid this chat from the agent. Tell the"
+				" user you can't see it and don't try to reach it another"
+				" way."_q;
+			return false;
+		}
+		return true;
 	} };
 	if (auto bytes = EncodeTlCall(schema, method, params, refs, result.error)) {
 		result.bytes = std::move(*bytes);

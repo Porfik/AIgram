@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <QtCore/QJsonArray>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 
@@ -66,6 +67,96 @@ struct Encoder {
 		return false;
 	}
 };
+
+struct BareIdList {
+	QString owner;
+	QString param;
+	QString kind;
+};
+
+const auto kBareIdLists = std::array{
+	BareIdList{ u"messages.getChats"_q, u"id"_q, u"chat"_q },
+	BareIdList{
+		u"inputPrivacyValueAllowChatParticipants"_q,
+		u"chats"_q,
+		u"chat"_q,
+	},
+	BareIdList{
+		u"inputPrivacyValueDisallowChatParticipants"_q,
+		u"chats"_q,
+		u"chat"_q,
+	},
+	BareIdList{ u"contacts.editCloseFriends"_q, u"id"_q, u"user"_q },
+	BareIdList{
+		u"phone.deleteConferenceCallParticipants"_q,
+		u"ids"_q,
+		u"user"_q,
+	},
+};
+
+[[nodiscard]] QString BareIdKind(
+		const TlCombinator &combinator,
+		const TlParam &param) {
+	if (param.type == u"long" && param.name == u"chat_id") {
+		return u"chat"_q;
+	} else if (param.type != u"Vector<long>") {
+		return QString();
+	}
+	for (const auto &list : kBareIdLists) {
+		if (list.owner == combinator.name && list.param == param.name) {
+			return list.kind;
+		}
+	}
+	return QString();
+}
+
+[[nodiscard]] std::optional<int64> BareIdValue(const QJsonValue &value) {
+	if (value.isDouble()) {
+		const auto d = value.toDouble();
+		return (d == std::floor(d) && std::abs(d) <= kLongBound)
+			? std::make_optional(int64(d))
+			: std::nullopt;
+	} else if (value.isString()) {
+		auto ok = false;
+		const auto result = value.toString().toLongLong(&ok);
+		return ok ? std::make_optional(int64(result)) : std::nullopt;
+	}
+	return std::nullopt;
+}
+
+bool CheckBareIds(
+		Encoder &e,
+		const TlCombinator &combinator,
+		const TlParam &param,
+		const QJsonValue &value,
+		const QString &path) {
+	const auto kind = e.refs.bare ? BareIdKind(combinator, param) : QString();
+	if (kind.isEmpty()) {
+		return true;
+	}
+	const auto check = [&](const QJsonValue &item, const QString &where) {
+		const auto id = BareIdValue(item);
+		if (!id) {
+			return true;
+		}
+		auto error = QString();
+		if (!e.refs.bare(kind, *id, error)) {
+			return e.fail(where, error);
+		}
+		return true;
+	};
+	if (!value.isArray()) {
+		return check(value, path);
+	}
+	auto index = 0;
+	for (const auto &item : value.toArray()) {
+		const auto where = path + u"["_q + QString::number(index++) + u"]"_q;
+		if (!check(item, where)) {
+			return false;
+		}
+	}
+	return true;
+}
 
 [[nodiscard]] bool IsRefType(const QString &type) {
 	return (type == u"InputPeer")
@@ -409,12 +500,18 @@ bool EncodeCombinator(
 				path + u"."_q + param.name,
 				u"missing required parameter"_q);
 		}
-		if (!EncodeValue(
-			e,
-			out,
-			param.type,
-			value,
-			path + u"."_q + param.name)) {
+		if (!CheckBareIds(
+				e,
+				combinator,
+				param,
+				value,
+				path + u"."_q + param.name)
+			|| !EncodeValue(
+				e,
+				out,
+				param.type,
+				value,
+				path + u"."_q + param.name)) {
 			return false;
 		}
 	}
