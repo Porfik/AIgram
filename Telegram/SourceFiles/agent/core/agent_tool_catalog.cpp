@@ -390,4 +390,59 @@ std::vector<QString> NearestToolNames(
 	return result;
 }
 
+QString MatchSnippet(
+		const QString &text,
+		const std::vector<QString> &queries,
+		int width) {
+	if (width <= 0 || text.size() <= width) {
+		return text;
+	}
+	auto words = QStringList();
+	for (const auto &query : queries) {
+		words += Words(query);
+	}
+	auto match = -1;
+	for (auto i = 0; match < 0 && i != text.size(); ++i) {
+		if (i > 0 && text[i - 1].isLetterOrNumber()) {
+			continue;
+		}
+		for (const auto &word : words) {
+			if (text.mid(i, word.size()).startsWith(word, Qt::CaseInsensitive)) {
+				match = i;
+				break;
+			}
+		}
+	}
+	const auto last = int(text.size()) - width;
+	auto start = (match > 0) ? match - width / 3 : 0;
+	start = std::clamp(start, 0, last);
+	auto end = start + width;
+	if (start > 0) {
+		const auto limit = std::min(start + 20, end - 1);
+		for (auto i = start; i <= limit; ++i) {
+			if (text[i].isSpace()) {
+				start = i + 1;
+				break;
+			}
+		}
+	}
+	if (end < text.size()) {
+		for (auto i = end - 1; i >= std::max(end - 20, start); --i) {
+			if (text[i].isSpace()) {
+				end = i;
+				break;
+			}
+		}
+	}
+	if (start + 1 < end && text[start].isLowSurrogate()) {
+		++start;
+	}
+	if (start + 1 < end && text[end - 1].isHighSurrogate()) {
+		--end;
+	}
+	return (start > 0 ? u"…"_q : QString())
+		+ text.mid(start, end - start)
+		+ (end < text.size() ? u"…"_q : QString());
+}
+
 } // namespace Agent
