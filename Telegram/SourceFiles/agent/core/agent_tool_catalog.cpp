@@ -445,4 +445,34 @@ QString MatchSnippet(
 		+ (end < text.size() ? u"…"_q : QString());
 }
 
+QString FormatTurnContext(const TurnContext &context) {
+	auto lines = QStringList();
+	if (context.now.isValid()) {
+		auto line = u"Now: %1, %2"_q.arg(
+			context.now.toString(u"yyyy-MM-dd HH:mm"_q),
+			QLocale::c().dayName(
+				context.now.date().dayOfWeek(),
+				QLocale::LongFormat));
+		if (!context.zone.isEmpty()) {
+			line += u", %1"_q.arg(context.zone);
+		}
+		lines.push_back(line + u'.');
+	}
+	if (!context.loadedGroups.empty()) {
+		lines.push_back(u"Loaded tool groups: %1."_q.arg(
+			QStringList(context.loadedGroups.begin(), context.loadedGroups.end())
+				.join(u", ")));
+	}
+	if (!context.topic.isEmpty()) {
+		lines.push_back(u"The user has %1 open."_q.arg(context.topic));
+	}
+	if (context.pendingCards > 0) {
+		lines.push_back(context.pendingCards == 1
+			? u"Waiting for the user's decision: 1 card."_q
+			: u"Waiting for the user's decision: %1 cards."_q.arg(
+				context.pendingCards));
+	}
+	return lines.join(u'\n');
+}
+
 } // namespace Agent
