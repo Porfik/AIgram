@@ -476,7 +476,11 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 		lines.push_back(line);
 	}
 	for (const auto &file : card.files) {
-		if (!ranges::contains(card.rows, file.name, &CardRow::value)) {
+		if (!ranges::contains(card.rows, file.name, &CardRow::value)
+			&& !ranges::contains(
+				card.targets,
+				file.name,
+				&CardTarget::preview)) {
 			lines.push_back(file.name);
 		}
 	}
