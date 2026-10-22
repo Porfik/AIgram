@@ -497,15 +497,11 @@ struct ViewManyState {
 	std::vector<MediaBlock> blocks;
 	QJsonArray results;
 	int index = 0;
-	bool finished = false;
 };
 
 void ViewManyNext(
 		not_null<PendingCall*> call,
 		not_null<ViewManyState*> state) {
-	if (state->finished) {
-		return;
-	}
 	if (state->index >= int(state->sources.size())) {
 		auto json = QJsonObject();
 		json.insert("results", state->results);
@@ -518,9 +514,11 @@ void ViewManyNext(
 
 void RunViewMediaSources(
 		not_null<PendingCall*> call,
-		std::vector<Source> sources) {
+		std::vector<Source> sources,
+		QJsonArray failed) {
 	const auto state = call->lifetime.make_state<ViewManyState>();
 	state->sources = std::move(sources);
+	state->results = std::move(failed);
 	state->sink = ViewSink{
 		.media = [=](QJsonObject json, std::vector<MediaBlock> media) {
 			state->results.append(std::move(json));
@@ -535,8 +533,10 @@ void RunViewMediaSources(
 			ViewManyNext(call, state);
 		},
 		.fail = [=](QString error) {
-			state->finished = true;
-			call->fail(std::move(error));
+			auto json = state->sources[state->index - 1].json;
+			json.insert("error", error);
+			state->results.append(std::move(json));
+			ViewManyNext(call, state);
 		},
 	};
 	ViewManyNext(call, state);
@@ -556,20 +556,26 @@ void RunViewMediaMany(
 		auto files = std::vector<CardFile>();
 		auto targets = std::vector<CardTarget>();
 		auto total = int64(0);
+		auto failed = QJsonArray();
+		const auto fail = [&](MsgId id, const QString &error) {
+			auto json = QJsonObject();
+			json.insert("chat", QJsonValue(qint64(peer->id.value)));
+			json.insert("message", QJsonValue(qint64(id.bare)));
+			json.insert("error", error);
+			failed.append(std::move(json));
+		};
 		for (const auto id : ids) {
 			const auto item = session->data().message(peer->id, id);
 			if (!item) {
-				call->fail(u"Message %1 was not found in %2. Read the"
-					" history to get valid message ids."_q
-					.arg(id.bare)
-					.arg(peer->name()));
-				return;
+				fail(id, u"Message not found. Read the history to get"
+					" valid message ids."_q);
+				continue;
 			}
 			auto media = FindMessageMedia(item);
 			if (!media) {
-				call->fail(u"Message %1 has no photo, video, audio or"
-					" file."_q.arg(id.bare));
-				return;
+				fail(id, u"The message has no photo, video, audio or"
+					" file."_q);
+				continue;
 			}
 			auto source = Source{ .item = item, .media = std::move(media) };
 			source.json.insert("chat", QJsonValue(qint64(peer->id.value)));
@@ -577,9 +583,9 @@ void RunViewMediaMany(
 			source.json.insert("type", TypeName(source.media->type));
 			if (!LoadedAlready(*source.media)) {
 				if (source.media->size > kAttachmentMaxBytes) {
-					call->fail(u"The file is %1, too big for the agent to"
+					fail(id, u"The file is %1, too big for the agent to"
 						" read."_q.arg(FormatByteSize(source.media->size)));
-					return;
+					continue;
 				}
 				total += source.media->size;
 				files.push_back(CardFile{
@@ -598,8 +604,8 @@ void RunViewMediaMany(
 		}
 		const auto kept = std::make_shared<std::vector<Source>>(
 			std::move(sources));
-		const auto run = [call, kept] {
-			RunViewMediaSources(call, std::move(*kept));
+		const auto run = [call, kept, failed] {
+			RunViewMediaSources(call, std::move(*kept), failed);
 		};
 		if (total > kAutoDownloadBytes) {
 			auto card = Card{

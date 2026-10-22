@@ -236,7 +236,15 @@ void RunSendMessage(not_null<PendingCall*> call) {
 			const auto history = session->data().history(peer);
 			const auto thread = history->threadFor(MsgId(), PeerId());
 			if (card.decided == CardAction::Alternate) {
-				ApplyDraft(history, card.text, false, FullReplyTo());
+				ApplyDraft(
+					history,
+					card.text,
+					false,
+					(replyTo
+						? FullReplyTo{
+							.messageId = FullMsgId(peer->id, *replyTo),
+						}
+						: FullReplyTo()));
 				continue;
 			} else if (!Data::CanSendTexts(thread)) {
 				target.error = u"You can't write in this chat."_q;
