@@ -566,6 +566,7 @@ void ChatView::startHandoff(HandoffDraft draft) {
 	_handoff = std::move(draft);
 	_composeControls->setText({ _handoff->text, {} });
 	rebuildMessages();
+	_inner->showAtPosition(Data::MaxMessagePosition, {});
 }
 
 void ChatView::passMessages(HistoryItemsList items) {
