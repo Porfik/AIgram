@@ -2100,7 +2100,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `forward_messages` fails when `from_chat` is outside the frame. `list_folders` skips
   hidden folders, the folder tools fail on them with "The user hid this
   folder from the agent.", and `reorder_folders` keeps hidden folders in
-  their slots. Members and senders inside a visible chat are not hidden.
+  their slots. Members and senders inside a visible chat are not hidden;
+  a person whose private chat is hidden is refused in `users` parameters
+  (`ResolveUserRefs()`) and skipped by `list_contacts` and
+  `list_blocked`.
 - `ResolveChatRef()` takes a chat id (a JSON number or a numeric string,
   `PeerId::value` as in every tool result), `@username`, a
   `t.me/username` link, or `me` / `@me` / `self` for Saved Messages
@@ -2299,8 +2302,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 
 - Shared helpers (`agent_tool_table.h`): `ResolveUserRefs()` resolves
   a `users` array (1 to `max` ids or @usernames, `ResolveChatRef()` of
-  each, users only, duplicates dropped) or sets an English error; members
-  are never gate-checked, only the chat is. `PeerTitle()` is the name, or
+  each, users only, duplicates dropped) or sets an English error; a user
+  other than the user's own self whose private chat is hidden
+  (`Exclusions::excluded()`, not the scope check: a chat agent names its
+  group's members) fails as hidden. The chat itself is gate-checked as
+  usual. `PeerTitle()` is the name, or
   "Saved Messages" for the user's own chat. `PeerTarget()` is a card
   target with the peer, its title and `@username` as `preview`.
   `ParseLocalTime()` reads `YYYY-MM-DD HH:MM` local time. `MtpErrorText()`

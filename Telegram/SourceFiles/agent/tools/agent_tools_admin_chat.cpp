@@ -887,7 +887,7 @@ void RunCreateChat(not_null<PendingCall*> call) {
 	const auto usersValue = call->input.value("users");
 	auto users = (usersValue.isUndefined() || usersValue.isNull())
 		? std::vector<not_null<UserData*>>()
-		: ResolveUserRefs(session, usersValue, 50, error);
+		: ResolveUserRefs(call, usersValue, 50, error);
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;

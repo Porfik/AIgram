@@ -236,7 +236,7 @@ void RunDeleteMemberHistory(not_null<PendingCall*> call) {
 	}
 	auto error = QString();
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -353,7 +353,7 @@ void RunAnswerJoinRequests(not_null<PendingCall*> call) {
 		return;
 	}
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -486,7 +486,7 @@ void RunAddMembers(not_null<PendingCall*> call) {
 	}
 	auto error = QString();
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -603,7 +603,7 @@ void RunRemoveMembers(not_null<PendingCall*> call) {
 		return;
 	}
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -670,7 +670,7 @@ void RunUnbanMembers(not_null<PendingCall*> call) {
 	}
 	auto error = QString();
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -755,7 +755,7 @@ void RunRestrictMembers(not_null<PendingCall*> call) {
 	const auto untilValue = until.value_or(
 		ChannelData::kRestrictUntilForever);
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);
@@ -913,7 +913,7 @@ void RunPromoteDemoteAdmins(not_null<PendingCall*> call, bool promote) {
 		return;
 	}
 	const auto users = ResolveUserRefs(
-		call->session,
+		call,
 		call->input.value("users"),
 		kMaxUsers,
 		error);

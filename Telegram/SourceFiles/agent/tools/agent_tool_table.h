@@ -118,7 +118,7 @@ struct PendingCall final : base::has_weak_ptr {
 [[nodiscard]] QString ChatRefUsername(const QJsonValue &value);
 
 [[nodiscard]] std::vector<not_null<UserData*>> ResolveUserRefs(
-	not_null<Main::Session*> session,
+	not_null<PendingCall*> call,
 	const QJsonValue &value,
 	int max,
 	QString &error);

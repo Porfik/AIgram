@@ -54,7 +54,9 @@ constexpr auto kContactsLoadTimeout = crl::time(20 * 1000);
 	for (const auto &row : call->session->data().contactsList()->all()) {
 		const auto history = row->history();
 		const auto user = history ? history->peer->asUser() : nullptr;
-		if (!user || !call->gate->inFrame(user->id.value)) {
+		if (!user
+			|| !call->gate->visible(user->id.value)
+			|| !call->gate->inFrame(user->id.value)) {
 			continue;
 		}
 		if (!query.isEmpty()
@@ -162,7 +164,9 @@ void RunListBlocked(not_null<PendingCall*> call) {
 					break;
 				}
 				const auto peer = session->data().peerLoaded(item.id);
-				if (!peer || !call->gate->inFrame(peer->id.value)) {
+				if (!peer
+					|| !call->gate->visible(peer->id.value)
+					|| !call->gate->inFrame(peer->id.value)) {
 					continue;
 				}
 				auto entry = QJsonObject();

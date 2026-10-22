@@ -7,6 +7,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/tools/agent_tool_table.h"
 
+#include "agent/agent_exclusions.h"
+#include "agent/agent_manager.h"
 #include "apiwrap.h"
 #include "base/call_delayed.h"
 #include "base/timer.h"
@@ -147,10 +149,11 @@ QString ChatRefUsername(const QJsonValue &value) {
 }
 
 std::vector<not_null<UserData*>> ResolveUserRefs(
-		not_null<Main::Session*> session,
+		not_null<PendingCall*> call,
 		const QJsonValue &value,
 		int max,
 		QString &error) {
+	const auto session = call->session;
 	if (!value.isArray()) {
 		error = u"users must be an array of user ids or @usernames."_q;
 		return {};
@@ -170,6 +173,12 @@ std::vector<not_null<UserData*>> ResolveUserRefs(
 					item.isDouble()
 						? QString::number(qint64(item.toDouble()))
 						: item.toString().left(64));
+			return {};
+		} else if (!user->isSelf()
+			&& session->agent().exclusions().excluded(user->id.value)) {
+			error = u"The user hid the chat with %1 from the agent. Tell the"
+				" user you can't act on this person and don't try to reach"
+				" them another way."_q.arg(user->name());
 			return {};
 		} else if (!ranges::contains(result, not_null(user))) {
 			result.push_back(user);
