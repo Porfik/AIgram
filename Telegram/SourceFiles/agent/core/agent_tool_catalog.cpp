@@ -282,4 +282,112 @@ std::vector<int> RankToolDocuments(
 	return result;
 }
 
+[[nodiscard]] int Levenshtein(const QString &a, const QString &b) {
+	const auto columns = b.size() + 1;
+	auto previous = std::vector<int>(columns);
+	for (auto j = 0; j != columns; ++j) {
+		previous[j] = j;
+	}
+	for (auto i = 1; i != a.size() + 1; ++i) {
+		auto current = std::vector<int>(columns, 0);
+		current[0] = i;
+		for (auto j = 1; j != columns; ++j) {
+			const auto cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+			current[j] = std::min({
+				previous[j] + 1,
+				current[j - 1] + 1,
+				previous[j - 1] + cost });
+		}
+		previous = std::move(current);
+	}
+	return previous[columns - 1];
+}
+
+[[nodiscard]] QString StripSeparators(const QString &name) {
+	auto result = name;
+	result.remove(u'-');
+	result.remove(u'_');
+	return result;
+}
+
+std::vector<QString> NearestToolNames(
+		const QString &name,
+		const std::vector<QString> &names,
+		int limit) {
+	if (limit <= 0) {
+		return {};
+	}
+	const auto lower = name.toLower();
+	const auto stripped = StripSeparators(lower);
+	auto nameWords = base::flat_set<QString>();
+	for (const auto &word : lower.split('_', Qt::SkipEmptyParts)) {
+		nameWords.insert(word);
+	}
+	auto taken = base::flat_set<QString>();
+	auto result = std::vector<QString>();
+	const auto add = [&](const QString &candidate) {
+		const auto candidateLower = candidate.toLower();
+		if (candidateLower == lower || taken.contains(candidateLower)) {
+			return;
+		}
+		taken.insert(candidateLower);
+		result.push_back(candidate);
+	};
+	const auto full = [&] {
+		return result.size() >= limit;
+	};
+	for (const auto &candidate : names) {
+		if (StripSeparators(candidate.toLower()) == stripped) {
+			add(candidate);
+			if (full()) {
+				return result;
+			}
+		}
+	}
+	struct Candidate {
+		int index = 0;
+		int distance = 0;
+	};
+	auto close = std::vector<Candidate>();
+	const auto threshold = std::max(2, int(lower.size()) / 4);
+	for (auto i = 0; i != int(names.size()); ++i) {
+		const auto distance = Levenshtein(lower, names[i].toLower());
+		if (distance <= threshold) {
+			close.push_back({ i, distance });
+		}
+	}
+	std::stable_sort(
+		close.begin(),
+		close.end(),
+		[](const Candidate &a, const Candidate &b) {
+			return a.distance < b.distance;
+		});
+	for (const auto &candidate : close) {
+		add(names[candidate.index]);
+		if (full()) {
+			return result;
+		}
+	}
+	for (const auto &candidate : names) {
+		auto words = base::flat_set<QString>();
+		for (const auto &word : candidate.toLower().split('_', Qt::SkipEmptyParts)) {
+			words.insert(word);
+		}
+		auto shared = false;
+		for (const auto &word : words) {
+			if (nameWords.contains(word)) {
+				shared = true;
+				break;
+			}
+		}
+		if (shared) {
+			add(candidate);
+			if (full()) {
+				return result;
+			}
+		}
+	}
+	return result;
+}
+
 } // namespace Agent
