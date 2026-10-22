@@ -113,4 +113,41 @@ namespace {
 
 } // namespace
 
+QString FormatToolCatalog(
+		const std::vector<CatalogEntry> &entries,
+		const std::vector<CatalogGroup> &groups) {
+	auto lines = QStringList();
+	for (auto section = 0
+		; section != int(CatalogSection::Other) + 1
+		; ++section) {
+		auto sectionLines = QStringList();
+		for (const auto &entry : entries) {
+			if (int(entry.section) != section) {
+				continue;
+			}
+			auto line = u"- %1"_q.arg(entry.name);
+			if (!entry.snippet.isEmpty()) {
+				line += u": %1"_q.arg(entry.snippet);
+			}
+			if (!entry.group.isEmpty()) {
+				line += u" [group %1]"_q.arg(entry.group);
+			}
+			sectionLines.push_back(line);
+		}
+		if (sectionLines.isEmpty()) {
+			continue;
+		}
+		lines.push_back(u"## %1"_q.arg(SectionTitle(
+			CatalogSection(section))));
+		lines.append(sectionLines);
+	}
+	if (!groups.empty()) {
+		lines.push_back(u"Groups for load_tools:"_q);
+		for (const auto &group : groups) {
+			lines.push_back(u"- %1: %2"_q.arg(group.name, group.when));
+		}
+	}
+	return lines.join(u'\n');
+}
+
 } // namespace Agent
