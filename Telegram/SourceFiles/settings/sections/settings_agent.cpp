@@ -13,12 +13,14 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_manager.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/core/agent_chatgpt_auth.h"
 #include "agent/ui/agent_claude_boxes.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_profile.h"
 #include "agent/ui/agent_spending_format.h"
 #include "boxes/peer_list_box.h"
 #include "boxes/peer_list_controllers.h"
+#include "core/file_utilities.h"
 #include "data/data_chat_filters.h"
 #include "data/data_peer.h"
 #include "data/data_session.h"
@@ -365,6 +367,9 @@ void RebuildProviderRows(
 			: (service == ::Agent::ProviderService::Anthropic
 				|| service == ::Agent::ProviderService::ClaudeSubscription)
 			? st::agentModelChoiceAnthropicIcon
+			: (service == ::Agent::ProviderService::OpenAi
+				|| service == ::Agent::ProviderService::ChatGptSubscription)
+			? st::agentModelChoiceOpenAiIcon
 			: st::agentModelChoiceCustomIcon;
 		row->paintOn([=, &icon](QPainter &p) {
 			if (row->isOver()) {
@@ -980,6 +985,23 @@ void BuildSpending(
 			return (provider.service
 				== ::Agent::ProviderService::ClaudeSubscription);
 		});
+	const auto chatGpt = ranges::any_of(
+		state->providers.list,
+		[](const ::Agent::ProviderSettings &provider) {
+			return ::Agent::UsesChatGptPlan(provider);
+		});
+	if (chatGpt) {
+		builder.addButton({
+			.id = u"agent/spending/chatgpt"_q,
+			.title = tr::lng_agent_spending_chatgpt(),
+			.st = &st::settingsButtonNoIcon,
+			.label = rpl::single(tr::lng_agent_chatgpt_usage(tr::now)),
+			.onClick = [] {
+				File::OpenUrl(::Agent::ChatGpt::UsageUrl());
+			},
+			.keywords = { u"chatgpt"_q, u"usage"_q, u"limit"_q },
+		});
+	}
 	if (subscription) {
 		builder.addButton({
 			.id = u"agent/spending/claude/hours"_q,
