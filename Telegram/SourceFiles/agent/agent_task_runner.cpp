@@ -336,7 +336,7 @@ bool TaskRunner::checkCanRun(const Task &task) {
 	}
 	const auto perHour = task.limits.actionsPerHour;
 	const auto now = qint64(base::unixtime::now());
-	const auto &times = _actions[task.id];
+	const auto &times = actionTimes(task.id);
 	if (perHour > 0 && CountRecentActions(times, now) >= perHour) {
 		const auto until = HourlyResumeTime(times, perHour, now);
 		pauseTask(
@@ -635,9 +635,10 @@ void TaskRunner::countAction(
 		return;
 	}
 	const auto now = qint64(base::unixtime::now());
-	++run->info.actions;
-	auto &times = _actions[run->taskId];
-	times.push_back(now);
+	const auto count = CallActionCount(call.input);
+	auto &times = actionTimes(run->taskId);
+	run->info.actions += count;
+	times.insert(times.end(), count, now);
 	times.erase(ranges::remove_if(times, [&](qint64 time) {
 		return time <= now - 3600;
 	}), end(times));
@@ -682,6 +683,18 @@ void TaskRunner::countAction(
 			}
 		});
 	}
+}
+
+std::vector<qint64> &TaskRunner::actionTimes(const QString &taskId) {
+	const auto i = _actions.find(taskId);
+	if (i != _actions.end()) {
+		return i->second;
+	}
+	return _actions.emplace(
+		taskId,
+		RunActionTimes(
+			_manager->tasks().runs(taskId),
+			qint64(base::unixtime::now()))).first->second;
 }
 
 QString TaskRunner::actionText(

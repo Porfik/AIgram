@@ -94,6 +94,7 @@ private:
 	void handleState(not_null<Run*> run);
 	void handleEvent(not_null<Run*> run, const EngineEvent &event);
 	void countAction(not_null<Run*> run, const ToolUseBlock &call);
+	[[nodiscard]] std::vector<qint64> &actionTimes(const QString &taskId);
 	void finishRun(not_null<Run*> run);
 	[[nodiscard]] Run *findRun(const QString &sessionId) const;
 	[[nodiscard]] Run *findTaskRun(const QString &taskId) const;

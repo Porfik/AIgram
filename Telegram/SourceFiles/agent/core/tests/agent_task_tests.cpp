@@ -1128,6 +1128,48 @@ std::vector<Check> LimitChecks() {
 			}
 			return QString();
 		} },
+		{ u"task_call_action_count"_q, [] {
+			const auto chats = QJsonObject{
+				{ u"chats"_q, QJsonArray{ 1, 2, 3 } },
+				{ u"text"_q, u"hi"_q } };
+			const auto users = QJsonObject{
+				{ u"chat"_q, 5 },
+				{ u"users"_q, QJsonArray{ 1, 2 } } };
+			if (CallActionCount(chats) != 3) {
+				return u"every chat of a call must count"_q;
+			} else if (CallActionCount(users) != 2) {
+				return u"every person of a call must count"_q;
+			} else if (CallActionCount(QJsonObject{ { u"chat"_q, 5 } }) != 1
+				|| CallActionCount(QJsonObject{
+					{ u"chats"_q, QJsonArray() } }) != 1) {
+				return u"a call without lists counts once"_q;
+			}
+			return QString();
+		} },
+		{ u"task_run_action_times"_q, [] {
+			const auto now = qint64(1'700'000'000);
+			auto runs = std::vector<TaskRun>(4);
+			runs[0].started = now - 600;
+			runs[0].finished = now - 500;
+			runs[0].actions = 2;
+			runs[1].started = now - 100;
+			runs[1].actions = 1;
+			runs[2].started = now - 7300;
+			runs[2].finished = now - 7200;
+			runs[2].actions = 5;
+			runs[3].started = now - 50;
+			runs[3].finished = now - 40;
+			const auto times = RunActionTimes(runs, now);
+			const auto expected = std::vector<qint64>{
+				now - 500,
+				now - 500,
+				now - 100,
+			};
+			if (times != expected) {
+				return u"the last hour runs must give their actions"_q;
+			}
+			return QString();
+		} },
 		{ u"task_count_actions_and_hourly_resume"_q, [] {
 			const auto now = qint64(1'700'000'000);
 			const auto times = std::vector<qint64>{

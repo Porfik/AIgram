@@ -1380,6 +1380,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `HourlyResumeTime()` is `now` while that count is below `perHour` (or
   `perHour <= 0`), otherwise the time the count drops below it: the
   `(count - perHour + 1)`-th oldest recent time plus 3600.
+- `CallActionCount()` is how many actions one call is for the hourly
+  limit: the size of its `chats` or `users` array, whichever is larger,
+  at least 1. `RunActionTimes()` rebuilds the recent action times from a
+  task's runs: each run finished (or, unfinished, started) in `(now -
+  3600, now]` gives its `actions` copies of that time.
 
 ## TL schema (`agent_tl_schema.h`, stage 3c)
 
@@ -2040,6 +2045,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   waits up to `kTaskCardExpireSeconds`, then it is decided `Expired`.
   A chat-scope task whose chat is hidden never starts a run (its
   triggers, schedule and catch-up included, are dropped).
+  A done non-read call counts `CallActionCount()` actions (in the run's
+  `actions` too); a task's recent action times start from
+  `RunActionTimes()` of its runs, so a restart keeps the hour's count.
   Limits pause the task (`DailyLimit` until the next local midnight,
   `HourlyLimit` until `HourlyResumeTime()`) and the background limit
   skips every run until the next day; each pause notifies. Finished run

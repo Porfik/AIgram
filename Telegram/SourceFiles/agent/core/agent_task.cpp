@@ -1874,4 +1874,23 @@ qint64 HourlyResumeTime(
 	return oldest[recent - perHour] + 3600;
 }
 
+int CallActionCount(const QJsonObject &input) {
+	const auto chats = input.value(u"chats"_q).toArray().size();
+	const auto users = input.value(u"users"_q).toArray().size();
+	return int(std::max({ qsizetype(1), chats, users }));
+}
+
+std::vector<qint64> RunActionTimes(
+		const std::vector<TaskRun> &runs,
+		qint64 now) {
+	auto result = std::vector<qint64>();
+	for (const auto &run : runs) {
+		const auto time = run.finished ? run.finished : run.started;
+		if (time > now - 3600 && time <= now && run.actions > 0) {
+			result.insert(result.end(), run.actions, time);
+		}
+	}
+	return result;
+}
+
 } // namespace Agent

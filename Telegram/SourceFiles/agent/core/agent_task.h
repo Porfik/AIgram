@@ -287,5 +287,9 @@ enum class LimitHit : uchar {
 	const std::vector<qint64> &times,
 	int perHour,
 	qint64 now);
+[[nodiscard]] int CallActionCount(const QJsonObject &input);
+[[nodiscard]] std::vector<qint64> RunActionTimes(
+	const std::vector<TaskRun> &runs,
+	qint64 now);
 
 } // namespace Agent
