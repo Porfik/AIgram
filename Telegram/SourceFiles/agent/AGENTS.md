@@ -966,7 +966,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   (the tool's title and the chats), not editable. Done, it ends with the
   tool's own result.
 - `Change`: a visible change of the `admin`, `contacts` and `profile`
-  groups. `text` is the card title the tool made (a localized
+  groups, and `mark_read` (read receipts reach the senders). `text` is the card title the tool made (a localized
   `lng_agent_card_title_*`), not editable; `detail` the tool name;
   `rows` the label and value lines the tool made (localized, `previous`
   the old value or empty); `targets` the users, messages or links acted
@@ -2532,7 +2532,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 | `delete_messages` | actions | Visible | both | One | own messages |
 | `react` | actions | Visible | both | One | |
 | `pin_message` | actions | Visible | both | One | `unpin` |
-| `mark_read` | chat_state | Reversible, action | both | Many | |
+| `mark_read` | chat_state | Visible | both | Many | `Change` card, read receipts |
 | `set_mute` | chat_state | Reversible, action | both | Many | |
 | `set_archived` | chat_state | Reversible, action | both | Many | |
 | `set_pinned` | chat_state | Reversible, action | both | Many | pins the chat in the list |

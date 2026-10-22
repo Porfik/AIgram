@@ -20,6 +20,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "data/data_user.h"
 #include "data/notify/data_notify_settings.h"
 #include "history/history.h"
+#include "lang/lang_keys.h"
 #include "main/main_session.h"
 #include "mtproto/sender.h"
 
@@ -147,28 +148,32 @@ struct MuteRestore {
 };
 
 void RunMarkAsRead(not_null<PendingCall*> call) {
-	auto done = QJsonArray();
-	auto failed = QJsonArray();
-	auto toUnread = std::vector<not_null<History*>>();
+	auto card = Card{ .kind = CardKind::Change };
+	card.text = tr::lng_agent_card_title_mark_read(tr::now);
+	card.detail = u"mark_read"_q;
 	for (const auto &peer : call->peers) {
-		const auto history = call->session->data().history(peer);
-		if (MarkAsReadMenu::IsUnreadThread(history)) {
-			MarkAsReadMenu::MarkAsReadThread(history);
-			toUnread.push_back(history);
-		}
-		AddChatResult(done, peer);
+		card.targets.push_back(PeerTarget(peer));
 	}
-	if (!toUnread.empty()) {
-		call->undoable([=](Fn<void(QString error)> finished) {
-			for (const auto &history : toUnread) {
-				history->owner().histories().changeDialogUnreadMark(
-					history,
-					true);
+	call->confirm(std::move(card), [=](Card decided) {
+		auto done = QJsonArray();
+		auto failed = QJsonArray();
+		for (const auto &target : decided.targets) {
+			if (!target.checked) {
+				continue;
 			}
-			finished({});
-		});
-	}
-	DeliverChatResults(call, std::move(done), std::move(failed));
+			const auto peer = call->session->data().peerLoaded(
+				PeerId(target.peer));
+			if (!peer) {
+				continue;
+			}
+			const auto history = call->session->data().history(peer);
+			if (MarkAsReadMenu::IsUnreadThread(history)) {
+				MarkAsReadMenu::MarkAsReadThread(history);
+			}
+			AddChatResult(done, peer);
+		}
+		DeliverChatResults(call, std::move(done), std::move(failed));
+	});
 }
 
 void RunSetMute(not_null<PendingCall*> call) {
@@ -390,13 +395,19 @@ std::vector<ToolEntry> Entries() {
 			.run = run,
 		});
 	};
-	push(
-		u"mark_read"_q,
-		u"Mark chats as read in the chat list. Reading never marks"
-		" individual messages read, only the unread counter of the"
-		" chat is cleared."_q,
-		ToolSchema(QJsonObject(), QJsonArray()),
-		RunMarkAsRead);
+	result.push_back(ToolEntry{
+		.name = u"mark_read"_q,
+		.description = u"Mark chats as read. The senders see read"
+			" receipts, so the user confirms it on a card."_q,
+		.inputSchema = ToolSchema(QJsonObject(), QJsonArray()),
+		.policy = ToolPolicy{
+			.risk = Risk::Visible,
+			.general = true,
+			.chat = true,
+		},
+		.chatParam = ChatParam::Many,
+		.run = RunMarkAsRead,
+	});
 	auto muteProperties = QJsonObject();
 	muteProperties.insert(
 		"muted",

@@ -1969,6 +1969,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_title_add_contact" = "Add a contact";
 "lng_agent_card_title_delete_contacts" = "Delete contacts";
 "lng_agent_card_title_block" = "Block";
+"lng_agent_card_title_mark_read" = "Mark as read";
 "lng_agent_card_title_unblock" = "Unblock";
 "lng_agent_card_title_update_profile" = "Change your profile";
 "lng_agent_card_title_profile_photo" = "Change your profile photo";
