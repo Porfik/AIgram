@@ -1743,6 +1743,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_clear_data" = "Delete agent data";
 "lng_agent_clear_data_sure" = "Delete all agent sessions, memory and spending statistics of this account? Hidden chats stay hidden.";
 "lng_agent_clear_data_done" = "Agent data deleted.";
+"lng_agent_export_sessions" = "Export sessions for debugging";
+"lng_agent_export_sessions_done" = "Sessions saved to the agent folder.";
+"lng_agent_export_sessions_failed" = "Could not save the sessions file.";
 "lng_agent_row_preview" = "Agent row shows";
 "lng_agent_row_preview_title" = "Agent Row";
 "lng_agent_row_preview_message" = "Last message";

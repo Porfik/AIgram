@@ -11,13 +11,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_exclusions.h"
 #include "agent/agent_files.h"
 #include "agent/agent_manager.h"
+#include "agent/agent_session_store.h"
 #include "agent/agent_settings.h"
 #include "agent/agent_spending_tracker.h"
+#include "agent/agent_tasks.h"
 #include "agent/core/agent_chatgpt_auth.h"
 #include "agent/ui/agent_claude_boxes.h"
 #include "agent/ui/agent_model_boxes.h"
 #include "agent/ui/agent_profile.h"
 #include "agent/ui/agent_spending_format.h"
+#include "base/unixtime.h"
 #include "boxes/peer_list_box.h"
 #include "boxes/peer_list_controllers.h"
 #include "core/file_utilities.h"
@@ -47,6 +50,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include <rpl/map.h>
 #include <rpl/then.h>
 
+#include <QtCore/QDateTime>
+#include <QtCore/QFile>
+#include <QtCore/QJsonDocument>
 #include <QtCore/QUrl>
 #include <QtGui/QDesktopServices>
 
@@ -1078,11 +1084,252 @@ void BuildHiddenChats(
 	builder.addDividerText(tr::lng_agent_hidden_about());
 }
 
+[[nodiscard]] QString ExportCut(const QString &text, int limit) {
+	return (text.size() <= limit)
+		? text
+		: (text.left(limit) + u" [... %1 more]"_q.arg(text.size() - limit));
+}
+
+[[nodiscard]] QString ExportDate(qint64 date) {
+	return date
+		? QDateTime::fromSecsSinceEpoch(date).toString(
+			u"yyyy-MM-dd HH:mm:ss"_q)
+		: u"-"_q;
+}
+
+[[nodiscard]] QString ExportPeer(
+		not_null<Main::Session*> session,
+		::Agent::PeerKey peer) {
+	const auto data = session->data().peerLoaded(PeerId(peer));
+	return u"\"%1\" (%2)"_q.arg(data ? data->name() : u"?"_q).arg(peer);
+}
+
+[[nodiscard]] QString ExportCardKind(::Agent::CardKind kind) {
+	using Kind = ::Agent::CardKind;
+	switch (kind) {
+	case Kind::Send: return u"send"_q;
+	case Kind::Draft: return u"draft"_q;
+	case Kind::Forward: return u"forward"_q;
+	case Kind::Edit: return u"edit"_q;
+	case Kind::Delete: return u"delete"_q;
+	case Kind::React: return u"react"_q;
+	case Kind::PinMessage: return u"pin"_q;
+	case Kind::UnpinMessage: return u"unpin"_q;
+	case Kind::DeleteFolder: return u"delete_folder"_q;
+	case Kind::Handoff: return u"handoff"_q;
+	case Kind::Transcribe: return u"transcribe"_q;
+	case Kind::Download: return u"download"_q;
+	case Kind::SendFiles: return u"send_files"_q;
+	case Kind::CreateTask: return u"create_task"_q;
+	case Kind::UpdateTask: return u"update_task"_q;
+	case Kind::Action: return u"action"_q;
+	case Kind::Change: return u"change"_q;
+	case Kind::Method: return u"method"_q;
+	}
+	return u"?"_q;
+}
+
+[[nodiscard]] QString ExportCardStatus(::Agent::CardStatus status) {
+	using Status = ::Agent::CardStatus;
+	switch (status) {
+	case Status::Pending: return u"pending"_q;
+	case Status::Running: return u"running"_q;
+	case Status::Done: return u"done"_q;
+	case Status::Drafted: return u"drafted"_q;
+	case Status::Declined: return u"declined"_q;
+	case Status::Failed: return u"failed"_q;
+	case Status::NotDone: return u"not_done"_q;
+	case Status::Expired: return u"expired"_q;
+	}
+	return u"?"_q;
+}
+
+[[nodiscard]] QString ExportTurnEnd(::Agent::TurnEnd end) {
+	using End = ::Agent::TurnEnd;
+	switch (end) {
+	case End::Completed: return u"completed"_q;
+	case End::Interrupted: return u"interrupted"_q;
+	case End::StepLimit: return u"step_limit"_q;
+	case End::MaxTokens: return u"max_tokens"_q;
+	case End::Refusal: return u"refusal"_q;
+	case End::Failed: return u"failed"_q;
+	}
+	return u"?"_q;
+}
+
+void ExportBlock(QStringList &lines, const ::Agent::Block &block) {
+	v::match(block, [&](const ::Agent::TextBlock &data) {
+		lines.push_back((data.hidden ? u"[hidden] "_q : u"[text] "_q)
+			+ ExportCut(data.text, data.hidden ? 1500 : 4000));
+	}, [&](const ::Agent::MediaBlock &data) {
+		lines.push_back(u"[media] %1 %2 %3 bytes%4"_q
+			.arg(data.attachment.isEmpty()
+				? u"message %1"_q.arg(data.messageId)
+				: data.attachment)
+			.arg(data.mimeType)
+			.arg(data.size)
+			.arg(data.name.isEmpty() ? QString() : (u" "_q + data.name)));
+	}, [&](const ::Agent::ThinkingBlock &data) {
+		lines.push_back(u"[thinking %1 ms] "_q.arg(data.durationMs)
+			+ ExportCut(data.text, 1500));
+	}, [&](const ::Agent::ToolUseBlock &data) {
+		lines.push_back(u"[call %1] %2 %3%4"_q
+			.arg(data.id)
+			.arg(data.name)
+			.arg(ExportCut(QString::fromUtf8(QJsonDocument(
+				data.input).toJson(QJsonDocument::Compact)), 2000))
+			.arg(data.inputError.isEmpty()
+				? QString()
+				: (u" INPUT ERROR: "_q + data.inputError)));
+	}, [&](const ::Agent::ToolResultBlock &data) {
+		lines.push_back(u"[%1 %2] "_q
+			.arg(data.error ? u"error"_q : u"result"_q)
+			.arg(data.toolUseId)
+			+ ExportCut(data.content, data.error ? 1500 : 800));
+	});
+}
+
+void ExportRecord(
+		QStringList &lines,
+		not_null<Main::Session*> session,
+		const ::Agent::ProvidersState &providers,
+		const ::Agent::SessionRecord &record) {
+	const auto &info = record.info;
+	const auto provider = ::Agent::FindProvider(providers, info.profileId);
+	lines.push_back(QString());
+	lines.push_back(u"=== Session %1: %2"_q.arg(info.id, info.title));
+	lines.push_back(u"scope: %1; model: %2; created: %3; updated: %4;"
+		" tokens: %5 in, %6 cached, %7 out; tainted: %8; groups: %9"_q
+		.arg(info.scope.peer
+			? (u"chat "_q + ExportPeer(session, info.scope.peer))
+			: u"general"_q)
+		.arg(provider
+			? ProviderRowTitle(*provider)
+			: (info.profileId.isEmpty() ? u"default"_q : info.profileId))
+		.arg(ExportDate(info.created))
+		.arg(ExportDate(info.updated))
+		.arg(info.usage.inputTokens)
+		.arg(info.usage.cachedInputTokens)
+		.arg(info.usage.outputTokens)
+		.arg(record.tainted ? u"yes"_q : u"no"_q)
+		.arg(QStringList(
+			record.loadedGroups.begin(),
+			record.loadedGroups.end()).join(u", "_q)));
+	if (record.summaryUntil > 0) {
+		lines.push_back(u"[summary of the first %1 messages] "_q.arg(
+			record.summaryUntil) + ExportCut(record.summary, 4000));
+	}
+	for (auto i = 0; i != int(record.messages.size()); ++i) {
+		const auto &message = record.messages[i];
+		lines.push_back(u"--- %1 #%2 %3%4"_q
+			.arg(message.role == ::Agent::Role::User
+				? u"user"_q
+				: u"assistant"_q)
+			.arg(i)
+			.arg(ExportDate(message.date))
+			.arg(message.replyTo.isEmpty()
+				? QString()
+				: (u" reply to "_q + message.replyTo)));
+		for (const auto &block : message.blocks) {
+			ExportBlock(lines, block);
+		}
+		for (const auto &mark : record.turnEnds) {
+			if (mark.after == i + 1) {
+				lines.push_back(u"[turn end] "_q + ExportTurnEnd(mark.end));
+			}
+		}
+	}
+	for (const auto &card : record.cards) {
+		auto targets = QStringList();
+		for (const auto &target : card.targets) {
+			targets.push_back((target.checked ? u"+"_q : u"-"_q)
+				+ target.title
+				+ (target.error.isEmpty()
+					? QString()
+					: (u" ("_q + target.error + ')')));
+		}
+		lines.push_back(u"[card %1] %2 %3%4%5 targets: %6; text: %7"_q
+			.arg(card.toolUseId)
+			.arg(ExportCardKind(card.kind))
+			.arg(ExportCardStatus(card.status))
+			.arg(card.autoApproved ? u" auto"_q : QString())
+			.arg(card.allowedForTurn ? u" allowed_for_turn"_q : QString())
+			.arg(targets.join(u", "_q))
+			.arg(ExportCut(card.text, 600)));
+	}
+	if (!record.undone.empty()) {
+		lines.push_back(u"[undone] "_q + QStringList(
+			record.undone.begin(),
+			record.undone.end()).join(u", "_q));
+	}
+}
+
+[[nodiscard]] QString ExportSessions(
+		not_null<Main::Session*> session,
+		const ::Agent::ProvidersState &providers) {
+	const auto store = ::Agent::SessionStore(session);
+	auto &manager = session->agent();
+	auto lines = QStringList();
+	lines.push_back(u"AIgram agent sessions, exported %1"_q.arg(
+		ExportDate(base::unixtime::now())));
+	auto infos = manager.listAll();
+	ranges::sort(infos, ranges::less(), &::Agent::SessionInfo::created);
+	for (const auto &info : infos) {
+		if (const auto record = store.readSession(info.id)) {
+			ExportRecord(lines, session, providers, *record);
+		} else {
+			lines.push_back(u"=== Session %1: unreadable"_q.arg(info.id));
+		}
+	}
+	for (const auto &task : manager.tasks().list()) {
+		lines.push_back(QString());
+		lines.push_back(u"##### Task %1: %2"_q.arg(task.id, task.title));
+		lines.push_back(u"[instruction] "_q + task.instruction);
+		auto runs = manager.tasks().runs(task.id);
+		ranges::reverse(runs);
+		for (const auto &run : runs) {
+			if (const auto record = store.readSession(run.sessionId)) {
+				ExportRecord(lines, session, providers, *record);
+			}
+		}
+	}
+	const auto path = ::Agent::UniqueAgentFilePath(
+		session,
+		u"agent-sessions-%1.txt"_q.arg(QDateTime::currentDateTime().toString(
+			u"yyyy-MM-dd_HH-mm"_q)));
+	auto file = QFile(path);
+	if (path.isEmpty()
+		|| !file.open(QIODevice::WriteOnly | QIODevice::Truncate)
+		|| file.write(lines.join('\n').toUtf8()) < 0) {
+		return QString();
+	}
+	return path;
+}
+
 void BuildClearData(
 		SectionBuilder &builder,
 		const std::shared_ptr<AgentState> &state,
 		not_null<Window::SessionController*> controller) {
 	builder.addSkip();
+	builder.addButton({
+		.id = u"agent/export-sessions"_q,
+		.title = tr::lng_agent_export_sessions(),
+		.st = &st::settingsButtonNoIcon,
+		.onClick = [=] {
+			const auto path = ExportSessions(
+				&controller->session(),
+				state->providers);
+			if (path.isEmpty()) {
+				controller->showToast(
+					tr::lng_agent_export_sessions_failed(tr::now));
+				return;
+			}
+			controller->showToast(
+				tr::lng_agent_export_sessions_done(tr::now));
+			File::ShowInFolder(path);
+		},
+		.keywords = { u"export"_q, u"debug"_q, u"sessions"_q },
+	});
 	builder.addButton({
 		.id = u"agent/clear-data"_q,
 		.title = tr::lng_agent_clear_data(),
