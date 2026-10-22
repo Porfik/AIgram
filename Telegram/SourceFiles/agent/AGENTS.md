@@ -1848,10 +1848,15 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `HasPlanScope()`, reads `ParseIdToken()` (email, subject, plan),
   saves the account with the issued client id and the tokens, fires
   `ChatGptAccountChanged()` and calls `done` with an empty error; an
-  `access_denied` callback, a failed exchange or a missing plan scope
-  call `done` with the error text. `done` is called once, never from the
-  constructor, and may destroy the login; destroying it stops the server
-  and drops the exchange.
+  `access_denied` callback, another OAuth `error` in the callback, a
+  failed exchange or a missing plan scope call `done` with the error
+  text; a failure of a sign-in with the saved client id forgets that id
+  (while signed out), so the next attempt registers anew (the user may
+  have picked another ChatGPT account). Callbacks with a wrong `state`
+  get an error page and the sign-in keeps waiting. `done` is called once,
+  asynchronously (never from the constructor or a socket signal), and
+  may destroy the login; destroying it stops the server and drops the
+  exchange.
 - Access tokens: one refresh at a time for the whole app; requests that
   need a token while it runs wait for it. A token that `NeedsRefresh()`
   is refreshed with `RefreshRequest()`; success saves the new pair right

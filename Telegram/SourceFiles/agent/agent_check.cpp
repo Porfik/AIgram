@@ -7,6 +7,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 */
 #include "agent/agent_check.h"
 
+#include "agent/agent_chatgpt.h"
 #include "agent/agent_claude.h"
 #include "agent/agent_http_transport.h"
 #include "agent/agent_settings.h"
@@ -54,6 +55,7 @@ public:
 
 struct CheckState {
 	HttpTransport transport;
+	ChatGptTransport chatGpt = ChatGptTransport(&transport);
 	ClaudeLauncher launcher;
 	TestExecutor executor;
 	std::unique_ptr<Engine> loop;
@@ -174,7 +176,9 @@ void AgentCheckBox(not_null<Ui::GenericBox*> box, ProviderSettings provider) {
 	} else if (auto adapter = CreateAdapter(provider)) {
 		state->loop = std::make_unique<Loop>(
 			std::move(adapter),
-			&state->transport,
+			(UsesChatGptPlan(provider)
+				? static_cast<Transport*>(&state->chatGpt)
+				: &state->transport),
 			&state->executor,
 			LoopOptions{ .model = provider.model });
 	}

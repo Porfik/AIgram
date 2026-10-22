@@ -723,7 +723,7 @@ std::unique_ptr<Engine> Session::createEngine(
 	}
 	return std::make_unique<Loop>(
 		std::move(adapter),
-		&_manager->transport(),
+		&_manager->transportFor(provider),
 		_tools.get(),
 		LoopOptions{
 			.model = provider.model,

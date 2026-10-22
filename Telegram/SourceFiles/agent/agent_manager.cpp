@@ -197,7 +197,7 @@ std::unique_ptr<PendingRequest> Manager::single(
 	}
 	return std::make_unique<SingleRequest>(
 		std::move(adapter),
-		_transport.get(),
+		&transportFor(provider),
 		std::move(request),
 		std::move(done));
 }
