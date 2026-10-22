@@ -53,6 +53,8 @@ namespace {
 constexpr auto kDefaultHistoryLimit = 30;
 constexpr auto kDefaultSearchLimit = 20;
 constexpr auto kDefaultMembersLimit = 50;
+constexpr auto kHistoryMaxTextChars = 1500;
+constexpr auto kMaxReadIds = 50;
 
 [[nodiscard]] std::optional<int> JsonInt(
 		const QJsonObject &object,
@@ -322,6 +324,139 @@ void DeliverMessagesPage(
 			QJsonValue(qint64(items.back()->id.bare)));
 	}
 	call->done(std::move(json));
+}
+
+[[nodiscard]] std::vector<MsgId> ParseHistoryIds(
+		const QJsonObject &input,
+		QString &error) {
+	const auto value = input.value("ids");
+	if (value.isUndefined() || value.isNull()) {
+		return {};
+	} else if (!value.isArray()) {
+		error = u"ids must be an array of message ids."_q;
+		return {};
+	}
+	const auto list = value.toArray();
+	if (list.isEmpty() || list.size() > kMaxReadIds) {
+		error = u"ids must contain 1 to %1 message ids."_q.arg(kMaxReadIds);
+		return {};
+	}
+	auto result = std::vector<MsgId>();
+	for (const auto &item : list) {
+		if (!item.isDouble() || item.toDouble() < 1) {
+			error = u"ids must contain message ids."_q;
+			return {};
+		}
+		const auto id = MsgId(qint64(item.toDouble()));
+		if (!ranges::contains(result, id)) {
+			result.push_back(id);
+		}
+	}
+	return result;
+}
+
+[[nodiscard]] std::optional<int> ParseHistoryDate(
+		const QString &value,
+		QString &error) {
+	const auto date = QDate::fromString(value, u"yyyy-MM-dd"_q);
+	if (date.isValid()) {
+		return int(date.startOfDay().toSecsSinceEpoch());
+	}
+	const auto dateTime = QDateTime::fromString(value, u"yyyy-MM-dd HH:mm"_q);
+	if (!dateTime.isValid()) {
+		error = u"Bad from_date %1, expected YYYY-MM-DD or"
+			" YYYY-MM-DD HH:MM."_q.arg(value);
+		return std::nullopt;
+	}
+	return int(dateTime.toSecsSinceEpoch());
+}
+
+void DeliverHistoryPage(
+		not_null<PendingCall*> call,
+		ParsedSlice parsed,
+		int limit,
+		Page page) {
+	auto messages = QJsonArray();
+	const auto &items = parsed.items;
+	for (auto i = items.rbegin(); i != items.rend(); ++i) {
+		call->markSeen((*i)->fullId());
+		messages.push_back(ToolFormat::SerializeMessage(
+			*i,
+			kHistoryMaxTextChars));
+	}
+	const auto full = int(items.size()) == limit;
+	auto hasOlder = false;
+	auto hasNewer = false;
+	switch (page) {
+	case Page::Newest:
+		hasOlder = full;
+		break;
+	case Page::Around:
+		hasOlder = hasNewer = full;
+		break;
+	case Page::Before:
+		hasNewer = true;
+		hasOlder = full;
+		break;
+	case Page::After:
+		hasOlder = true;
+		hasNewer = full;
+		break;
+	}
+	auto json = QJsonObject();
+	json.insert("messages", messages);
+	json.insert("has_older", QJsonValue(hasOlder));
+	json.insert("has_newer", QJsonValue(hasNewer));
+	call->done(std::move(json));
+}
+
+void DeliverMessagesByIds(
+		not_null<PendingCall*> call,
+		not_null<PeerData*> peer,
+		const std::vector<MsgId> &ids) {
+	const auto session = call->session;
+	const auto finish = [=] {
+		auto found = base::flat_map<int64, not_null<HistoryItem*>>();
+		auto missing = QJsonArray();
+		for (const auto id : ids) {
+			const auto item = session->data().message(peer->id, id);
+			if (item) {
+				found.emplace(id.bare, item);
+			} else {
+				missing.push_back(QJsonValue(qint64(id.bare)));
+			}
+		}
+		auto messages = QJsonArray();
+		for (const auto &[id, item] : found) {
+			call->markSeen(item->fullId());
+			messages.push_back(ToolFormat::SerializeMessage(item));
+		}
+		auto json = QJsonObject();
+		json.insert("messages", messages);
+		json.insert("missing", missing);
+		call->done(std::move(json));
+	};
+	auto missing = std::vector<MsgId>();
+	for (const auto id : ids) {
+		if (!session->data().message(peer->id, id)) {
+			missing.push_back(id);
+		}
+	}
+	if (missing.empty()) {
+		finish();
+		return;
+	}
+	const auto left = call->lifetime.make_state<int>(int(missing.size()));
+	for (const auto id : missing) {
+		session->api().requestMessageData(
+			peer,
+			id,
+			crl::guard(call.get(), [=] {
+				if (!--*left) {
+					finish();
+				}
+			}));
+	}
 }
 
 void OnFullPeer(not_null<PendingCall*> call, Fn<void()> ready) {
@@ -764,20 +899,38 @@ void RunReadHistory(not_null<PendingCall*> call) {
 	const auto &input = call->input;
 	const auto peer = call->peer;
 	auto error = QString();
+	const auto ids = ParseHistoryIds(input, error);
 	const auto around = JsonInt(input, "around_id", error);
 	const auto before = JsonInt(input, "before_id", error);
 	const auto after = JsonInt(input, "after_id", error);
+	const auto fromDateString = input.value("from_date").toString();
 	const auto limitValue = JsonInt(input, "limit", error);
 	const auto topic = JsonInt(input, "topic_id", error);
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;
 	}
+	if (!ids.empty()) {
+		if (around.has_value()
+			|| before.has_value()
+			|| after.has_value()
+			|| !fromDateString.isEmpty()
+			|| limitValue.has_value()
+			|| topic.has_value()) {
+			call->fail(
+				u"ids cannot be combined with other parameters."_q);
+			return;
+		}
+		DeliverMessagesByIds(call, peer, ids);
+		return;
+	}
 	const auto given = (around.has_value() ? 1 : 0)
 		+ (before.has_value() ? 1 : 0)
-		+ (after.has_value() ? 1 : 0);
+		+ (after.has_value() ? 1 : 0)
+		+ (fromDateString.isEmpty() ? 0 : 1);
 	if (given > 1) {
-		call->fail(u"Give at most one of around_id, before_id, after_id."_q);
+		call->fail(u"Give at most one of around_id, before_id, after_id,"
+			" from_date."_q);
 		return;
 	}
 	const auto limit = limitValue.value_or(kDefaultHistoryLimit);
@@ -790,7 +943,17 @@ void RunReadHistory(not_null<PendingCall*> call) {
 		call->fail(u"topic_id is only supported in forums."_q);
 		return;
 	}
-	const auto page = around
+	auto fromDate = 0;
+	if (!fromDateString.isEmpty()) {
+		fromDate = ParseHistoryDate(fromDateString, error).value_or(0);
+		if (!error.isEmpty()) {
+			call->fail(error);
+			return;
+		}
+	}
+	const auto page = fromDate
+		? Page::After
+		: around
 		? Page::Around
 		: before
 		? Page::Before
@@ -800,7 +963,9 @@ void RunReadHistory(not_null<PendingCall*> call) {
 	auto offsetId = MsgId();
 	auto addOffset = 0;
 	auto minId = MsgId();
-	if (around) {
+	if (fromDate) {
+		addOffset = -limit;
+	} else if (around) {
 		offsetId = MsgId(*around);
 		addOffset = -limit / 2;
 	} else if (before) {
@@ -814,12 +979,11 @@ void RunReadHistory(not_null<PendingCall*> call) {
 	const auto offsetIdInt = static_cast<int>(offsetId.bare);
 	const auto minIdInt = static_cast<int>(minId.bare);
 	const auto finish = [call, page, limit](const MTPmessages_Messages &result) {
-		DeliverMessagesPage(
+		DeliverHistoryPage(
 			call,
 			ParseMessagesSlice(call->session, result),
 			limit,
-			page,
-			false);
+			page);
 	};
 	const auto fail = [call](const MTP::Error &error) {
 		call->fail(error.type());
@@ -847,7 +1011,7 @@ void RunReadHistory(not_null<PendingCall*> call) {
 					peer->input(),
 					MTP_int(topicId),
 					MTP_int(offsetIdInt),
-					MTP_int(0),
+					MTP_int(fromDate),
 					MTP_int(addOffset),
 					MTP_int(limit),
 					MTP_int(0),
@@ -857,7 +1021,7 @@ void RunReadHistory(not_null<PendingCall*> call) {
 			return send(MTPmessages_GetHistory(
 				peer->input(),
 				MTP_int(offsetIdInt),
-				MTP_int(0),
+				MTP_int(fromDate),
 				MTP_int(addOffset),
 				MTP_int(limit),
 				MTP_int(0),
@@ -1519,6 +1683,20 @@ std::vector<ToolEntry> Entries() {
 	auto result = std::vector<ToolEntry>();
 	auto empty = QJsonObject();
 	auto historyProperties = QJsonObject();
+	historyProperties.insert("from_date", StringProperty(
+		u"Read messages sent at or after this local time, YYYY-MM-DD"
+		u" or YYYY-MM-DD HH:MM, instead of around_id, before_id or"
+		u" after_id. Page newer messages with after_id."_q));
+	auto idsProperty = QJsonObject();
+	idsProperty.insert("type", QJsonValue(u"array"_q));
+	idsProperty.insert("description", QJsonValue(QString(
+		u"Read these message ids in full instead of paging (1 to %1"
+			u" ids); missing ids come back in \"missing\". Cannot be"
+			u" combined with other parameters."_q).arg(kMaxReadIds)));
+	idsProperty.insert("items", MessageIdProperty(u"Message id."_q));
+	idsProperty.insert("minItems", QJsonValue(1));
+	idsProperty.insert("maxItems", QJsonValue(kMaxReadIds));
+	historyProperties.insert("ids", idsProperty);
 	historyProperties.insert("around_id", MessageIdProperty(
 		u"Read a window centered on this message id."_q));
 	historyProperties.insert("before_id", MessageIdProperty(
@@ -1607,10 +1785,12 @@ std::vector<ToolEntry> Entries() {
 	push(
 		u"read_history"_q,
 		u"Read messages of this chat, oldest to newest. Give at most"
-		" one of around_id, before_id, after_id. Reading never marks"
+		" one of around_id, before_id, after_id, from_date, or pass"
+		" ids to read those messages in full. Reading never marks"
 		" anything read."_q,
 		u"Read messages of the chat, oldest to newest. Give at most"
-		" one of around_id, before_id, after_id. Reading never marks"
+		" one of around_id, before_id, after_id, from_date, or pass"
+		" ids to read those messages in full. Reading never marks"
 		" anything read."_q,
 		ToolSchema(std::move(historyProperties), QJsonArray()),
 		ChatParam::One,
