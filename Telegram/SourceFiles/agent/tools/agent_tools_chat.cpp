@@ -14,6 +14,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "api/api_chat_participants.h"
 #include "apiwrap.h"
 #include "base/algorithm.h"
+#include "base/flat_map.h"
+#include "base/flat_set.h"
 #include "base/timer.h"
 #include "base/unixtime.h"
 #include "data/data_changes.h"
@@ -346,80 +348,239 @@ void OnFullPeer(not_null<PendingCall*> call, Fn<void()> ready) {
 	call->lifetime.make_state<base::Timer>(trigger)->callOnce(5 * 1000);
 }
 
-void DeliverGlobalSearch(
+struct SearchHit {
+	FullMsgId id;
+	TimeId date = 0;
+	QJsonObject json;
+};
+
+struct SearchState {
+	std::vector<QString> queries;
+	std::vector<QString> chatTypes;
+	std::vector<not_null<PeerData*>> targets;
+	bool global = false;
+	bool countsMode = false;
+	bool anyFull = false;
+	bool prepared = false;
+	int limit = 0;
+	int context = 0;
+	std::vector<Fn<void(Fn<void()>)>> tasks;
+	int taskIndex = 0;
+	Fn<void()> next;
+	std::vector<SearchHit> hits;
+	std::vector<QJsonObject> seen;
+	std::vector<QJsonObject> failed;
+	base::flat_set<FullMsgId> found;
+	base::flat_map<PeerId, int> countsMap;
+	int lastOffsetId = 0;
+	int lastOffsetRate = 0;
+	FullMsgId lastGlobalId;
+};
+
+[[nodiscard]] QString SearchKindName(not_null<PeerData*> peer) {
+	if (const auto user = peer->asUser()) {
+		return user->isBot() ? u"bot"_q : u"private"_q;
+	}
+	return (ToolFormat::PeerKind(peer) == u"channel"_q)
+		? u"channel"_q
+		: u"group"_q;
+}
+
+void ProcessSearchHit(
 		not_null<PendingCall*> call,
-		const QString &query,
-		int minDate,
-		int maxDate,
-		const QString &cursor,
-		int limit) {
-	auto offsetRate = 0;
-	auto offsetPeer = (PeerData*)nullptr;
-	auto offsetId = 0;
-	if (!cursor.isEmpty()) {
-		const auto parts = cursor.split('_');
-		if (parts.size() != 3) {
-			call->fail(u"Malformed search offset."_q);
-			return;
-		}
-		auto okRate = false;
-		auto okPeer = false;
-		auto okId = false;
-		offsetRate = parts[0].toInt(&okRate);
-		const auto peerId = parts[1].toULongLong(&okPeer);
-		offsetId = parts[2].toInt(&okId);
-		if (!okRate || !okPeer || !okId) {
-			call->fail(u"Malformed search offset."_q);
-			return;
-		}
-		offsetPeer = call->session->data().peerLoaded(PeerId(peerId));
-		if (!offsetPeer) {
-			call->fail(u"Unknown chat in the search offset."_q);
-			return;
+		not_null<SearchState*> state,
+		not_null<HistoryItem*> item,
+		int queryIndex) {
+	const auto peer = item->history()->peer;
+	const auto id = FullMsgId(peer->id, item->id);
+	if (state->found.contains(id)) {
+		return;
+	}
+	state->found.insert(id);
+	if (call->seen(id)) {
+		auto json = QJsonObject();
+		json.insert("chat", QJsonValue(qint64(peer->id.value)));
+		json.insert("id", QJsonValue(qint64(item->id.bare)));
+		state->seen.push_back(std::move(json));
+		return;
+	}
+	const auto text = ToolFormat::EntitiesToMarkdown(item->originalText());
+	auto serialized = ToolFormat::SerializeMessage(item);
+	auto json = QJsonObject();
+	if (state->targets.size() != 1) {
+		auto chat = QJsonObject();
+		chat.insert("id", QJsonValue(qint64(peer->id.value)));
+		chat.insert("title", peer->name());
+		json.insert("chat", chat);
+	}
+	json.insert("id", serialized.value("id"));
+	json.insert("date", serialized.value("date"));
+	json.insert("from", serialized.value("from"));
+	for (const auto key : { "media", "reply_to", "topic_id" }) {
+		if (serialized.contains(key)) {
+			json.insert(key, serialized.value(key));
 		}
 	}
-	const auto finish = [call, limit](const MTPmessages_Messages &result) {
-		const auto parsed = ParseMessagesSlice(call->session, result);
-		auto messages = QJsonArray();
-		for (auto i = parsed.items.rbegin(); i != parsed.items.rend(); ++i) {
-			const auto peer = (*i)->history()->peer;
-			if (!call->gate->visible(peer->id.value)
-				|| !call->gate->inFrame(peer->id.value)) {
+	json.insert("snippet", MatchSnippet(text, state->queries, 300));
+	if (serialized.contains("forwarded_from")) {
+		json.insert("forwarded_from", serialized.value("forwarded_from"));
+	}
+	json.insert("length", QJsonValue(int(text.size())));
+	if (state->queries.size() > 1) {
+		json.insert("matched", state->queries[queryIndex]);
+	}
+	state->hits.push_back(SearchHit{
+		.id = id,
+		.date = item->date(),
+		.json = std::move(json),
+	});
+}
+
+[[nodiscard]] QJsonObject SerializeNeighbor(not_null<HistoryItem*> item) {
+	auto serialized = ToolFormat::SerializeMessage(item, 300);
+	auto result = QJsonObject();
+	result.insert("id", serialized.value("id"));
+	result.insert("date", serialized.value("date"));
+	for (const auto key : { "from", "text" }) {
+		if (serialized.contains(key)) {
+			result.insert(key, serialized.value(key));
+		}
+	}
+	return result;
+}
+
+void ProcessChatSlice(
+		not_null<PendingCall*> call,
+		not_null<SearchState*> state,
+		not_null<PeerData*> peer,
+		int queryIndex,
+		const MTPmessages_Messages &result) {
+	const auto parsed = ParseMessagesSlice(call->session, result);
+	state->anyFull = state->anyFull
+		|| (int(parsed.items.size()) == state->limit);
+	if (state->countsMode) {
+		const auto count = (parsed.total >= 0)
+			? parsed.total
+			: int(parsed.items.size());
+		state->countsMap[peer->id] += count;
+		return;
+	}
+	if (state->queries.size() == 1
+		&& state->targets.size() == 1
+		&& !parsed.items.empty()) {
+		state->lastOffsetId = parsed.items.back()->id.bare;
+	}
+	for (const auto &item : parsed.items) {
+		ProcessSearchHit(call, state, item, queryIndex);
+	}
+}
+
+void ProcessGlobalSlice(
+		not_null<PendingCall*> call,
+		not_null<SearchState*> state,
+		int queryIndex,
+		const MTPmessages_Messages &result) {
+	const auto parsed = ParseMessagesSlice(call->session, result);
+	state->anyFull = state->anyFull
+		|| (int(parsed.items.size()) == state->limit);
+	if (state->countsMode) {
+		auto page = base::flat_map<PeerId, int>();
+		for (const auto &item : parsed.items) {
+			page[item->history()->peer->id] += 1;
+		}
+		for (const auto &[peerId, count] : page) {
+			state->countsMap[peerId] += count;
+		}
+		return;
+	}
+	if (state->queries.size() == 1 && !parsed.items.empty()) {
+		state->lastOffsetRate = parsed.nextRate;
+		const auto last = parsed.items.back();
+		state->lastGlobalId = FullMsgId(
+			last->history()->peer->id,
+			last->id);
+	}
+	for (const auto &item : parsed.items) {
+		const auto peer = item->history()->peer;
+		if (!call->gate->visible(peer->id.value)
+			|| !call->gate->inFrame(peer->id.value)) {
+			continue;
+		}
+		if (!state->chatTypes.empty()
+			&& !ranges::contains(state->chatTypes, SearchKindName(peer))) {
+			continue;
+		}
+		ProcessSearchHit(call, state, item, queryIndex);
+	}
+}
+
+void DeliverSearchResult(
+		not_null<PendingCall*> call,
+		not_null<SearchState*> state) {
+	auto json = QJsonObject();
+	if (state->countsMode) {
+		auto counts = QJsonArray();
+		auto list = std::vector<std::pair<PeerId, int>>();
+		list.reserve(state->countsMap.size());
+		for (const auto &[peerId, count] : state->countsMap) {
+			list.emplace_back(peerId, count);
+		}
+		ranges::sort(list, [](const auto &a, const auto &b) {
+			return a.second > b.second;
+		});
+		for (const auto &[peerId, count] : list) {
+			const auto peer = call->session->data().peerLoaded(peerId);
+			if (!peer) {
 				continue;
 			}
-			messages.push_back(ToolFormat::SerializeMessageWithChat(*i));
+			auto chat = QJsonObject();
+			chat.insert("id", QJsonValue(qint64(peerId.value)));
+			chat.insert("title", peer->name());
+			auto entry = QJsonObject();
+			entry.insert("chat", chat);
+			entry.insert("count", QJsonValue(count));
+			counts.push_back(std::move(entry));
 		}
-		auto json = QJsonObject();
-		json.insert("messages", messages);
-		json.insert("has_older", QJsonValue(int(parsed.items.size()) == limit));
-		if (int(parsed.items.size()) == limit && !parsed.items.empty()) {
-			const auto last = parsed.items.back();
-			json.insert("next_offset", u"%1_%2_%3"_q
-				.arg(parsed.nextRate)
-				.arg(last->history()->peer->id.value)
-				.arg(last->id.bare));
-		}
+		json.insert("counts", counts);
+		json.insert("complete", QJsonValue(!state->global));
 		call->done(std::move(json));
-	};
-	call->api.request(MTPmessages_SearchGlobal(
-		MTP_flags(MTPmessages_SearchGlobal::Flag()),
-		MTP_int(0),
-		MTPInputChannel(),
-		MTP_string(query),
-		MTP_inputMessagesFilterEmpty(),
-		MTP_int(minDate),
-		MTP_int(maxDate),
-		MTP_int(offsetRate),
-		(offsetPeer
-			? offsetPeer->input()
-			: MTP_inputPeerEmpty()),
-		MTP_int(offsetId),
-		MTP_int(limit)
-	)).done([=](const MTPmessages_Messages &result) {
-		finish(result);
-	}).fail([=](const MTP::Error &error) {
-		call->fail(error.type());
-	}).send();
+		return;
+	}
+	auto hits = QJsonArray();
+	for (auto &hit : state->hits) {
+		hits.push_back(hit.json);
+		call->markSeen(hit.id);
+	}
+	json.insert("hits", hits);
+	if (!state->seen.empty()) {
+		auto seen = QJsonArray();
+		for (auto &entry : state->seen) {
+			seen.push_back(std::move(entry));
+		}
+		json.insert("seen", seen);
+	}
+	if (!state->failed.empty()) {
+		auto failed = QJsonArray();
+		for (auto &entry : state->failed) {
+			failed.push_back(std::move(entry));
+		}
+		json.insert("failed", failed);
+	}
+	if (state->queries.size() == 1 && state->targets.size() == 1) {
+		if (state->anyFull && state->lastOffsetId > 0) {
+			json.insert("next_offset_id", QJsonValue(state->lastOffsetId));
+		}
+	} else if (state->queries.size() == 1 && state->global) {
+		if (state->anyFull && state->lastGlobalId) {
+			json.insert("next_offset", u"%1_%2_%3"_q
+				.arg(state->lastOffsetRate)
+				.arg(state->lastGlobalId.peer.value)
+				.arg(state->lastGlobalId.msg.bare));
+		}
+	} else if (state->anyFull) {
+		json.insert("has_more", QJsonValue(true));
+	}
+	call->done(std::move(json));
 }
 
 void DeliverBasicGroupMembers(not_null<PendingCall*> call) {
@@ -507,6 +668,69 @@ void DeliverBasicGroupAdmins(not_null<PendingCall*> call) {
 		}
 	}
 	return member;
+}
+
+[[nodiscard]] QJsonObject SearchQueriesProperty() {
+	auto item = QJsonObject();
+	item.insert("type", QJsonValue(u"string"_q));
+	auto result = QJsonObject();
+	result.insert("type", QJsonValue(u"array"_q));
+	result.insert("items", item);
+	result.insert("minItems", QJsonValue(1));
+	result.insert("maxItems", QJsonValue(5));
+	result.insert("description", QJsonValue(u"Up to 5 alternative words"
+		u" or phrases to search for."_q));
+	return result;
+}
+
+[[nodiscard]] QJsonObject SearchMediaProperty() {
+	auto result = QJsonObject();
+	result.insert("type", QJsonValue(u"string"_q));
+	auto list = QJsonArray();
+	list.push_back(u"photo"_q);
+	list.push_back(u"video"_q);
+	list.push_back(u"photo_video"_q);
+	list.push_back(u"document"_q);
+	list.push_back(u"voice"_q);
+	list.push_back(u"round_video"_q);
+	list.push_back(u"music"_q);
+	list.push_back(u"url"_q);
+	list.push_back(u"gif"_q);
+	result.insert("enum", list);
+	result.insert("description", QJsonValue(u"Only messages with this"
+		u" media type."_q));
+	return result;
+}
+
+[[nodiscard]] QJsonObject SearchChatTypesProperty() {
+	auto item = QJsonObject();
+	item.insert("type", QJsonValue(u"string"_q));
+	auto list = QJsonArray();
+	list.push_back(u"private"_q);
+	list.push_back(u"group"_q);
+	list.push_back(u"channel"_q);
+	list.push_back(u"bot"_q);
+	item.insert("enum", list);
+	auto result = QJsonObject();
+	result.insert("type", QJsonValue(u"array"_q));
+	result.insert("items", item);
+	result.insert("minItems", QJsonValue(1));
+	result.insert("maxItems", QJsonValue(4));
+	result.insert("description", QJsonValue(u"Account scope only, when"
+		u" searching all chats: only these chat kinds."_q));
+	return result;
+}
+
+[[nodiscard]] QJsonObject SearchModeProperty() {
+	auto result = QJsonObject();
+	result.insert("type", QJsonValue(u"string"_q));
+	auto list = QJsonArray();
+	list.push_back(u"messages"_q);
+	list.push_back(u"counts"_q);
+	result.insert("enum", list);
+	result.insert("description", QJsonValue(u"messages (default) returns"
+		u" hits, counts returns how many messages match in each chat."_q));
+	return result;
 }
 
 } // namespace
@@ -643,22 +867,144 @@ void RunReadHistory(not_null<PendingCall*> call) {
 	call->setRequestId(requestId);
 }
 
+[[nodiscard]] std::vector<QString> SearchQueries(
+		const QJsonObject &input,
+		QString &error) {
+	auto result = std::vector<QString>();
+	const auto single = input.value("query").toString().trimmed();
+	if (!single.isEmpty()) {
+		result.push_back(single);
+	}
+	const auto value = input.value("queries");
+	if (!value.isUndefined() && !value.isNull()) {
+		if (!value.isArray()) {
+			error = u"queries must be an array of strings."_q;
+			return result;
+		}
+		const auto list = value.toArray();
+		if (list.isEmpty() || list.size() > 5) {
+			error = u"queries must contain 1 to 5 strings."_q;
+			return result;
+		}
+		for (const auto &item : list) {
+			const auto text = item.toString().trimmed();
+			if (text.isEmpty() || text.size() > 100) {
+				error = u"queries must contain strings of 1 to 100"
+					u" characters."_q;
+				return result;
+			}
+			if (!ranges::contains(result, text)) {
+				result.push_back(text);
+			}
+		}
+	}
+	return result;
+}
+
+[[nodiscard]] MTPMessagesFilter SearchMediaFilter(
+		const QJsonObject &input,
+		QString &error) {
+	const auto media = input.value("media").toString().trimmed().toLower();
+	if (media.isEmpty()) {
+		return MTP_inputMessagesFilterEmpty();
+	} else if (media == u"photo") {
+		return MTP_inputMessagesFilterPhotos();
+	} else if (media == u"video") {
+		return MTP_inputMessagesFilterVideo();
+	} else if (media == u"photo_video") {
+		return MTP_inputMessagesFilterPhotoVideo();
+	} else if (media == u"document") {
+		return MTP_inputMessagesFilterDocument();
+	} else if (media == u"voice") {
+		return MTP_inputMessagesFilterVoice();
+	} else if (media == u"round_video") {
+		return MTP_inputMessagesFilterRoundVideo();
+	} else if (media == u"music") {
+		return MTP_inputMessagesFilterMusic();
+	} else if (media == u"url") {
+		return MTP_inputMessagesFilterUrl();
+	} else if (media == u"gif") {
+		return MTP_inputMessagesFilterGif();
+	}
+	error = u"Unknown media: %1. The types are: photo, video,"
+		u" photo_video, document, voice, round_video, music, url, gif."_q
+		.arg(media);
+	return MTP_inputMessagesFilterEmpty();
+}
+
+[[nodiscard]] std::vector<QString> SearchChatTypes(
+		const QJsonObject &input,
+		QString &error) {
+	auto result = std::vector<QString>();
+	const auto value = input.value("chat_types");
+	if (value.isUndefined() || value.isNull()) {
+		return result;
+	}
+	if (!value.isArray()) {
+		error = u"chat_types must be an array of strings."_q;
+		return result;
+	}
+	const auto list = value.toArray();
+	if (list.isEmpty()) {
+		error = u"chat_types must not be empty."_q;
+		return result;
+	}
+	for (const auto &item : list) {
+		const auto type = item.toString().trimmed().toLower();
+		if (type != u"private" && type != u"group"
+			&& type != u"channel" && type != u"bot") {
+			error = u"Unknown chat type: %1. The types are: private,"
+				u" group, channel, bot."_q.arg(item.toString());
+			return result;
+		}
+		if (!ranges::contains(result, type)) {
+			result.push_back(type);
+		}
+	}
+	return result;
+}
+
+[[nodiscard]] QString SearchMode(
+		const QJsonObject &input,
+		QString &error) {
+	const auto mode = input.value("mode").toString().trimmed().toLower();
+	if (mode.isEmpty() || mode == u"messages") {
+		return u"messages"_q;
+	} else if (mode == u"counts") {
+		return u"counts"_q;
+	}
+	error = u"Unknown mode: %1. The modes are: messages, counts."_q
+		.arg(mode);
+	return QString();
+}
+
 void RunSearchMessages(not_null<PendingCall*> call) {
 	const auto &input = call->input;
-	const auto peer = call->peer;
-	const auto query = input.value("query").toString().trimmed();
-	if (query.isEmpty()) {
-		call->fail(u"query must not be empty."_q);
-		return;
-	}
 	auto error = QString();
+	const auto queries = SearchQueries(input, error);
+	const auto chatTypes = error.isEmpty()
+		? SearchChatTypes(input, error)
+		: std::vector<QString>();
+	const auto mode = error.isEmpty() ? SearchMode(input, error) : QString();
+	const auto limitValue = error.isEmpty()
+		? JsonInt(input, "limit", error)
+		: std::optional<int>();
+	const auto contextValue = error.isEmpty()
+		? JsonInt(input, "context", error)
+		: std::optional<int>();
+	const auto topic = error.isEmpty()
+		? JsonInt(input, "topic_id", error)
+		: std::optional<int>();
+	const auto offsetIdValue = error.isEmpty()
+		? JsonInt(input, "offset_id", error)
+		: std::optional<int>();
+	const auto filter = error.isEmpty()
+		? SearchMediaFilter(input, error)
+		: MTPMessagesFilter();
 	const auto from = input.value("from").toString().trimmed();
 	const auto minDateString = input.value("min_date").toString();
 	const auto maxDateString = input.value("max_date").toString();
-	const auto limitValue = JsonInt(input, "limit", error);
-	const auto offset = JsonInt(input, "offset_id", error);
 	const auto cursor = input.value("offset").toString().trimmed();
-	const auto topic = JsonInt(input, "topic_id", error);
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;
@@ -668,26 +1014,10 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 		call->fail(u"limit must be between 1 and 50."_q);
 		return;
 	}
-	auto fromPeer = MTPInputPeer();
-	const auto fromGiven = !from.isEmpty();
-	if (fromGiven && from != u"me") {
-		UserData *fromUser = nullptr;
-		auto ok = false;
-		const auto number = from.toLongLong(&ok);
-		if (ok) {
-			fromUser = call->session->data().userLoaded(UserId(number));
-		} else {
-			const auto name = from.startsWith(u'@') ? from.mid(1) : from;
-			const auto named = call->session->data().peerByUsername(name);
-			fromUser = named ? named->asUser() : nullptr;
-		}
-		if (!fromUser) {
-			call->fail(u"Unknown user: %1."_q.arg(from));
-			return;
-		}
-		fromPeer = fromUser->input();
-	} else if (fromGiven) {
-		fromPeer = MTP_inputPeerSelf();
+	const auto context = contextValue.value_or(0);
+	if (context < 0 || context > 2) {
+		call->fail(u"context must be between 0 and 2."_q);
+		return;
 	}
 	const auto parseDate = [&](const QString &value, bool end) {
 		if (value.isEmpty()) {
@@ -709,77 +1039,343 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 		call->fail(error);
 		return;
 	}
-	if (!peer) {
-		if (fromGiven) {
-			call->fail(u"from is only supported when searching a single chat."_q);
-			return;
-		} else if (topic) {
-			call->fail(u"topic_id is only supported in forums."_q);
-			return;
-		} else if (offset.has_value()) {
-			call->fail(
-				u"offset_id is only supported when searching a single chat."_q);
+	const auto global = call->peers.empty();
+	const auto targets = call->peers;
+	if (!global && targets.size() > 20) {
+		call->fail(u"Search is limited to 20 chats, split it into"
+			u" several calls."_q);
+		return;
+	}
+	const auto hasWords = !queries.empty();
+	const auto hasMedia = !input.value("media").toString().isEmpty();
+	const auto hasDates = !minDateString.isEmpty()
+		|| !maxDateString.isEmpty();
+	if (!hasWords && !hasMedia && !hasDates) {
+		call->fail(u"Give a word, a media type or dates."_q);
+		return;
+	}
+	const auto singleChat = !global && targets.size() == 1;
+	if (!singleChat) {
+		if (!from.isEmpty()) {
+			call->fail(u"from is only supported when searching a single"
+				u" chat."_q);
 			return;
 		}
-		DeliverGlobalSearch(
-			call,
-			query,
-			minDate,
-			maxDate,
-			cursor,
-			limit);
+		if (topic.has_value()) {
+			call->fail(u"topic_id is only supported in forums."_q);
+			return;
+		}
+		if (offsetIdValue.has_value()) {
+			call->fail(
+				u"offset_id is only supported when searching a single"
+				u" chat."_q);
+			return;
+		}
+	} else if (topic.has_value()) {
+		const auto channel = targets.front()->asChannel();
+		if (!channel || !channel->isForum()) {
+			call->fail(u"topic_id is only supported in forums."_q);
+			return;
+		}
+	}
+	if (queries.size() != 1) {
+		if (offsetIdValue.has_value()) {
+			call->fail(u"offset_id is only supported with a single query."_q);
+			return;
+		}
+		if (!cursor.isEmpty()) {
+			call->fail(u"offset is only supported with a single query."_q);
+			return;
+		}
+	}
+	if (!global && !chatTypes.empty()) {
+		call->fail(u"chat_types is only supported when searching all"
+			u" chats."_q);
 		return;
 	}
+	auto fromPeer = MTPInputPeer();
+	if (!from.isEmpty() && from != u"me") {
+		UserData *fromUser = nullptr;
+		auto ok = false;
+		const auto number = from.toLongLong(&ok);
+		if (ok) {
+			fromUser = call->session->data().userLoaded(UserId(number));
+		} else {
+			const auto name = from.startsWith(u'@') ? from.mid(1) : from;
+			const auto named = call->session->data().peerByUsername(name);
+			fromUser = named ? named->asUser() : nullptr;
+		}
+		if (!fromUser) {
+			call->fail(u"Unknown user: %1."_q.arg(from));
+			return;
+		}
+		fromPeer = fromUser->input();
+	} else if (!from.isEmpty()) {
+		fromPeer = MTP_inputPeerSelf();
+	}
+	auto cursorRate = 0;
+	auto cursorPeer = (PeerData*)nullptr;
+	auto cursorId = 0;
 	if (!cursor.isEmpty()) {
-		call->fail(u"offset is only supported when searching all chats."_q);
-		return;
+		const auto parts = cursor.split('_');
+		if (parts.size() != 3) {
+			call->fail(u"Malformed search offset."_q);
+			return;
+		}
+		auto okRate = false;
+		auto okPeer = false;
+		auto okId = false;
+		cursorRate = parts[0].toInt(&okRate);
+		const auto peerId = parts[1].toULongLong(&okPeer);
+		cursorId = parts[2].toInt(&okId);
+		if (!okRate || !okPeer || !okId) {
+			call->fail(u"Malformed search offset."_q);
+			return;
+		}
+		cursorPeer = call->session->data().peerLoaded(PeerId(peerId));
+		if (!cursorPeer) {
+			call->fail(u"Unknown chat in the search offset."_q);
+			return;
+		}
 	}
-	const auto topicId = topic.value_or(0);
-	const auto flags = (fromGiven ? MTPmessages_Search::Flag::f_from_id : MTPmessages_Search::Flag())
-		| (topic ? MTPmessages_Search::Flag::f_top_msg_id : MTPmessages_Search::Flag());
-	const auto finish = [call, limit](const MTPmessages_Messages &result) {
-		DeliverMessagesPage(
-			call,
-			ParseMessagesSlice(call->session, result),
-			limit,
-			Page::Newest,
-			true);
+	const auto state = call->lifetime.make_state<SearchState>();
+	state->queries = queries;
+	state->chatTypes = chatTypes;
+	state->targets = targets;
+	state->global = global;
+	state->countsMode = (mode == u"counts"_q);
+	state->limit = state->countsMode ? (global ? 100 : 1) : limit;
+	state->context = context;
+	if (!global) {
+		auto filtered = std::vector<not_null<PeerData*>>();
+		for (const auto peer : state->targets) {
+			if (call->gate->visible(peer->id.value)
+				&& call->gate->inFrame(peer->id.value)) {
+				filtered.push_back(peer);
+			}
+		}
+		state->targets = std::move(filtered);
+	}
+	if (state->queries.empty()) {
+		state->queries.push_back(QString());
+	}
+	for (auto q = 0; q < int(state->queries.size()); ++q) {
+		if (global) {
+			state->tasks.push_back([=](Fn<void()> done) {
+				const auto only = [&](const char *type) {
+					return state->chatTypes.size() == 1
+						&& state->chatTypes.front() == type;
+				};
+				const auto flags = (only("private")
+					? MTPmessages_SearchGlobal::Flag::f_users_only
+					: MTPmessages_SearchGlobal::Flag())
+					| (only("group")
+						? MTPmessages_SearchGlobal::Flag::f_groups_only
+						: MTPmessages_SearchGlobal::Flag())
+					| (only("channel")
+						? MTPmessages_SearchGlobal::Flag::f_broadcasts_only
+						: MTPmessages_SearchGlobal::Flag());
+				const auto finish = [=](const MTPmessages_Messages &result) {
+					ProcessGlobalSlice(call, state, q, result);
+					done();
+				};
+				const auto fail = [call](const MTP::Error &error) {
+					call->fail(error.type());
+				};
+				call->api.request(MTPmessages_SearchGlobal(
+					MTP_flags(flags),
+					MTP_int(0),
+					MTPInputChannel(),
+					MTP_string(state->queries[q]),
+					filter,
+					MTP_int(minDate),
+					MTP_int(maxDate),
+					MTP_int(cursorRate),
+					(cursorPeer ? cursorPeer->input() : MTP_inputPeerEmpty()),
+					MTP_int(cursorId),
+					MTP_int(state->limit)
+				)).done([=](const MTPmessages_Messages &result) {
+					finish(result);
+				}).fail([=](const MTP::Error &error) {
+					fail(error);
+				}).send();
+			});
+		} else {
+			for (const auto peer : state->targets) {
+				state->tasks.push_back([=](Fn<void()> done) {
+					const auto flags = (fromPeer.type() != mtpc_inputPeerEmpty
+						? MTPmessages_Search::Flag::f_from_id
+						: MTPmessages_Search::Flag())
+						| (topic.has_value()
+							? MTPmessages_Search::Flag::f_top_msg_id
+							: MTPmessages_Search::Flag());
+					const auto finish = [=](
+							const MTPmessages_Messages &result) {
+						ProcessChatSlice(call, state, peer, q, result);
+						done();
+					};
+					const auto fail = [=](const MTP::Error &error) {
+						if (state->targets.size() == 1) {
+							call->fail(error.type());
+							return;
+						}
+						auto failed = QJsonObject();
+						failed.insert(
+							"chat",
+							QJsonValue(qint64(peer->id.value)));
+						failed.insert("error", error.type());
+						state->failed.push_back(std::move(failed));
+						done();
+					};
+					auto &histories = call->session->data().histories();
+					const auto history = call->session->data().history(peer);
+					const auto requestId = histories.sendRequest(
+						history,
+						Data::Histories::RequestType::History,
+						[=](Fn<void()> finishRequest) {
+							return call->api.request(MTPmessages_Search(
+								MTP_flags(flags),
+								peer->input(),
+								MTP_string(state->queries[q]),
+								fromPeer,
+								MTPInputPeer(),
+								MTPVector<MTPReaction>(),
+								MTP_int(topic.value_or(0)),
+								filter,
+								MTP_int(minDate),
+								MTP_int(maxDate),
+								MTP_int(offsetIdValue.value_or(0)),
+								MTP_int(0),
+								MTP_int(state->limit),
+								MTP_int(0),
+								MTP_int(0),
+								MTP_long(0)
+							)).done([=](
+									const MTPmessages_Messages &result) {
+								finishRequest();
+								finish(result);
+							}).fail([=](const MTP::Error &error) {
+								finishRequest();
+								fail(error);
+							}).send();
+						});
+					call->setRequestId(requestId);
+				});
+			}
+		}
+	}
+	state->next = [state, call] {
+		if (!state->prepared && state->taskIndex >= int(state->tasks.size())) {
+			state->prepared = true;
+			ranges::sort(
+				state->hits,
+				[](const SearchHit &a, const SearchHit &b) {
+					if (a.date != b.date) {
+						return a.date > b.date;
+					}
+					return a.id.msg.bare > b.id.msg.bare;
+				});
+			if (int(state->hits.size()) > state->limit) {
+				state->hits.resize(state->limit);
+			}
+			if (state->context > 0 && !state->countsMode) {
+				const auto count = std::min(int(state->hits.size()), 10);
+				for (auto i = 0; i < count; ++i) {
+					const auto hitIndex = i;
+					const auto &hit = state->hits[hitIndex];
+					const auto peer = call->session->data().peerLoaded(
+						hit.id.peer);
+					if (!peer) {
+						continue;
+					}
+					const auto bareId = hit.id.msg.bare;
+					state->tasks.push_back([=](Fn<void()> done) {
+						auto before = QJsonArray();
+						auto after = QJsonArray();
+						auto loaded = true;
+						const auto range = state->context;
+						for (auto j = -range; j <= range; ++j) {
+							if (j == 0) {
+								continue;
+							}
+							const auto neighborId = bareId + j;
+							if (neighborId <= 0) {
+								continue;
+							}
+							const auto item = call->session->data().message(
+								peer,
+								MsgId(neighborId));
+							if (!item) {
+								loaded = false;
+								break;
+							}
+							(j < 0 ? before : after).push_back(
+								SerializeNeighbor(item));
+						}
+						if (loaded) {
+							auto &target = state->hits[hitIndex];
+							target.json.insert("before", before);
+							target.json.insert("after", after);
+							done();
+							return;
+						}
+						auto &histories = call->session->data().histories();
+						const auto history = call->session->data().history(
+							peer);
+						const auto requestId = histories.sendRequest(
+							history,
+							Data::Histories::RequestType::History,
+							[=](Fn<void()> finishRequest) {
+								return call->api.request(MTPmessages_GetHistory(
+									peer->input(),
+									MTP_int(bareId),
+									MTP_int(0),
+									MTP_int(-state->context),
+									MTP_int(2 * state->context + 1),
+									MTP_int(0),
+									MTP_int(0),
+									MTP_long(0)
+								)).done([=](
+										const MTPmessages_Messages &result) {
+									finishRequest();
+									const auto parsed = ParseMessagesSlice(
+										call->session,
+										result);
+									auto before = QJsonArray();
+									auto after = QJsonArray();
+									for (auto k = parsed.items.rbegin();
+										k != parsed.items.rend(); ++k) {
+										const auto item = *k;
+										if (item->id.bare == bareId) {
+											continue;
+										}
+										(item->id.bare < bareId
+											? before
+											: after
+										).push_back(SerializeNeighbor(item));
+									}
+									auto &target = state->hits[hitIndex];
+									target.json.insert("before", before);
+									target.json.insert("after", after);
+									done();
+								}).fail([=](const MTP::Error &error) {
+									finishRequest();
+									done();
+								}).send();
+						});
+					call->setRequestId(requestId);
+					});
+				}
+			}
+		}
+		if (state->taskIndex >= int(state->tasks.size())) {
+			DeliverSearchResult(call, state);
+			return;
+		}
+		const auto task = state->tasks[state->taskIndex++];
+		task([state] { state->next(); });
 	};
-	const auto fail = [call](const MTP::Error &error) {
-		call->fail(error.type());
-	};
-	auto &histories = call->session->data().histories();
-	const auto history = call->session->data().history(peer);
-	const auto requestId = histories.sendRequest(
-		history,
-		Data::Histories::RequestType::History,
-		[=](Fn<void()> finishRequest) {
-			return call->api.request(MTPmessages_Search(
-				MTP_flags(flags),
-				peer->input(),
-				MTP_string(query),
-				fromPeer,
-				MTPInputPeer(),
-				MTPVector<MTPReaction>(),
-				topic ? MTP_int(topicId) : MTPint(),
-				MTP_inputMessagesFilterEmpty(),
-				MTP_int(minDate),
-				MTP_int(maxDate),
-				MTP_int(offset.value_or(0)),
-				MTP_int(0),
-				MTP_int(limit),
-				MTP_int(0),
-				MTP_int(0),
-				MTP_long(0)
-			)).done([=](const MTPmessages_Messages &result) {
-				finishRequest();
-				finish(result);
-			}).fail([=](const MTP::Error &error) {
-				finishRequest();
-				fail(error);
-			}).send();
-		});
-	call->setRequestId(requestId);
+	state->next();
 }
 
 void RunGetPeerInfo(not_null<PendingCall*> call) {
@@ -938,9 +1534,12 @@ std::vector<ToolEntry> Entries() {
 	auto searchProperties = QJsonObject();
 	searchProperties.insert("query", StringProperty(
 		u"Text to search for."_q));
+	searchProperties.insert("queries", SearchQueriesProperty());
+	searchProperties.insert("media", SearchMediaProperty());
+	searchProperties.insert("chat_types", SearchChatTypesProperty());
 	searchProperties.insert("from", StringProperty(
 		u"\"me\", a numeric user id or @username, resolved among"
-		" locally known users only."_q));
+		" locally known users only. Needs exactly one chat."_q));
 	searchProperties.insert("min_date", StringProperty(
 		u"Only messages sent on or after this local date YYYY-MM-DD."_q));
 	searchProperties.insert("max_date", StringProperty(
@@ -948,15 +1547,22 @@ std::vector<ToolEntry> Entries() {
 	searchProperties.insert("limit", IntProperty(
 		1,
 		50,
-		u"How many messages to return, 1..50, default 20."_q));
+		u"How many hits to return, 1..50, default 20."_q));
 	searchProperties.insert("offset_id", MessageIdProperty(
-		u"Pagination in one chat: search older than this message id."_q));
+		u"Pagination in one chat: search older than this message id."
+		u" Needs exactly one chat and one query."_q));
 	searchProperties.insert("offset", StringProperty(
 		u"Pagination for the all-chats search: pass the next_offset"
 		" string from the previous page here. Only valid when no"
-		" chat is given."_q));
+		" chat is given and there is a single query."_q));
 	searchProperties.insert("topic_id", MessageIdProperty(
-		u"Forum topic root message id."_q));
+		u"Forum topic root message id. Needs exactly one chat."_q));
+	searchProperties.insert("context", IntProperty(
+		0,
+		2,
+		u"How many neighbor messages to show around each of the"
+		u" first 10 hits, 0..2, default 0."_q));
+	searchProperties.insert("mode", SearchModeProperty());
 	auto membersProperties = QJsonObject();
 	membersProperties.insert("filter", StringProperty(
 		u"Which members to list: recent (default), admins, banned"
@@ -1011,16 +1617,19 @@ std::vector<ToolEntry> Entries() {
 		RunReadHistory);
 	push(
 		u"search_messages"_q,
-		u"Search messages in this chat, newest matches first. Page"
-		" older results with offset_id from next_offset_id."_q,
+		u"Search messages in this chat, newest matches first. Supports"
+		" several queries, media and date filters, context and a counts"
+		" mode. Page older results with offset_id from"
+		" next_offset_id."_q,
 		u"Search messages in the chat, or in all chats when no chat"
-		" is given, newest matches first. Page older results with"
-		" offset_id from next_offset_id in one chat, or with offset"
-		" from next_offset when searching all chats."_q,
+		" is given, newest matches first. Supports several queries,"
+		" media and chat type filters, context and a counts mode. Page"
+		" older results with offset_id from next_offset_id in one chat,"
+		" or with offset from next_offset when searching all chats."_q,
 		ToolSchema(
 			std::move(searchProperties),
-			QJsonArray{ QJsonValue(u"query"_q) }),
-		ChatParam::OptionalOne,
+			QJsonArray()),
+		ChatParam::OptionalMany,
 		RunSearchMessages);
 	push(
 		u"get_peer_info"_q,
