@@ -1953,9 +1953,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `Exclusions::excluded(peer)` is true for a hidden peer, or when the
   peer is loaded and an existing hidden folder of `Data::ChatFilters`
   contains its `History` (created when missing, so a folder rule like
-  "all channels" also hides a chat the client never opened). Folder membership is checked at call
-  time, so a folder hides chats added to it later and chats its rules
-  match. `setPeerExcluded()` and `setFolderExcluded()` save and fire
+  "all channels" also hides a chat the client never opened). Folder
+  membership is checked at call time, so a folder hides chats added to
+  it later and chats its rules match. `setPeerExcluded()` and `setFolderExcluded()` save and fire
   `changes()` when the list changed; `changes()` also fires on
   `ChatFilters::changed()`.
 - `SpendingTracker` loads in its constructor. `add()` adds to today's
