@@ -170,7 +170,9 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - `HttpTransport` in `agent/agent_http_transport.*` is the client
   implementation over `QNetworkAccessManager`. It inherits the application
   proxy that `core/sandbox.cpp` installs, and never logs request bodies or
-  the `Authorization` header.
+  the `Authorization` header. It follows only same-origin redirects
+  (`SameOriginRedirectPolicy`), so keys and tokens set as raw headers
+  never reach another host.
 
 ## Adapters (`agent_adapter.h`)
 
@@ -1901,7 +1903,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   new login's token, or wait for a refresh of the new login.
 - `ChatGptTransport` wraps the manager's `HttpTransport` for
   `UsesChatGptPlan()` profiles (`Manager::transportFor()`): `start()`
-  returns an id at once, gets a fresh access token, sets
+  returns an id at once; a URL that is not `ChatGpt::IsPlanApiUrl()`
+  (https, host `api.openai.com`, port 443, no user info) finishes
+  asynchronously with an error and never gets the token. Otherwise it
+  gets a fresh access token, sets
   `Authorization: Bearer <token>` (replacing any) and starts the inner
   request. Without a usable token it answers asynchronously with status
   401 and `ChatGpt::SignedOutBody()`. A 401 from the server is not passed

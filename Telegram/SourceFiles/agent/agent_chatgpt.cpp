@@ -561,6 +561,17 @@ uint64 ChatGptTransport::start(
 	pending->request = std::move(request);
 	pending->handlers = std::move(handlers);
 	_pending.push_back(pending);
+	if (!ChatGpt::IsPlanApiUrl(pending->request.url)) {
+		crl::on_main(this, [=] {
+			if (ranges::contains(_pending, pending)) {
+				finishPending(
+					pending,
+					u"The ChatGPT sign-in works only with"
+					" https://api.openai.com/."_q);
+			}
+		});
+		return pending->id;
+	}
 	run(pending);
 	return pending->id;
 }

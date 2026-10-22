@@ -58,6 +58,9 @@ uint64 HttpTransport::start(HttpRequest request, TransportHandlers handlers) {
 
 	auto networkRequest = QNetworkRequest(QUrl(request.url));
 	networkRequest.setTransferTimeout(kTransferTimeout);
+	networkRequest.setAttribute(
+		QNetworkRequest::RedirectPolicyAttribute,
+		QNetworkRequest::SameOriginRedirectPolicy);
 	for (const auto &[name, value] : request.headers) {
 		networkRequest.setRawHeader(name, value);
 	}

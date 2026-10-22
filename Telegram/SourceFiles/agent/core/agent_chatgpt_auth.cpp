@@ -102,6 +102,15 @@ QString UsageUrl() {
 	return u"https://chatgpt.com/settings/usage"_q;
 }
 
+bool IsPlanApiUrl(const QString &url) {
+	const auto parsed = QUrl(url);
+	return parsed.isValid()
+		&& (parsed.scheme() == u"https"_q)
+		&& (parsed.host() == u"api.openai.com"_q)
+		&& (parsed.port(443) == 443)
+		&& parsed.userInfo().isEmpty();
+}
+
 Pkce GeneratePkce() {
 	const auto verifier = ToBase64Url(RandomBytes());
 	const auto hash = QCryptographicHash::hash(

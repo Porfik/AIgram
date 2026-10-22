@@ -692,6 +692,33 @@ std::vector<Check> ChatGptChecks() {
 			}
 			return QString();
 		} },
+		{ u"chatgpt_plan_api_url"_q, [] {
+			const auto good = {
+				u"https://api.openai.com/v1/responses"_q,
+				u"https://API.openai.com/v1/models"_q,
+				u"https://api.openai.com:443/v1/models"_q,
+			};
+			const auto bad = {
+				u"http://api.openai.com/v1/responses"_q,
+				u"https://api.openai.com.evil.example/v1"_q,
+				u"https://evil.example/api.openai.com/v1"_q,
+				u"https://api.openai.com:8443/v1"_q,
+				u"https://user@api.openai.com/v1"_q,
+				u"https://openrouter.ai/api/v1"_q,
+				QString(),
+			};
+			for (const auto &url : good) {
+				if (!IsPlanApiUrl(url)) {
+					return u"must take "_q + url;
+				}
+			}
+			for (const auto &url : bad) {
+				if (IsPlanApiUrl(url)) {
+					return u"must refuse "_q + url;
+				}
+			}
+			return QString();
+		} },
 		{ u"chatgpt_refresh_still_current"_q, [] {
 			auto account = ChatGptAccount();
 			account.refreshToken = u"rt1"_q;

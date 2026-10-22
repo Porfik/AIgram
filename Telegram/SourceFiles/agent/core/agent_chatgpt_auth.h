@@ -68,6 +68,7 @@ struct IdClaims {
 [[nodiscard]] QString RedirectUri(int port = kCallbackPort);
 [[nodiscard]] QString CallbackPath();
 [[nodiscard]] QString UsageUrl();
+[[nodiscard]] bool IsPlanApiUrl(const QString &url);
 
 [[nodiscard]] Pkce GeneratePkce();
 [[nodiscard]] QByteArray GenerateState();
