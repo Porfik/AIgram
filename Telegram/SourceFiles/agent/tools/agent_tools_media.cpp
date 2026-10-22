@@ -36,6 +36,7 @@ namespace Agent::MediaTools {
 namespace {
 
 constexpr auto kTextPageChars = kToolResultMaxChars - 1000;
+constexpr auto kMaxViewMessageIds = 10;
 
 struct Source {
 	HistoryItem *item = nullptr;
@@ -147,6 +148,26 @@ struct Source {
 		call->helperAbilities);
 }
 
+struct ViewSink {
+	Fn<void(QJsonObject json, std::vector<MediaBlock> media)> media;
+	Fn<void(QJsonObject json)> plain;
+	Fn<void(QString error)> fail;
+};
+
+[[nodiscard]] ViewSink SingleSink(not_null<PendingCall*> call) {
+	return ViewSink{
+		.media = [=](QJsonObject json, std::vector<MediaBlock> media) {
+			call->doneMedia(std::move(json), std::move(media));
+		},
+		.plain = [=](QJsonObject json) {
+			call->done(std::move(json));
+		},
+		.fail = [=](QString error) {
+			call->fail(std::move(error));
+		},
+	};
+}
+
 void WithSource(
 		not_null<PendingCall*> call,
 		bool allowAttachment,
@@ -223,8 +244,10 @@ void WithSource(
 
 void LoadSource(
 		not_null<PendingCall*> call,
+		const ViewSink &sink,
 		const Source &source,
 		MediaPart part,
+		bool approved,
 		Fn<void(QByteArray bytes)> ready) {
 	if (source.attachment) {
 		ready(source.attachment->bytes);
@@ -238,7 +261,7 @@ void LoadSource(
 			part,
 			[=](QByteArray bytes, QString error) {
 				if (!error.isEmpty()) {
-					call->fail(error);
+					sink.fail(error);
 				} else {
 					ready(std::move(bytes));
 				}
@@ -250,8 +273,11 @@ void LoadSource(
 		start();
 		return;
 	} else if (size > kAttachmentMaxBytes) {
-		call->fail(u"The file is %1, too big for the agent to read."_q
+		sink.fail(u"The file is %1, too big for the agent to read."_q
 			.arg(FormatByteSize(size)));
+		return;
+	} else if (approved) {
+		start();
 		return;
 	}
 	const auto peer = item->history()->peer;
@@ -277,6 +303,7 @@ void LoadSource(
 
 void DeliverFromHelper(
 		not_null<PendingCall*> call,
+		const ViewSink &sink,
 		QJsonObject json,
 		MediaBlock block,
 		const QString &key) {
@@ -286,24 +313,25 @@ void DeliverFromHelper(
 		question,
 		[=](QString text, QString error) {
 			if (!error.isEmpty()) {
-				call->fail(error);
+				sink.fail(error);
 				return;
 			}
 			auto result = json;
 			result.insert(key, text);
 			result.insert("media_model", QJsonValue(true));
-			call->done(std::move(result));
+			sink.plain(std::move(result));
 		});
 }
 
 void ShowImage(
 		not_null<PendingCall*> call,
+		const ViewSink &sink,
 		const Source &source,
 		const QByteArray &bytes,
 		const QString &shown) {
 	auto prepared = PrepareImageForModel(bytes);
 	if (prepared.isEmpty()) {
-		call->fail(u"Could not decode the image."_q);
+		sink.fail(u"Could not decode the image."_q);
 		return;
 	}
 	auto block = SourceBlock(
@@ -315,58 +343,74 @@ void ShowImage(
 	switch (RouteFor(call, MediaKind::Image)) {
 	case MediaRoute::Main:
 		json.insert("shown", shown);
-		call->doneMedia(std::move(json), { std::move(block) });
+		sink.media(std::move(json), { std::move(block) });
 		return;
 	case MediaRoute::Helper:
 		json.insert("shown", u"description"_q);
-		DeliverFromHelper(call, std::move(json), std::move(block), u"description"_q);
+		DeliverFromHelper(
+			call,
+			sink,
+			std::move(json),
+			std::move(block),
+			u"description"_q);
 		return;
 	case MediaRoute::None:
-		call->fail(RouteFailText(MediaKind::Image));
+		sink.fail(RouteFailText(MediaKind::Image));
 		return;
 	}
 }
 
-void ShowCover(not_null<PendingCall*> call, const Source &source) {
+void ShowCover(
+		not_null<PendingCall*> call,
+		const ViewSink &sink,
+		const Source &source,
+		bool approved) {
 	if (source.attachment) {
-		call->fail(RouteFailText(MediaKind::Video));
+		sink.fail(RouteFailText(MediaKind::Video));
 		return;
 	}
-	LoadSource(call, source, MediaPart::Thumbnail, [=](QByteArray bytes) {
-		ShowImage(call, source, bytes, u"cover"_q);
-	});
+	LoadSource(call, sink, source, MediaPart::Thumbnail, approved,
+		[=](QByteArray bytes) {
+			ShowImage(call, sink, source, bytes, u"cover"_q);
+		});
 }
 
-void ShowVideo(not_null<PendingCall*> call, const Source &source) {
+void ShowVideo(
+		not_null<PendingCall*> call,
+		const ViewSink &sink,
+		const Source &source,
+		bool approved) {
 	const auto route = RouteFor(call, MediaKind::Video);
 	if (route == MediaRoute::None
 		|| SourceSize(source) > kModelMediaMaxBytes) {
-		ShowCover(call, source);
+		ShowCover(call, sink, source, approved);
 		return;
 	}
-	LoadSource(call, source, MediaPart::Full, [=](QByteArray bytes) {
-		auto mime = SourceMime(source);
-		if (!mime.startsWith(u"video/"_q)) {
-			mime = u"video/mp4"_q;
-		}
-		auto block = SourceBlock(
-			source,
-			MediaKind::Video,
-			std::move(bytes),
-			std::move(mime));
-		auto json = source.json;
-		if (route == MediaRoute::Main) {
-			json.insert("shown", u"video"_q);
-			call->doneMedia(std::move(json), { std::move(block) });
-		} else {
-			json.insert("shown", u"description"_q);
-			DeliverFromHelper(
-				call,
-				std::move(json),
-				std::move(block),
-				u"description"_q);
-		}
-	});
+	LoadSource(call, sink, source, MediaPart::Full, approved,
+		[=](QByteArray bytes) {
+			auto mime = SourceMime(source);
+			if (!mime.startsWith(u"video/"_q)) {
+				mime = u"video/mp4"_q;
+			}
+			auto block = SourceBlock(
+				source,
+				MediaKind::Video,
+				std::move(bytes),
+				std::move(mime));
+			auto json = source.json;
+			if (route == MediaRoute::Main) {
+				json.insert("shown", u"video"_q);
+				sink.media(std::move(json), { std::move(block) });
+			} else {
+				json.insert("shown", u"description"_q);
+				DeliverFromHelper(
+					call,
+					sink,
+					std::move(json),
+					std::move(block),
+					u"description"_q);
+			}
+		});
 }
 
 [[nodiscard]] bool AnimatedSticker(const Source &source) {
@@ -377,28 +421,240 @@ void ShowVideo(not_null<PendingCall*> call, const Source &source) {
 	return sticker && !sticker->isStatic();
 }
 
-void RunViewMedia(not_null<PendingCall*> call) {
-	WithSource(call, true, [=](Source source) {
-		switch (SourceKind(source)) {
-		case MediaKind::Image: {
-			const auto part = AnimatedSticker(source)
-				? MediaPart::Thumbnail
-				: MediaPart::Full;
-			LoadSource(call, source, part, [=](QByteArray bytes) {
-				ShowImage(call, source, bytes, u"image"_q);
+void RunViewMediaOne(
+		not_null<PendingCall*> call,
+		const ViewSink &sink,
+		const Source &source,
+		bool approved) {
+	switch (SourceKind(source)) {
+	case MediaKind::Image: {
+		const auto part = AnimatedSticker(source)
+			? MediaPart::Thumbnail
+			: MediaPart::Full;
+		LoadSource(
+			call,
+			sink,
+			source,
+			part,
+			approved,
+			[=](QByteArray bytes) {
+				ShowImage(call, sink, source, bytes, u"image"_q);
 			});
-		} break;
-		case MediaKind::Video:
-			ShowVideo(call, source);
-			break;
-		case MediaKind::Audio:
-			call->fail(u"This is audio. Use listen_audio, or"
-				" transcribe_voice for a voice message."_q);
-			break;
-		case MediaKind::File:
-			call->fail(u"This is a file. Use read_file."_q);
-			break;
+	} break;
+	case MediaKind::Video:
+		ShowVideo(call, sink, source, approved);
+		break;
+	case MediaKind::Audio:
+		sink.fail(u"This is audio. Use listen_audio, or"
+			" transcribe_voice for a voice message."_q);
+		break;
+	case MediaKind::File:
+		sink.fail(u"This is a file. Use read_file."_q);
+		break;
+	}
+}
+
+[[nodiscard]] std::optional<std::vector<MsgId>> ParseViewMessageIds(
+		const QJsonObject &input,
+		QString &error) {
+	const auto value = input.value("message_ids");
+	if (value.isUndefined() || value.isNull()) {
+		return std::nullopt;
+	} else if (!value.isArray()) {
+		error = u"message_ids must be an array of message ids."_q;
+		return std::nullopt;
+	}
+	const auto list = value.toArray();
+	if (list.isEmpty() || list.size() > kMaxViewMessageIds) {
+		error = u"message_ids must contain 1 to %1 message ids."_q
+			.arg(kMaxViewMessageIds);
+		return std::nullopt;
+	}
+	auto result = std::vector<MsgId>();
+	for (const auto &item : list) {
+		if (!item.isDouble() || item.toDouble() < 1) {
+			error = u"message_ids must contain message ids."_q;
+			return std::nullopt;
 		}
+		const auto id = MsgId(qint64(item.toDouble()));
+		auto known = false;
+		for (const auto already : result) {
+			if (already == id) {
+				known = true;
+				break;
+			}
+		}
+		if (!known) {
+			result.push_back(id);
+		}
+	}
+	return result;
+}
+
+struct ViewManyState {
+	ViewSink sink;
+	std::vector<Source> sources;
+	std::vector<MediaBlock> blocks;
+	QJsonArray results;
+	int index = 0;
+	bool finished = false;
+};
+
+void ViewManyNext(
+		not_null<PendingCall*> call,
+		not_null<ViewManyState*> state) {
+	if (state->finished) {
+		return;
+	}
+	if (state->index >= int(state->sources.size())) {
+		auto json = QJsonObject();
+		json.insert("results", state->results);
+		call->doneMedia(std::move(json), std::move(state->blocks));
+		return;
+	}
+	const auto &source = state->sources[state->index++];
+	RunViewMediaOne(call, state->sink, source, true);
+}
+
+void RunViewMediaSources(
+		not_null<PendingCall*> call,
+		std::vector<Source> sources) {
+	const auto state = call->lifetime.make_state<ViewManyState>();
+	state->sources = std::move(sources);
+	state->sink = ViewSink{
+		.media = [=](QJsonObject json, std::vector<MediaBlock> media) {
+			state->results.append(std::move(json));
+			state->blocks.insert(
+				state->blocks.end(),
+				std::make_move_iterator(media.begin()),
+				std::make_move_iterator(media.end()));
+			ViewManyNext(call, state);
+		},
+		.plain = [=](QJsonObject json) {
+			state->results.append(std::move(json));
+			ViewManyNext(call, state);
+		},
+		.fail = [=](QString error) {
+			state->finished = true;
+			call->fail(std::move(error));
+		},
+	};
+	ViewManyNext(call, state);
+}
+
+void RunViewMediaMany(
+		not_null<PendingCall*> call,
+		std::vector<MsgId> ids) {
+	const auto peer = not_null(call->peer);
+	if (!call->gate->inFrame(peer->id.value)) {
+		call->fail(u"chat is outside the chats this task may read."_q);
+		return;
+	}
+	const auto session = call->session;
+	const auto resolve = [=] {
+		auto sources = std::vector<Source>();
+		auto files = std::vector<CardFile>();
+		auto targets = std::vector<CardTarget>();
+		auto total = int64(0);
+		for (const auto id : ids) {
+			const auto item = session->data().message(peer->id, id);
+			if (!item) {
+				call->fail(u"Message %1 was not found in %2. Read the"
+					" history to get valid message ids."_q
+					.arg(id.bare)
+					.arg(peer->name()));
+				return;
+			}
+			auto media = FindMessageMedia(item);
+			if (!media) {
+				call->fail(u"Message %1 has no photo, video, audio or"
+					" file."_q.arg(id.bare));
+				return;
+			}
+			auto source = Source{ .item = item, .media = std::move(media) };
+			source.json.insert("chat", QJsonValue(qint64(peer->id.value)));
+			source.json.insert("message", QJsonValue(qint64(id.bare)));
+			source.json.insert("type", TypeName(source.media->type));
+			if (!LoadedAlready(*source.media)) {
+				if (source.media->size > kAttachmentMaxBytes) {
+					call->fail(u"The file is %1, too big for the agent to"
+						" read."_q.arg(FormatByteSize(source.media->size)));
+					return;
+				}
+				total += source.media->size;
+				files.push_back(CardFile{
+					.name = source.media->name,
+					.mimeType = source.media->mimeType,
+					.size = source.media->size,
+				});
+				targets.push_back(CardTarget{
+					.peer = peer->id.value,
+					.messageId = id.bare,
+					.title = peer->name(),
+					.preview = source.media->name,
+				});
+			}
+			sources.push_back(std::move(source));
+		}
+		const auto kept = std::make_shared<std::vector<Source>>(
+			std::move(sources));
+		const auto run = [call, kept] {
+			RunViewMediaSources(call, std::move(*kept));
+		};
+		if (total > kAutoDownloadBytes) {
+			auto card = Card{
+				.kind = CardKind::Download,
+				.targets = std::move(targets),
+				.files = std::move(files),
+				.amount = total,
+			};
+			call->confirm(std::move(card), [=](Card decided) {
+				run();
+			});
+		} else {
+			run();
+		}
+	};
+	auto missing = std::vector<MsgId>();
+	for (const auto id : ids) {
+		if (!session->data().message(peer->id, id)) {
+			missing.push_back(id);
+		}
+	}
+	if (missing.empty()) {
+		resolve();
+		return;
+	}
+	const auto left = std::make_shared<int>(int(missing.size()));
+	for (const auto id : missing) {
+		session->api().requestMessageData(
+			peer,
+			id,
+			crl::guard(call.get(), [=] {
+				if (!--*left) {
+					resolve();
+				}
+			}));
+	}
+}
+
+void RunViewMedia(not_null<PendingCall*> call) {
+	auto error = QString();
+	const auto ids = ParseViewMessageIds(call->input, error);
+	if (!error.isEmpty()) {
+		call->fail(error);
+		return;
+	} else if (ids) {
+		if (!call->peer) {
+			call->fail(u"chat is required together with message_ids."_q);
+			return;
+		}
+		RunViewMediaMany(call, *ids);
+		return;
+	}
+	const auto sink = SingleSink(call);
+	WithSource(call, true, [=](Source source) {
+		RunViewMediaOne(call, sink, source, false);
 	});
 }
 
@@ -420,6 +676,7 @@ void RunListenAudio(not_null<PendingCall*> call) {
 	const auto from = std::max(
 		call->input.value("from_seconds").toInt(),
 		0);
+	const auto sink = SingleSink(call);
 	WithSource(call, true, [=](Source source) {
 		if (!HasSound(source)) {
 			call->fail(u"This has no sound to listen to. Use view_media"
@@ -431,7 +688,8 @@ void RunListenAudio(not_null<PendingCall*> call) {
 			call->fail(RouteFailText(MediaKind::Audio));
 			return;
 		}
-		LoadSource(call, source, MediaPart::Full, [=](QByteArray bytes) {
+		LoadSource(call, sink, source, MediaPart::Full, false,
+			[=](QByteArray bytes) {
 			crl::async([=, bytes = std::move(bytes)] {
 				const auto decoded = std::make_shared<
 					std::optional<DecodedAudio>>(DecodeAudio(
@@ -461,10 +719,11 @@ void RunListenAudio(not_null<PendingCall*> call) {
 						u"audio/wav"_q);
 					block.duration = audio.toSeconds - audio.fromSeconds;
 					if (route == MediaRoute::Main) {
-						call->doneMedia(std::move(json), { std::move(block) });
+						sink.media(std::move(json), { std::move(block) });
 					} else {
 						DeliverFromHelper(
 							call,
+							sink,
 							std::move(json),
 							std::move(block),
 							u"transcript"_q);
@@ -624,6 +883,7 @@ void DeliverText(
 
 void ReadPdf(
 		not_null<PendingCall*> call,
+		const ViewSink &sink,
 		const Source &source,
 		QByteArray bytes) {
 	const auto route = RouteFor(call, MediaKind::File);
@@ -645,13 +905,14 @@ void ReadPdf(
 	json.insert("name", SourceName(source));
 	if (route == MediaRoute::Main) {
 		json.insert("shown", u"file"_q);
-		call->doneMedia(std::move(json), { std::move(block) });
+		sink.media(std::move(json), { std::move(block) });
 	} else {
-		DeliverFromHelper(call, std::move(json), std::move(block), u"text"_q);
+		DeliverFromHelper(call, sink, std::move(json), std::move(block), u"text"_q);
 	}
 }
 
 void RunReadFile(not_null<PendingCall*> call) {
+	const auto sink = SingleSink(call);
 	WithSource(call, true, [=](Source source) {
 		const auto kind = SourceKind(source);
 		if (kind == MediaKind::Image) {
@@ -670,9 +931,10 @@ void RunReadFile(not_null<PendingCall*> call) {
 				SourceMime(source)));
 			return;
 		}
-		LoadSource(call, source, MediaPart::Full, [=](QByteArray bytes) {
+		LoadSource(call, sink, source, MediaPart::Full, false,
+			[=](QByteArray bytes) {
 			if (document == DocumentKind::Pdf) {
-				ReadPdf(call, source, std::move(bytes));
+				ReadPdf(call, sink, source, std::move(bytes));
 			} else if (document == DocumentKind::Text) {
 				const auto text = DecodeText(bytes);
 				if (!text) {
@@ -715,6 +977,11 @@ std::vector<ToolEntry> Entries() {
 		" model looks at the media for you."_q);
 	auto viewProperties = SourceProperties(true);
 	viewProperties.insert("question", question);
+	auto viewIds = MessageIdsProperty(
+		u"View media of 1 to %1 messages in one call. Outside a chat,"
+		" pass chat too."_q.arg(kMaxViewMessageIds));
+	viewIds.insert("maxItems", QJsonValue(kMaxViewMessageIds));
+	viewProperties.insert("message_ids", viewIds);
 	auto listenProperties = SourceProperties(true);
 	listenProperties.insert("from_seconds", IntProperty(
 		0,
@@ -734,11 +1001,13 @@ std::vector<ToolEntry> Entries() {
 		.description = u"Look at a photo, image file, sticker, GIF, video"
 			" or round video of a message in this chat, or at an image"
 			" or video the user attached. You see it until the end of"
-			" this request."_q,
+			" this request. Pass message_ids (1 to 10) with chat to view"
+			" media of several messages at once."_q,
 		.generalDescription = u"Look at a photo, image file, sticker,"
 			" GIF, video or round video of a message, or at an image or"
 			" video the user attached. You see it until the end of this"
-			" request."_q,
+			" request. Pass message_ids (1 to 10) with chat to view media"
+			" of several messages at once."_q,
 		.inputSchema = ToolSchema(std::move(viewProperties), QJsonArray()),
 		.policy = ToolPolicy{ .risk = Risk::Read },
 		.chatParam = ChatParam::OptionalOne,
