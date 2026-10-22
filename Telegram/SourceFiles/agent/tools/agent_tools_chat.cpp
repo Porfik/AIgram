@@ -1258,6 +1258,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 		return;
 	}
 	auto fromPeer = MTPInputPeer();
+	const auto fromGiven = !from.isEmpty();
 	if (!from.isEmpty() && from != u"me") {
 		UserData *fromUser = nullptr;
 		auto ok = false;
@@ -1367,7 +1368,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 		} else {
 			for (const auto peer : state->targets) {
 				state->tasks.push_back([=](Fn<void()> done) {
-					const auto flags = (fromPeer.type() != mtpc_inputPeerEmpty
+					const auto flags = (fromGiven
 						? MTPmessages_Search::Flag::f_from_id
 						: MTPmessages_Search::Flag())
 						| (topic.has_value()
