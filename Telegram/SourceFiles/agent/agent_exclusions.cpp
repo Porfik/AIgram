@@ -31,10 +31,11 @@ bool Exclusions::excluded(PeerKey peer) const {
 	if (_list.folders.empty() || !peer) {
 		return false;
 	}
-	const auto history = _session->data().historyLoaded(PeerId(peer));
-	if (!history) {
+	const auto loaded = _session->data().peerLoaded(PeerId(peer));
+	if (!loaded) {
 		return false;
 	}
+	const auto history = _session->data().history(loaded);
 	for (const auto &filter : _session->data().chatsFilters().list()) {
 		if (ranges::contains(_list.folders, int(filter.id()))
 			&& filter.contains(history)) {
