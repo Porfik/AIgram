@@ -2385,8 +2385,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   "Confirm (N)" primary, "To draft" / "Append", "Edit..." or
   "Details..." for cards a box adds to, "Decline" danger, on the first
   row next to the main button when the card has neither a box nor an
-  alternate; "Continue in the general agent" for a handoff; "Show in
-  Folder" for a done download); the summary, the handoff note, "Summarizing…" and the
+  alternate; "Continue in the general agent" for a handoff, which is
+  `Done` from the start, so it keeps the button and has no status line;
+  "Show in Folder" for a done download); the summary, the handoff note, "Summarizing…" and the
   session spending are service messages; a failed turn is an incoming
   message with "Retry" (and "Model settings" for auth errors); queued
   messages are outgoing with the sending clock. Buttons carry

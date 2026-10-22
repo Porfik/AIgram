@@ -500,6 +500,9 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 }
 
 [[nodiscard]] QString CardStatusLine(const Card &card, bool run) {
+	if (card.kind == CardKind::Handoff) {
+		return QString();
+	}
 	auto failed = 0;
 	for (const auto &target : card.targets) {
 		if (!target.error.isEmpty()) {
@@ -573,13 +576,11 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 	result.flags = ReplyMarkupFlag::Inline;
 	const auto &id = card.toolUseId;
 	if (card.kind == CardKind::Handoff) {
-		if (card.status == CardStatus::Pending) {
-			result.rows.push_back({ MakeButton(
-				tr::lng_agent_card_handoff_button(tr::now),
-				ChatButtonAction::Handoff,
-				id,
-				ButtonColor::Primary) });
-		}
+		result.rows.push_back({ MakeButton(
+			tr::lng_agent_card_handoff_button(tr::now),
+			ChatButtonAction::Handoff,
+			id,
+			ButtonColor::Primary) });
 		return result;
 	} else if (card.status != CardStatus::Pending) {
 		if (card.kind == CardKind::Download
