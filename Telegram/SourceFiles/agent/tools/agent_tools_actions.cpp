@@ -166,7 +166,8 @@ void WithMessages(
 void ApplyDraft(
 		not_null<History*> history,
 		const QString &text,
-		bool append) {
+		bool append,
+		FullReplyTo replyTo) {
 	const auto thread = history->threadFor(MsgId(), PeerId());
 	auto current = CurrentDraftText(history);
 	if (append && !current.isEmpty()) {
@@ -176,7 +177,7 @@ void ApplyDraft(
 	}
 	history->setLocalDraft(std::make_unique<Data::Draft>(
 		TextWithTags{ current, TextWithTags::Tags() },
-		FullReplyTo(),
+		replyTo,
 		SuggestOptions(),
 		MessageCursor{
 			int(current.size()),
@@ -235,7 +236,7 @@ void RunSendMessage(not_null<PendingCall*> call) {
 			const auto history = session->data().history(peer);
 			const auto thread = history->threadFor(MsgId(), PeerId());
 			if (card.decided == CardAction::Alternate) {
-				ApplyDraft(history, card.text, false);
+				ApplyDraft(history, card.text, false, FullReplyTo());
 				continue;
 			} else if (!Data::CanSendTexts(thread)) {
 				target.error = u"You can't write in this chat."_q;
@@ -271,20 +272,13 @@ void RunSendMessage(not_null<PendingCall*> call) {
 	});
 }
 
-void RunSetDraft(not_null<PendingCall*> call) {
+void ApplySetDraft(not_null<PendingCall*> call, FullReplyTo replyTo) {
 	const auto peer = call->peer;
 	const auto text = call->input.value("text").toString();
-	if (!peer) {
-		call->fail(u"This tool works only inside a chat."_q);
-		return;
-	} else if (text.trimmed().isEmpty()) {
-		call->fail(u"text must not be empty."_q);
-		return;
-	}
 	const auto history = call->session->data().history(peer);
 	const auto current = CurrentDraftText(history);
 	if (current.trimmed().isEmpty()) {
-		ApplyDraft(history, text, false);
+		ApplyDraft(history, text, false, replyTo);
 		auto chat = QJsonObject();
 		chat.insert("chat", QJsonValue(qint64(peer->id.value)));
 		chat.insert("title", ChatTitle(peer));
@@ -308,9 +302,36 @@ void RunSetDraft(not_null<PendingCall*> call) {
 		ApplyDraft(
 			history,
 			decided.text,
-			(decided.decided == CardAction::Alternate));
+			(decided.decided == CardAction::Alternate),
+			replyTo);
 		decided.status = CardStatus::Done;
 		call->finishCard(std::move(decided));
+	});
+}
+
+void RunSetDraft(not_null<PendingCall*> call) {
+	const auto peer = call->peer;
+	const auto text = call->input.value("text").toString();
+	if (!peer) {
+		call->fail(u"This tool works only inside a chat."_q);
+		return;
+	} else if (text.trimmed().isEmpty()) {
+		call->fail(u"text must not be empty."_q);
+		return;
+	}
+	auto error = QString();
+	const auto replyTo = ParseMessageId(call->input, u"reply_to"_q, error);
+	if (!error.isEmpty()) {
+		call->fail(error);
+		return;
+	} else if (!replyTo) {
+		ApplySetDraft(call, FullReplyTo());
+		return;
+	}
+	WithMessages(call, peer, { *replyTo }, [=](HistoryItemsList items) {
+		ApplySetDraft(
+			call,
+			FullReplyTo{ .messageId = items.front()->fullId() });
 	});
 }
 
@@ -648,11 +669,14 @@ std::vector<ToolEntry> BuildEntries() {
 	});
 	auto draft = QJsonObject();
 	draft.insert("text", StringProperty(u"The draft text."_q));
+	draft.insert("reply_to", MessageIdProperty(
+		u"Make the draft a reply to this message id."_q));
 	push({
 		.name = u"set_draft"_q,
 		.description = u"Put a message draft into this chat's message"
-			" field; the user sends it. If the field already has text,"
-			" the user chooses to replace it, append to it or cancel."_q,
+			" field; the user sends it. It can be a reply to a message"
+			" (reply_to). If the field already has text, the user"
+			" chooses to replace it, append to it or cancel."_q,
 		.inputSchema = ToolSchema(
 			std::move(draft),
 			QJsonArray{ QJsonValue(u"text"_q) }),
