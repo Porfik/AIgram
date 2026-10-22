@@ -24,6 +24,7 @@ enum class ProviderKind : uchar {
 	OpenAiCompatible,
 	Anthropic,
 	ClaudeCode,
+	OpenAiResponses,
 };
 
 enum class ProviderService : uchar {
@@ -31,6 +32,8 @@ enum class ProviderService : uchar {
 	OpenRouter,
 	Anthropic,
 	ClaudeSubscription,
+	OpenAi,
+	ChatGptSubscription,
 };
 
 struct ProviderSettings {
@@ -54,6 +57,18 @@ struct ProviderSettings {
 	double priceCacheWrite = 0.;
 };
 
+struct ChatGptAccount {
+	QString clientId;
+	QString hostId;
+	QString email;
+	QString subject;
+	QString plan;
+	QString accessToken;
+	QString refreshToken;
+	qint64 expiresAt = 0;
+	QString scopes;
+};
+
 enum class RowPreview : uchar {
 	LastMessage,
 	SessionTitle,
@@ -75,6 +90,7 @@ struct ProvidersState {
 	QString agentName;
 	QByteArray agentPhoto;
 	bool showBotIcon = true;
+	ChatGptAccount chatGpt;
 };
 
 [[nodiscard]] QByteArray SerializeProviders(const ProvidersState &state);
@@ -83,6 +99,7 @@ struct ProvidersState {
 
 [[nodiscard]] QString OpenRouterBaseUrl();
 [[nodiscard]] QString AnthropicBaseUrl();
+[[nodiscard]] QString OpenAiBaseUrl();
 
 [[nodiscard]] const ProviderSettings *FindProvider(
 	const ProvidersState &state,
@@ -107,6 +124,8 @@ void SetServiceKey(
 [[nodiscard]] bool IsOpenRouter(const ProviderSettings &settings);
 [[nodiscard]] bool IsClaudeOnOpenRouter(const ProviderSettings &settings);
 [[nodiscard]] bool UsesClaudeCode(const ProviderSettings &settings);
+[[nodiscard]] bool UsesChatGptPlan(const ProviderSettings &settings);
+[[nodiscard]] bool IsSubscription(const ProviderSettings &settings);
 [[nodiscard]] std::unique_ptr<Adapter> CreateAdapter(
 	const ProviderSettings &settings);
 

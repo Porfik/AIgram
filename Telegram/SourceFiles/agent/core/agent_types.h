@@ -145,6 +145,7 @@ struct Error {
 	int httpStatus = 0;
 	QString text;
 	crl::time retryAfter = 0;
+	QString code;
 };
 
 [[nodiscard]] QString ErrorKindName(ErrorKind kind);

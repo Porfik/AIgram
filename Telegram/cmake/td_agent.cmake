@@ -21,6 +21,8 @@ PRIVATE
     agent/core/agent_chat_messages.h
     agent/core/agent_chat_state.cpp
     agent/core/agent_chat_state.h
+    agent/core/agent_chatgpt_auth.cpp
+    agent/core/agent_chatgpt_auth.h
     agent/core/agent_claude_engine.cpp
     agent/core/agent_claude_engine.h
     agent/core/agent_claude_process.h
@@ -49,6 +51,8 @@ PRIVATE
     agent/core/agent_navigation.h
     agent/core/agent_openai.cpp
     agent/core/agent_openai.h
+    agent/core/agent_openai_responses.cpp
+    agent/core/agent_openai_responses.h
     agent/core/agent_policy.cpp
     agent/core/agent_policy.h
     agent/core/agent_prompts.cpp
@@ -94,6 +98,7 @@ PRIVATE
     agent/core/tests/agent_card_tests.cpp
     agent/core/tests/agent_chat_messages_tests.cpp
     agent/core/tests/agent_chat_state_tests.cpp
+    agent/core/tests/agent_chatgpt_tests.cpp
     agent/core/tests/agent_claude_tests.cpp
     agent/core/tests/agent_context_tests.cpp
     agent/core/tests/agent_documents_tests.cpp
@@ -111,6 +116,7 @@ PRIVATE
     agent/core/tests/agent_providers_tests.cpp
     agent/core/tests/agent_record_tests.cpp
     agent/core/tests/agent_request_tests.cpp
+    agent/core/tests/agent_responses_tests.cpp
     agent/core/tests/agent_spending_tests.cpp
     agent/core/tests/agent_sse_tests.cpp
     agent/core/tests/agent_task_tests.cpp

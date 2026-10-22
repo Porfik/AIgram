@@ -357,6 +357,249 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   is true into `effortLevels` (in that order), and `KnownPrices()` of the
   id. Malformed JSON gives an empty list.
 
+## OpenAI Responses (`agent_openai_responses.h`, stage 6)
+
+`OpenAi::ResponsesAdapter` speaks the Responses API (`POST
+<baseUrl>/responses`) for profiles of kind `OpenAiResponses`: "OpenAI →
+API key" and "OpenAI → ChatGPT subscription" (plan 11.11). The ChatGPT
+plan accepts only part of the API, so `ResponsesOptions::plan` switches
+the body to what it accepts.
+
+- `prepare()` posts `ResponsesRequestObject()` of the request (with the
+  profile's `model` when the request has none and the profile's `effort`
+  when the request has none) with `options` `{origin: <profile id>, plan:
+  UsesChatGptPlan(settings)}` to `<baseUrl>/responses` with
+  `content-type: application/json`, `accept: text/event-stream` and
+  `Authorization: Bearer <apiKey>` when the key is not empty (ChatGPT
+  plan profiles have no key: `ChatGptTransport` adds the token).
+  `parser()` is `ResponsesParser(<model>, <profile id>)`.
+- `ResponsesRequestObject()`:
+  - `model`, `stream: true`, `store: false`;
+  - `instructions`: the system prompt, when not empty (the plan rejects
+    `system` role items, so the prompt never goes into `input`);
+  - `tools` as `{"type": "function", "name", "description",
+    "parameters": <inputSchema>, "strict": false}`, then `tool_choice:
+    "auto"` and `parallel_tool_calls: true`; all three are left out
+    without tools;
+  - when `SupportsReasoning(model)`: `reasoning: {"summary": "auto"}`
+    plus `"effort": <effort>` when the effort is not empty, and
+    `include: ["reasoning.encrypted_content"]`;
+  - `prompt_cache_key`: `cacheKey`, when not empty;
+  - `max_output_tokens`: when `maxOutputTokens` is positive and not
+    `plan` (the plan rejects it). Nothing else: no `temperature`,
+    `metadata`, `previous_response_id`, `prompt_cache_retention`,
+    `user`, `truncation`.
+  - `input`, in message order. A user message gives first one
+    `function_call_output` item per `ToolResultBlock` (`call_id`,
+    `output`), then, when it has other blocks, one `{"role": "user",
+    "content": [...]}` item: text blocks (hidden ones too) as
+    `input_text`, media with bytes as `input_image` (`Image`: `image_url`
+    a `data:<mime>;base64,` URL, `detail: "auto"`) or `input_file`
+    (`File`: `filename`, `file_data` a data URL); `Audio`, `Video` and
+    media without bytes are skipped. A result's `output` is its
+    `content` string; a result with `Image` or `File` media with bytes
+    makes `output` an array: `input_text` with the content (when not
+    empty), then the media parts as above. An `error` result is sent like
+    any other (its content says what went wrong).
+  - An assistant message gives its blocks in order: a `ThinkingBlock`
+    becomes the `reasoning` item from `ReasoningItem(signature, model,
+    origin)` when that gives one and the message is in the current turn
+    (after the last user message that has no `ToolResultBlock`), else
+    nothing; a `TextBlock` with text becomes `{"type": "message", "role":
+    "assistant", "content": [{"type": "output_text", "text": ...}]}`;
+    a `ToolUseBlock` becomes `{"type": "function_call", "call_id",
+    "name", "arguments"}` with `arguments` the compact JSON of `input`,
+    or `rawInput` verbatim when `inputError` is set. Items never carry
+    `id` (with `store: false` ids refer to nothing).
+  - Tool use ids that don't match `^[A-Za-z0-9_-]+$` or repeat an
+    earlier id of the request become, with their results,
+    `call_aigram_<message index>_<block index>`, like the Anthropic
+    adapter, so the same history always gives the same body.
+- `ReasoningSignature()` is the compact JSON `{"openai": {"model":
+  <model>, "origin": <origin>, "item": <item>}}`; `item` is the
+  reasoning item as the stream gave it without `id` and `status`
+  (`type`, `summary`, `encrypted_content`). `ReasoningItem()` returns
+  that item when the signature is such an envelope with the same
+  `model` and `origin` and a non-empty `encrypted_content`, else
+  nothing. `IsReasoningSignature()` is true when the signature starts
+  with `{`.
+- `ResponsesParser()` reads SSE (`SseParser`), each event's data a JSON
+  object with `type`:
+  - `response.output_item.added` with an item of type `function_call`:
+    `ToolUseStarted` (`call_id`, `name`);
+  - `response.output_text.delta` and `response.refusal.delta`:
+    `TextDelta` (`delta`);
+  - `response.reasoning_summary_text.delta`: `ThinkingDelta`;
+    `response.reasoning_summary_part.added` with `summary_index` above 0
+    first gives a `ThinkingDelta` of `"\n\n"`;
+  - `response.output_item.done`: keeps the finished `item` by
+    `output_index`;
+  - `response.completed` and `response.incomplete`: the final
+    `response` (its `usage`, `incomplete_details.reason`, and its
+    `output` array, used for items no `output_item.done` gave);
+  - `response.failed`: the error `response.error` (`code`, `message`);
+  - `error`: the error (`code`, `message`, or a nested `error` object);
+  - anything else is ignored. Consecutive deltas of the same kind merge
+    in `takeDeltas()` like the other parsers.
+- `finish()`: a network error gives a `Network` error as in the OpenAI
+  parser; a non-2xx status gives `ParseResponsesError()` of the body; a
+  `response.failed` or `error` event gives an error with `code`, the
+  message as `text` and the kind `ErrorKindForCode(code, <fallback>)`
+  (fallback `RateLimited` for `rate_limit_exceeded`, `Overloaded` for
+  `server_error`, else `BadResponse`); a stream without `completed`,
+  `incomplete` or `failed` is `BadResponse` ("Stream ended without a
+  final response event"). Otherwise the assistant message has the items
+  in `output_index` order: `reasoning` → `ThinkingBlock` (the summary
+  texts joined with `"\n\n"`, `signature` `ReasoningSignature()` when
+  `encrypted_content` is not empty, else empty), `message` →
+  `TextBlock` (its `output_text` and `refusal` parts joined; empty text
+  gives no block), `function_call` → `ToolUseBlock` (`call_id` as the
+  id, `name`, `arguments` parsed like the OpenAI parser: empty is `{}`,
+  not an object sets `inputError` and keeps `rawInput`); other item types
+  are skipped. `stopReason`: `ToolUse` when there are tool uses, else
+  `MaxTokens` for the reason `max_output_tokens`, `Refusal` for
+  `content_filter` or a `refusal` part, else `EndTurn`. `usage`:
+  `input_tokens` → `inputTokens`, `input_tokens_details.cached_tokens`
+  → `cachedInputTokens`, `output_tokens` → `outputTokens`; no cost.
+- `ParseResponsesError()` reads `{"error": {"message", "type", "code",
+  "param"}}`, or `{"detail": "..."}` (the plan's admission errors), else
+  the first 500 bytes of the body as the text; `code` is the error's
+  `code` (or `type` when there is no code). The kind is
+  `ErrorKindForCode(code, <by status>)`, by status like the OpenAI
+  adapter (401/403 `Auth`, 429 `RateLimited`, 408/5xx `Overloaded`,
+  other 4xx `BadRequest`, else `BadResponse`); `retryAfter` from the head.
+  `ErrorKindForCode()`: `subscription_sharing_usage_limit_exceeded` →
+  `RateLimited`; `subscription_sharing_usage_unavailable`,
+  `subscription_sharing_user_unavailable` → `Overloaded`;
+  `subscription_sharing_user_not_eligible`,
+  `subscription_sharing_invalid_user`, `chatpass_v2_scope_not_authorized`,
+  `chatpass_v2_invalid_authorization_context`, `invalid_api_key`,
+  `chatgpt_signed_out` → `Auth`;
+  `subscription_sharing_unsupported_capability`,
+  `subscription_sharing_route_not_supported` → `BadRequest`; else the
+  fallback.
+- `ResponsesEffortLevels()` is `none`, `low`, `medium`, `high`, `xhigh`,
+  `max`. `FindKnownModel()` matches an id or a dated id that starts with
+  it (`gpt-6.1-sol-2026-09-29`), the longest match wins; dollars per
+  million tokens input / output / cached input, effort levels:
+  `gpt-6-astra` "GPT-6 Astra" 10 / 50 / 1, `gpt-6.1-sol` "GPT-6.1 Sol"
+  2 / 10 / 0.1, `gpt-6-sol` "GPT-6 Sol" 2 / 10 / 0.2 (these three
+  `low` … `max`), `gpt-6-luna` "GPT-6 Luna" 0.1 / 0.5 / 0.01 (`none` …
+  `max`), `gpt-5.6-sol` 4 / 20 / 0.4, `gpt-5.6-terra` 2 / 12 / 0.2,
+  `gpt-5.6-luna` 0.2 / 1.2 / 0.02, `gpt-5.5` 5 / 30 / 0.5, `gpt-5.5-pro`
+  30 / 180 / 0, `gpt-5.4` 2.5 / 15 / 0.25, `gpt-5.4-pro` 30 / 180 / 0,
+  `gpt-5.4-mini` 0.75 / 4.5 / 0.075, `gpt-5.4-nano` 0.2 / 1.25 / 0.02,
+  `gpt-5.2` 1.75 / 14 / 0.175, `gpt-5.1` 1.25 / 10 / 0.125, `gpt-5`
+  1.25 / 10 / 0.125, `gpt-5-mini` 0.25 / 2 / 0.025, `gpt-5-nano`
+  0.05 / 0.4 / 0.005 (the `gpt-5*` ones `low`, `medium`, `high`; names
+  "GPT-5.6 Sol" and so on). Every known model has the context window
+  `ContextWindowLimit()` (272 000: above it the API doubles the price),
+  `vision`, `files` and `reasoning`. `SupportsReasoning()` is false for
+  ids starting with `gpt-4`, `gpt-3`, `chatgpt-4o`, true otherwise.
+- `ResponsesModelsRequest()` is a GET of `<baseUrl>/models` with
+  `Authorization: Bearer <apiKey>` when the key is not empty.
+  `ParseResponsesModels()` reads either shape:
+  - the ChatGPT plan answer `{"models": [...]}`: entries with
+    `visibility` other than `list` are skipped (no `visibility` keeps the
+    entry), `slug` is the id, `display_name` the name (else the id); when
+    present, `context_window` (a number) is the window (at most
+    `ContextWindowLimit()`), `input_modalities` (strings) sets `vision`
+    (`image`) and `files` (`file`), `supported_reasoning_levels` (strings,
+    or objects with `effort`) the effort levels (only values of
+    `ResponsesEffortLevels()`, in that order). The server's order is
+    kept.
+  - the API answer `{"data": [{"id", ...}]}`: only ids starting with
+    `gpt-`, or `o` and a digit, that contain none of `audio`, `realtime`,
+    `transcribe`, `tts`, `image`, `embedding`, `moderation`, `search`,
+    `instruct`, `codex`; known models first in the table's order, then
+    the rest by id.
+  Each model gets what `FindKnownModel()` knows for what the answer
+  didn't say (name, window, abilities, prices, levels); unknown models
+  get the window `ContextWindowLimit()`, `vision` and `files` true and no
+  prices. `tools` is true for every listed model. Malformed JSON gives an
+  empty list.
+
+## ChatGPT sign-in (`agent_chatgpt_auth.h`, stage 6)
+
+Pure parts of "Sign in with ChatGPT" for open-source apps (plan 11.11):
+OAuth with PKCE against `https://auth.openai.com`, tokens for
+`https://api.openai.com/v1`. The client (`agent_chatgpt.*`) does the
+I/O. Nothing here logs or prints tokens.
+
+- Constants: `AgentName()` `AIgram` (the `agent_name_hint` users see in
+  ChatGPT settings), `CallbackPath()` `/auth/callback`,
+  `RedirectUri(port)` `http://127.0.0.1:<port>/auth/callback`
+  (`127.0.0.1`, never `localhost`; `kCallbackPort` 1455),
+  `UsageUrl()` `https://chatgpt.com/settings/usage`.
+- `GeneratePkce()`: `verifier` 32 random bytes (`QRandomGenerator::
+  system()`) in base64url without padding, `challenge` the base64url
+  (no padding) SHA-256 of the verifier. `GenerateState()` is 32 random
+  bytes in base64url (also used as the nonce). `GenerateHostId()` is
+  `urn:uuid:` and a random version 4 UUID in lower case.
+- `AuthorizeUrl()` is `https://auth.openai.com/api/accounts/authorize`
+  with the query (every value percent-encoded): `response_type=code`,
+  `client_id` (`dynamic_agent_client` when `params.clientId` is empty,
+  else it), `agent_name_hint=AIgram` only with `dynamic_agent_client`,
+  `ext_agent_host_id` (`hostId`), `redirect_uri`, `scope=openid profile
+  email offline_access resource.invoke chatgpt.tokens.use.direct`,
+  `resource=https://api.openai.com/v1`, `state`, `nonce`,
+  `code_challenge`, `code_challenge_method=S256`, and `login_hint` when
+  not empty.
+- `ParseCallback()` checks a callback URL: a path other than
+  `CallbackPath()` → error `not_found`; a missing `state` or one that
+  differs from `expectedState` → `state_mismatch`; an `error` parameter
+  → that value (`access_denied`); a missing `code` → `missing_code`.
+  Otherwise `code`, and `clientId` from the `client_id` parameter, else
+  `pendingClientId` (a sign-in with a saved client id may leave it out);
+  an empty client id is `missing_client_id`. `ParsePastedUrl()` trims
+  the text, requires the scheme, host, port and path of `redirectUri`
+  (`wrong_url` otherwise; any port is accepted when the pasted host is
+  `127.0.0.1` and the path matches) and then works like
+  `ParseCallback()`.
+- `CodeRequest()` and `RefreshRequest()` POST to
+  `https://auth.openai.com/api/accounts/oauth/token` with `content-type:
+  application/x-www-form-urlencoded`, `accept: application/json` and the
+  form (percent-encoded): `grant_type=authorization_code`, `client_id`,
+  `code`, `code_verifier`, `redirect_uri`,
+  `resource=https://api.openai.com/v1`; or `grant_type=refresh_token`,
+  `client_id`, `refresh_token`, `resource` (no `scope`: the grant stays).
+  `dynamic_agent_client` is never a token request's client id.
+- `DiscoveryRequest()` is a GET of
+  `https://auth.openai.com/.well-known/openid-configuration`;
+  `ParseRevocationEndpoint()` reads its `revocation_endpoint` (empty when
+  missing or not https). `RevokeRequest()` POSTs the form `token`,
+  `token_type_hint=refresh_token`, `client_id` to that endpoint; an empty
+  200 is success, also for an already invalid token.
+- `ParseTokenResponse()`: status 200 with a JSON object that has
+  non-empty `access_token`, `refresh_token`, `scope` and a positive
+  `expires_in` gives those (and `id_token` when present); missing fields
+  give `errorCode` `bad_response`. Other statuses read `error` and
+  `error_description` (`errorCode`, `errorText`); `terminal` is true for
+  `invalid_grant`, `invalid_refresh_token`, `token_expired`,
+  `refresh_token_expired`, `refresh_token_invalidated`,
+  `refresh_token_reused` and `invalid_client` (the tokens can't be used
+  again, sign in anew), false for everything else (network trouble,
+  5xx: keep the tokens and retry later).
+- `ParseIdToken()` decodes the JWT payload (the middle part, base64url)
+  without checking the signature (the token came straight from the token
+  endpoint over TLS): `sub`, `email`, `iss`, `aud` (a string, or the
+  first of an array), `nonce`, `exp`, and `plan` from
+  `https://api.openai.com/auth`.`chatgpt_plan_type` when present.
+  Not three parts or bad JSON gives nothing.
+- `HasPlanScope()` is true when the space-separated scopes contain
+  `chatgpt.tokens.use.direct` (without it the plan can't be used: the
+  sign-in fails with "no plan").
+- `SignedIn()` is a non-empty refresh token. `NeedsRefresh()` is true
+  when the access token is empty or `expiresAt - kRefreshMarginMs <=
+  now`. `ApplyTokens()` replaces the access token, the refresh token
+  (when the answer has one), `scopes` and `expiresAt = now + expiresIn *
+  1000` together. `ClearTokens()` empties the access and refresh tokens,
+  `expiresAt` and `scopes`, keeping `clientId`, `hostId`, `email`,
+  `subject` and `plan`.
+- `SignedOutBody()` is the JSON body `{"error": {"code":
+  "chatgpt_signed_out", "message": <text>}}` that `ChatGptTransport`
+  answers with status 401 when there is no usable token.
+
 ## Claude Code (`agent_claude_process.h`, `agent_claude_protocol.h`, `agent_claude_engine.h`, stage 4)
 
 The subscription engine drives the user's `claude` binary over its
@@ -570,6 +813,25 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `agentPhoto`. `ShowBotIcon()` is false only for the agent user with it
   off; `ShowUserBotIcon()` in `dialogs_layout.cpp` checks it, so the chats
   list and search rows drop the bot icon before the agent's name.
+
+- Version 11 (stage 6, plan 11.11) adds the kind `OpenAiResponses`
+  (`OpenAi::ResponsesAdapter` from `CreateAdapter()`) and the services
+  `OpenAi` ("OpenAI → API key", `OpenAiBaseUrl()`
+  `https://api.openai.com/v1`, one key per service like OpenRouter) and
+  `ChatGptSubscription` ("OpenAI → ChatGPT subscription", the same base
+  URL, empty `apiKey`). It appends `chatGpt` after `showBotIcon`:
+  `clientId`, `hostId`, `email`, `subject`, `plan`, `accessToken`,
+  `refreshToken` (`QString`s), `expiresAt` (`qint64`, unix ms) and
+  `scopes` (`QString`); older versions load an empty account. Kinds and
+  services beyond the known ones fail the read.
+- `UsesChatGptPlan()` is the `ChatGptSubscription` service.
+  `IsSubscription()` is `ClaudeSubscription` or `ChatGptSubscription`:
+  plan profiles have no prices and count tokens only.
+- `chatGpt` is the one ChatGPT sign-in of all subscription profiles. Only
+  the client's ChatGPT account code changes it (`SaveChatGptAccount()`):
+  `SaveProviders()` always writes the stored `chatGpt`, never the one in
+  the state it was given, so a stale copy (the settings page keeps one)
+  can't put back a refresh token that was already rotated.
 
 ## Journal (`agent_journal.h`)
 
@@ -1563,6 +1825,54 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `ClaudeLimits()` / `ClaudeLimitsValue()` are the latest
   `rate_limit_event` of any session, with `received` set to the unix time
   it came; nothing is stored.
+
+## ChatGPT client (`agent_chatgpt.h`, stage 6)
+
+- The live account is app-wide: it is read from the stored providers on
+  first use and kept in memory; every change goes through
+  `SaveChatGptAccount()` (`agent_settings.h`). `ChatGptAccountState()`
+  is a copy of it, `ChatGptSignedIn()` is `ChatGpt::SignedIn()` of it,
+  `ChatGptAccountChanged()` fires after sign-in, sign-out and when a
+  terminal refresh error cleared the tokens (not after a plain refresh).
+- `ChatGptLogin` is one browser sign-in. The constructor listens on
+  `127.0.0.1:1455` (`QTcpServer`), creates the PKCE pair, `state` and
+  nonce, the host id when the account has none, and opens
+  `authorizeUrl()` in the system browser (the saved `clientId` and the
+  email as `login_hint` when there are any, else the dynamic
+  registration). `listening()` is false when the port is taken; the
+  sign-in still works by pasting. The server answers every request: the
+  callback path gets a small HTML page (`lng_agent_chatgpt_page_done` or
+  `_failed`), other paths 404. `paste()` returns an error text for a
+  wrong URL and continues the sign-in otherwise. A valid callback or
+  paste exchanges the code (`CodeRequest()`), requires
+  `HasPlanScope()`, reads `ParseIdToken()` (email, subject, plan),
+  saves the account with the issued client id and the tokens, fires
+  `ChatGptAccountChanged()` and calls `done` with an empty error; an
+  `access_denied` callback, a failed exchange or a missing plan scope
+  call `done` with the error text. `done` is called once, never from the
+  constructor, and may destroy the login; destroying it stops the server
+  and drops the exchange.
+- Access tokens: one refresh at a time for the whole app; requests that
+  need a token while it runs wait for it. A token that `NeedsRefresh()`
+  is refreshed with `RefreshRequest()`; success saves the new pair right
+  away; a `terminal` error clears the tokens (`ClearTokens()`), saves and
+  fires `ChatGptAccountChanged()`; other errors keep the tokens and fail
+  only the waiting requests.
+- `ChatGptTransport` wraps the manager's `HttpTransport` for
+  `UsesChatGptPlan()` profiles (`Manager::transportFor()`): `start()`
+  returns an id at once, gets a fresh access token, sets
+  `Authorization: Bearer <token>` (replacing any) and starts the inner
+  request. Without a usable token it answers asynchronously with status
+  401 and `ChatGpt::SignedOutBody()`. A 401 from the server is not passed
+  on the first time: the token is refreshed (even when not expired) and
+  the request runs once more. `cancel()` works in every phase; handlers
+  follow the `Transport` contract.
+- `ChatGptSignOut()` revokes the refresh token (discovery, then
+  `RevokeRequest()`, best effort, in the background), clears the tokens,
+  saves and fires `ChatGptAccountChanged()`.
+- Everything that talks to a provider takes the transport from
+  `Manager::transportFor(provider)`: sessions (`Loop`), `single()`
+  requests, the model lists of the boxes and "Check connection".
 
 ## Account data (`agent_memories.h`, `agent_exclusions.h`, `agent_spending_tracker.h`, `agent_attachments.h`)
 
@@ -2753,6 +3063,59 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   model" and Delete. The API key box has name, key, model, effort, "Check
   connection", "Default model" and Delete. `ShowCheckBox()` runs a
   `Claude::Engine` with the test tool for subscription profiles.
+- Stage 6 (plan 11.11): `ShowAddModel()` also offers "OpenAI", which
+  opens `ShowOpenAiChoice()` ("ChatGPT subscription" and "API key",
+  `lng_agent_openai_about`). `agent_openai_boxes.*`:
+  - The subscription box: when `ChatGptSignedIn()` the sign-in step is
+    skipped. Otherwise `lng_agent_chatgpt_about` and the "Continue with
+    ChatGPT" button (the ChatGPT logo left of the text); a click starts a
+    `ChatGptLogin` and shows `lng_agent_chatgpt_waiting`, "Open the
+    browser again" (`openBrowser()`) and a field for the pasted address
+    (`lng_agent_chatgpt_paste_about`, or `_paste_busy` when not
+    `listening()`; Enter or the box button calls `paste()`, an error
+    marks the field). An error from `done` is shown in the box with the
+    button to try again (`access_denied` → `lng_agent_chatgpt_denied`,
+    no plan scope → `lng_agent_chatgpt_no_plan`, else
+    `lng_agent_chatgpt_login_failed`). Signed in, the model list is
+    `ResponsesModelsRequest()` of a plan profile through
+    `Manager::transportFor()` and `ParseResponsesModels()`; then the
+    name box (the model name) with "Default model". The profile: kind
+    `OpenAiResponses`, service `ChatGptSubscription`, `OpenAiBaseUrl()`,
+    the slug as the model, the window, `vision`, `files`, no prices.
+  - "API key": the key box (`lng_agent_openai_key_about` with
+    `platform.openai.com/api-keys`) checks the key with
+    `ResponsesModelsRequest()` (401/403 marks the field,
+    `lng_agent_openai_key_wrong`) unless `ServiceKey(OpenAi)` exists;
+    the list is `ParseResponsesModels()`; the profile (kind
+    `OpenAiResponses`, service `OpenAi`) copies the window, abilities and
+    prices; a new profile sets the key of every OpenAI profile.
+  - `ShowEditChatGpt()`: name, model (the same list), "Thinking effort"
+    (`EffortText()`, `lng_agent_effort_none` for `none`; the model's
+    levels, else all of `ResponsesEffortLevels()`;
+    `lng_agent_effort_about_openai`), "ChatGPT account" (the email and
+    the plan, or "Not signed in"; a click when signed out opens the
+    sign-in), "Sign out" (confirm, `ChatGptSignOut()`), "Manage usage"
+    (opens `ChatGpt::UsageUrl()`, with `lng_agent_chatgpt_usage_about`),
+    "Check connection", "Default model" and Delete.
+    `ShowEditOpenAiKey()`: name, key, model, effort, the three prices,
+    "Check connection", "Default model" and Delete.
+  - `ShowEditModel()` opens these for the two services;
+    `ModelDescription()` is "ChatGPT subscription · <model>" and "OpenAI
+    · <model>" for them; the settings list shows them with the OpenAI
+    choice icon.
+- The model menu of `ChatView` shows each profile in two lines: the
+  title and `ModelDescription()` under it (plan 11.11: OpenAI wants the
+  plan named at the model selector).
+- A failed turn of a plan profile: `chatgpt_signed_out` and other `Auth`
+  errors show `lng_agent_chatgpt_error_signed_out` (or
+  `lng_agent_chatgpt_error_plan` with the text for
+  `subscription_sharing_user_not_eligible`) with "Model settings";
+  `subscription_sharing_usage_limit_exceeded` shows
+  `lng_agent_chatgpt_error_limit` with "Manage usage" (opens
+  `UsageUrl()`) and "Change model" (the model menu) instead of
+  "Model settings".
+- The settings "Spending" block adds "ChatGPT usage" (opens
+  `UsageUrl()`) when a plan profile exists.
 - `ClaudeLimitValue(week)` is "<percent>% used · resets <time or date>"
   of the latest limits, or "Known after the first request";
   `AddClaudeLimits()` adds both rows. The settings "Spending" block adds

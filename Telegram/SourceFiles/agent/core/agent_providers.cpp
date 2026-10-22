@@ -10,6 +10,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/core/agent_adapter.h"
 #include "agent/core/agent_anthropic.h"
 #include "agent/core/agent_openai.h"
+#include "agent/core/agent_openai_responses.h"
 #include "base/assertion.h"
 
 #include <QtCore/QDataStream>
@@ -248,6 +249,10 @@ QString AnthropicBaseUrl() {
 	return u"https://api.anthropic.com/v1"_q;
 }
 
+QString OpenAiBaseUrl() {
+	return u"https://api.openai.com/v1"_q;
+}
+
 const ProviderSettings *FindProvider(
 		const ProvidersState &state,
 		const QString &id) {
@@ -333,6 +338,15 @@ bool UsesClaudeCode(const ProviderSettings &settings) {
 	return (settings.kind == ProviderKind::ClaudeCode);
 }
 
+bool UsesChatGptPlan(const ProviderSettings &settings) {
+	return (settings.service == ProviderService::ChatGptSubscription);
+}
+
+bool IsSubscription(const ProviderSettings &settings) {
+	return (settings.service == ProviderService::ClaudeSubscription)
+		|| (settings.service == ProviderService::ChatGptSubscription);
+}
+
 std::unique_ptr<Adapter> CreateAdapter(const ProviderSettings &settings) {
 	switch (settings.kind) {
 	case ProviderKind::OpenAiCompatible:
@@ -341,6 +355,8 @@ std::unique_ptr<Adapter> CreateAdapter(const ProviderSettings &settings) {
 		return std::make_unique<Anthropic::Adapter>(settings);
 	case ProviderKind::ClaudeCode:
 		return nullptr;
+	case ProviderKind::OpenAiResponses:
+		return std::make_unique<OpenAi::ResponsesAdapter>(settings);
 	}
 	Unexpected("Kind in Agent::CreateAdapter.");
 }

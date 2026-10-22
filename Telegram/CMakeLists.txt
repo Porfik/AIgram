@@ -165,6 +165,8 @@ PRIVATE
     agent/ui/agent_model_boxes.cpp
     agent/ui/agent_model_boxes.h
     agent/ui/agent_model_boxes_common.h
+    agent/ui/agent_openai_boxes.cpp
+    agent/ui/agent_openai_boxes.h
     agent/ui/agent_palette.cpp
     agent/ui/agent_palette.h
     agent/ui/agent_panel.cpp
@@ -195,6 +197,8 @@ PRIVATE
     agent/agent_check.h
     agent/agent_chat.cpp
     agent/agent_chat.h
+    agent/agent_chatgpt.cpp
+    agent/agent_chatgpt.h
     agent/agent_claude.cpp
     agent/agent_claude.h
     agent/agent_drafts.cpp

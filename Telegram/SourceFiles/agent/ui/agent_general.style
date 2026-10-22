@@ -135,4 +135,6 @@ agentModelChoiceCustomIcon: icon {{ "menu/ip_address", menuIconColor }};
 agentModelChoiceAnthropicIcon: icon {{ "menu/edit_stars", menuIconColor }};
 agentModelChoiceSubscriptionIcon: icon {{ "menu/premium", menuIconColor }};
 agentModelChoiceKeyIcon: icon {{ "menu/lock", menuIconColor }};
+agentModelChoiceOpenAiIcon: icon {{ "agent/chatgpt_logo", menuIconColor }};
+agentChatGptButtonIcon: icon {{ "agent/chatgpt_logo", activeButtonFg }};
 agentClaudeCommandPadding: margins(22px, 12px, 22px, 0px);

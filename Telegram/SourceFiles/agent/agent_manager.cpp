@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/agent_attachments.h"
 #include "agent/agent_chat.h"
+#include "agent/agent_chatgpt.h"
 #include "agent/agent_claude.h"
 #include "agent/agent_drafts.h"
 #include "agent/agent_exclusions.h"
@@ -57,6 +58,7 @@ Manager::Manager(not_null<Main::Session*> session)
 : _session(session)
 , _store(std::make_unique<SessionStore>(session))
 , _transport(std::make_unique<HttpTransport>())
+, _chatGptTransport(std::make_unique<ChatGptTransport>(_transport.get()))
 , _claudeLauncher(std::make_unique<ClaudeLauncher>())
 , _claudePool(std::make_unique<ClaudePool>())
 , _drafts(std::make_unique<Drafts>(session))
@@ -630,6 +632,13 @@ void Manager::sortIndex() {
 }
 
 Transport &Manager::transport() const {
+	return *_transport;
+}
+
+Transport &Manager::transportFor(const ProviderSettings &provider) const {
+	if (UsesChatGptPlan(provider)) {
+		return *_chatGptTransport;
+	}
 	return *_transport;
 }
 

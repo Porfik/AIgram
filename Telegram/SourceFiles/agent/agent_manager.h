@@ -32,6 +32,7 @@ namespace Agent {
 class AgentChat;
 class Drafts;
 class Attachments;
+class ChatGptTransport;
 class ClaudeLauncher;
 class ClaudePool;
 class Exclusions;
@@ -121,6 +122,8 @@ public:
 	[[nodiscard]] bool acting() const;
 
 	[[nodiscard]] Transport &transport() const;
+	[[nodiscard]] Transport &transportFor(
+		const ProviderSettings &provider) const;
 	[[nodiscard]] bool canRun(const ProviderSettings &provider) const;
 	[[nodiscard]] std::unique_ptr<PendingRequest> single(
 		const ProviderSettings &provider,
@@ -149,6 +152,7 @@ private:
 	const not_null<Main::Session*> _session;
 	const std::unique_ptr<SessionStore> _store;
 	const std::unique_ptr<HttpTransport> _transport;
+	const std::unique_ptr<ChatGptTransport> _chatGptTransport;
 	const std::unique_ptr<ClaudeLauncher> _claudeLauncher;
 	const std::unique_ptr<ClaudePool> _claudePool;
 	const std::unique_ptr<Drafts> _drafts;

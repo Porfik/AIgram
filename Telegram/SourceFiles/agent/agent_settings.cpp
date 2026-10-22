@@ -27,6 +27,13 @@ namespace {
 	return result;
 }
 
+void WriteProviders(const ProvidersState &state) {
+	if (!Core::App().domain().local().writeAgentSettings(
+			SerializeProviders(state))) {
+		LOG(("Agent Error: could not save the provider settings."));
+	}
+}
+
 } // namespace
 
 ProvidersState LoadProviders() {
@@ -39,11 +46,16 @@ ProvidersState LoadProviders() {
 }
 
 void SaveProviders(const ProvidersState &state) {
-	if (!Core::App().domain().local().writeAgentSettings(
-			SerializeProviders(state))) {
-		LOG(("Agent Error: could not save the provider settings."));
-	}
+	auto copy = state;
+	copy.chatGpt = LoadProviders().chatGpt;
+	WriteProviders(copy);
 	ProvidersChangedStream().fire({});
+}
+
+void SaveChatGptAccount(const ChatGptAccount &account) {
+	auto state = LoadProviders();
+	state.chatGpt = account;
+	WriteProviders(state);
 }
 
 void UpdateProviders(Fn<void(ProvidersState &state)> change) {

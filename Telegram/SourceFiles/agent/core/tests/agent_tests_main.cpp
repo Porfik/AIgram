@@ -44,6 +44,8 @@ namespace {
 	append(MtprotoChecks());
 	append(AnthropicChecks());
 	append(ClaudeChecks());
+	append(ResponsesChecks());
+	append(ChatGptChecks());
 	return result;
 }
 

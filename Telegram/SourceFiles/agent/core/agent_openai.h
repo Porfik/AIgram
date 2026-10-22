@@ -29,6 +29,7 @@ struct ModelInfo {
 	double priceInput = 0.;
 	double priceOutput = 0.;
 	double priceCached = 0.;
+	std::vector<QString> effortLevels;
 };
 
 struct ModelRoute {
