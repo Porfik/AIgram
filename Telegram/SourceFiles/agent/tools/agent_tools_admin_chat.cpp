@@ -1339,8 +1339,9 @@ std::vector<ToolEntry> Entries() {
 		u"New description of the chat, up to 255 characters."_q));
 	push({
 		.name = u"edit_chat_info"_q,
-		.description = u"Change the title and description of this group or"
-			" channel. The user confirms it on a card."_q,
+		.description = u"Change the title or description of a group or"
+			" channel. For the user's own name or bio use update_profile."
+			" The user confirms it on a card."_q,
 		.generalDescription = u"Change the title and description of the chat."
 			" The user confirms it on a card."_q,
 		.inputSchema = ToolSchema(

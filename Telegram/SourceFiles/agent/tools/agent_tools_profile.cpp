@@ -478,8 +478,11 @@ std::vector<ToolEntry> Entries() {
 	};
 	push(ToolEntry{
 		.name = u"update_profile"_q,
-		.description = u"Change the user's own profile: first name, last"
-			" name or the bio under the name."_q,
+		.description = u"Change the user's own first name, last name or bio."
+			" The user confirms it on a card that shows the old and new"
+			" values. For a group's or channel's title use edit_chat_info;"
+			" the username and birthday are changed in Settings"
+			" (find_setting)."_q,
 		.inputSchema = ToolSchema(
 			[] {
 				auto properties = QJsonObject();

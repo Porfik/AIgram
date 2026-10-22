@@ -1040,8 +1040,9 @@ std::vector<ToolEntry> Entries() {
 		u" only with ban = true. Forever when not set."_q));
 	push(ChangeEntry(
 		u"remove_members"_q,
-		u"Remove users from this group or channel, optionally banning"
-		u" them. The user confirms it on a card."_q,
+		u"Remove users from this group or channel; with ban = true they also"
+		" can't come back (until a date when given). To only take some"
+		" rights away use restrict_members. The user confirms it on a card."_q,
 		std::move(remove),
 		QJsonArray{ QJsonValue(u"users"_q) },
 		RunRemoveMembers));
@@ -1098,8 +1099,9 @@ std::vector<ToolEntry> Entries() {
 		u" chat."_q));
 	push(ChangeEntry(
 		u"delete_chat_messages"_q,
-		u"Delete messages of anyone in this group or channel, for"
-		u" everyone. The user confirms it on a card."_q,
+		u"Delete messages of anyone in this group or channel, for everyone,"
+		" as an admin. For the user's own messages use delete_messages. The"
+		" user confirms it on a card."_q,
 		std::move(messages),
 		QJsonArray{ QJsonValue(u"message_ids"_q) },
 		RunDeleteChatMessages));

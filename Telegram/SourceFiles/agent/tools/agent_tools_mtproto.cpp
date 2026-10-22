@@ -687,7 +687,10 @@ std::vector<ToolEntry> Entries() {
 			" covers. Look it up with describe_method first. Reads run at"
 			" once; a method that changes something waits for the user's"
 			" confirmation on a card. Methods that other tools cover are"
-			" refused with the tool to use."_q,
+			" refused with the tool to use. Example: {\"method\":"
+			" \"account.getPrivacy\", \"params\": {\"key\": {\"_\":"
+			" \"inputPrivacyKeyPhoneNumber\"}}, \"description\": \"Check"
+			" who can see my phone number\"}."_q,
 		.inputSchema = ToolSchema(
 			std::move(callSchema),
 			QJsonArray{

@@ -587,9 +587,9 @@ std::vector<ToolEntry> Entries() {
 	};
 	push(ToolEntry{
 		.name = u"list_folders"_q,
-		.description = u"List chat folders with their ids, titles and chat"
-			" counts. In a chat scope also reports whether this chat is in"
-			" each folder."_q,
+		.description = u"List the user's chat folders with their ids, titles"
+			" and chat counts; the other folder tools take these ids. In a"
+			" chat agent it also says whether this chat is in each folder."_q,
 		.inputSchema = ToolSchema(QJsonObject(), QJsonArray()),
 		.policy = ToolPolicy{
 			.risk = Risk::Read,
@@ -602,8 +602,8 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"create_folder"_q,
-		.description = u"Create a new chat folder with the given title and"
-			" chats."_q,
+		.description = u"Create a chat folder with a title and chats. Only"
+			" the user sees folders, and it can be undone."_q,
 		.inputSchema = ToolSchema(
 			[] {
 				auto properties = QJsonObject();
@@ -624,7 +624,8 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"rename_folder"_q,
-		.description = u"Rename a chat folder by its id."_q,
+		.description = u"Rename a chat folder by its id from list_folders."
+			" It can be undone."_q,
 		.inputSchema = ToolSchema(
 			[&] {
 				auto properties = QJsonObject();
@@ -645,8 +646,9 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"set_folder_chats"_q,
-		.description = u"Include or exclude chats in a chat folder by its"
-			" id. In a chat scope acts on the agent's own chat."_q,
+		.description = u"Put chats into a folder or take them out, by the"
+			" folder id from list_folders. A chat agent acts on its own"
+			" chat only. It can be undone."_q,
 		.inputSchema = ToolSchema(
 			[&] {
 				auto properties = QJsonObject();
@@ -671,8 +673,9 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"reorder_folders"_q,
-		.description = u"Set the order of all chat folders by giving every"
-			" folder id in the desired order."_q,
+		.description = u"Set the order of the chat folders by giving every"
+			" folder id from list_folders in the new order. It can be"
+			" undone."_q,
 		.inputSchema = ToolSchema(
 			[] {
 				auto properties = QJsonObject();
@@ -700,8 +703,8 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"delete_folder"_q,
-		.description = u"Delete a chat folder by its id. The chats are not"
-			" deleted, only the folder is removed."_q,
+		.description = u"Delete a chat folder by its id from list_folders;"
+			" the chats in it stay. The user confirms it on a card."_q,
 		.inputSchema = ToolSchema(
 			[&] {
 				auto properties = QJsonObject();

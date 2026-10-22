@@ -397,8 +397,10 @@ std::vector<ToolEntry> Entries() {
 	};
 	result.push_back(ToolEntry{
 		.name = u"mark_read"_q,
-		.description = u"Mark chats as read. The senders see read"
-			" receipts, so the user confirms it on a card."_q,
+		.description = u"Mark chats as read up to their latest message."
+			" Senders then see their messages as read, so the user confirms"
+			" it on a card. Use it only when the user asks; reading with"
+			" other tools never marks anything read."_q,
 		.inputSchema = ToolSchema(QJsonObject(), QJsonArray()),
 		.policy = ToolPolicy{
 			.risk = Risk::Visible,
@@ -419,8 +421,9 @@ std::vector<ToolEntry> Entries() {
 		" muted = true."_q));
 	push(
 		u"set_mute"_q,
-		u"Mute or unmute notifications for chats. Pass muted = true"
-		" and optionally for_hours, or muted = false to unmute."_q,
+		u"Mute or unmute notifications of chats: muted = true, optionally"
+		" for for_hours, or muted = false. Only the user notices it, and it"
+		" can be undone."_q,
 		ToolSchema(
 			std::move(muteProperties),
 			QJsonArray{ QJsonValue(u"muted"_q) }),
@@ -431,7 +434,8 @@ std::vector<ToolEntry> Entries() {
 		" them."_q));
 	push(
 		u"set_archived"_q,
-		u"Move chats to the archive or back to the main chat list."_q,
+		u"Move chats to the archive (archived = true) or back to the main"
+		" chat list. Only the user notices it, and it can be undone."_q,
 		ToolSchema(
 			std::move(archivedProperties),
 			QJsonArray{ QJsonValue(u"archived"_q) }),
@@ -442,7 +446,9 @@ std::vector<ToolEntry> Entries() {
 		" unpin them."_q));
 	push(
 		u"set_pinned"_q,
-		u"Pin chats at the top of the chat list or unpin them."_q,
+		u"Pin chats at the top of the user's chat list, or unpin them. This"
+		" is about chats in the list: to pin a message inside a chat use"
+		" pin_message."_q,
 		ToolSchema(
 			std::move(pinnedProperties),
 			QJsonArray{ QJsonValue(u"pinned"_q) }),

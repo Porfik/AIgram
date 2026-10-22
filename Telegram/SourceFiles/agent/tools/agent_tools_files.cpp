@@ -578,9 +578,11 @@ std::vector<ToolEntry> Entries() {
 	auto draftProperties = sendProperties;
 	result.push_back(ToolEntry{
 		.name = u"save_files"_q,
-		.description = u"Save photos and files of messages in this chat"
-			" to the agent folder on the user's disk. Above 20 MB in"
-			" total the user confirms the download."_q,
+		.description = u"Save photos and files of messages to the agent"
+			" folder on the user's computer; this is how you download files"
+			" or save them to the PC. Give message ids of one chat. Above"
+			" 20 MB in total the user confirms the download; saving can be"
+			" undone. There is no tool to delete files."_q,
 		.generalDescription = u"Save photos and files of messages in a"
 			" chat to the agent folder on the user's disk. Above 20 MB in"
 			" total the user confirms the download."_q,
@@ -595,7 +597,11 @@ std::vector<ToolEntry> Entries() {
 	});
 	result.push_back(ToolEntry{
 		.name = u"send_files"_q,
-		.description = u"Send files to chats."_q,
+		.description = u"Send files to chats: attachments of this session"
+			" (a1, a2, ...) or agent folder files by name (see"
+			" list_agent_files), with an optional caption. The user"
+			" confirms it on a card. To save files of messages use"
+			" save_files."_q,
 		.generalDescription = u"Send files the user attached in this"
 			" session or files from the agent folder to chats, with an"
 			" optional caption. The user confirms in a card and can edit"
@@ -616,10 +622,9 @@ std::vector<ToolEntry> Entries() {
 	});
 	result.push_back(ToolEntry{
 		.name = u"draft_files"_q,
-		.description = u"Prepare files to send in this chat: opens the"
-			" usual send window with the files and the caption, and the"
-			" user sends them. Files are attachments of this session"
-			" or files from the agent folder."_q,
+		.description = u"Open the usual send window in this chat with"
+			" attachments of this session or agent folder files and a"
+			" caption; the user sends them."_q,
 		.inputSchema = ToolSchema(
 			std::move(draftProperties),
 			QJsonArray{ QJsonValue(u"files"_q) }),
@@ -636,7 +641,8 @@ std::vector<ToolEntry> Entries() {
 	result.push_back(ToolEntry{
 		.name = u"list_agent_files"_q,
 		.description = u"List the files in the agent folder on the user's"
-			" disk, newest first."_q,
+			" computer, newest first, with sizes and dates. There is no"
+			" tool to delete them: the user deletes files by hand."_q,
 		.inputSchema = ToolSchema(QJsonObject(), QJsonArray()),
 		.policy = ToolPolicy{ .risk = Risk::Read },
 		.group = kFilesGroup,

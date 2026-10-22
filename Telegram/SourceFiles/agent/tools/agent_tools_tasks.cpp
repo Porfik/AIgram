@@ -396,15 +396,20 @@ std::vector<ToolEntry> Entries() {
 	};
 	push(ToolEntry{
 		.name = u"create_task"_q,
-		.description = u"Create a background task that runs on new"
-			" messages matching a filter, on a schedule or once at a set"
-			" time. A confirmation card shows the trigger, the instruction"
-			" (which the user can edit), the allowed actions and chats, the"
-			" limits and the notification mode before the task starts."
-			" Every run can call notify to show the user a system"
-			" notification, so for reminders, alerts and summaries meant"
-			" only for the user, tell the task to use notify instead of"
-			" sending messages."_q,
+		.description = u"Set up a background task: a reminder or one-time"
+			" action at a set time (\"remind me at 9\"), a repeating"
+			" schedule, or a watcher that acts on new messages matching a"
+			" filter. Use it for anything that must happen later or by"
+			" itself; memory_add only remembers facts. A card shows the"
+			" trigger, the instruction (the user can edit it), the allowed"
+			" actions and chats, the limits and the notification mode"
+			" before the task starts. Every run can call notify to show the"
+			" user a system notification, so for reminders, alerts and"
+			" summaries meant only for the user, tell the task to use"
+			" notify instead of sending messages. Example: {\"title\":"
+			" \"Call mom\", \"instruction\": \"Remind the user to call"
+			" mom.\", \"trigger\": {\"type\": \"once\", \"at\":"
+			" \"2026-10-23 09:00\"}}."_q,
 		.inputSchema = TaskInputSchema(true, false),
 		.generalSchema = TaskInputSchema(false, false),
 		.policy = ToolPolicy{
@@ -417,10 +422,10 @@ std::vector<ToolEntry> Entries() {
 	});
 	push(ToolEntry{
 		.name = u"update_task"_q,
-		.description = u"Change an existing background task by its id: the"
-			" trigger, the instruction, the allowed actions and chats, the"
-			" limits or the notification mode. A confirmation card shows the"
-			" changes before they are applied."_q,
+		.description = u"Change a background task by its id from list_tasks:"
+			" the trigger, the instruction, the allowed actions and chats,"
+			" the limits or the notification mode. A card shows the changes"
+			" before they are applied."_q,
 		.inputSchema = TaskInputSchema(true, true),
 		.generalSchema = TaskInputSchema(false, true),
 		.policy = ToolPolicy{

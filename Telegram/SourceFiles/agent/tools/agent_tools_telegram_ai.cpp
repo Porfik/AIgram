@@ -343,8 +343,10 @@ std::vector<ToolEntry> Entries() {
 		u"Id of the message to summarize."_q));
 	result.push_back({
 		.name = u"summarize_message"_q,
-		.description = u"Summarize a message using Telegram's own AI."
-			" The summary appears in the chat as you read it."_q,
+		.description = u"Get Telegram's own AI summary of a long message; it"
+			" also shows under the message in the chat. Use it when the"
+			" user asks for Telegram's summary; to summarize a"
+			" conversation, read it and write the summary yourself."_q,
 		.inputSchema = ToolSchema(
 			std::move(summarize),
 			QJsonArray{ QJsonValue(u"message_id"_q) }),
@@ -362,7 +364,10 @@ std::vector<ToolEntry> Entries() {
 		u"Text to translate, 1 to 4096 characters."_q));
 	result.push_back({
 		.name = u"translate"_q,
-		.description = u"Translate messages or text with Telegram AI."_q,
+		.description = u"Translate messages (by ids) or a text with"
+			" Telegram's translation; nothing in the chat changes. Use it"
+			" when the user asks for Telegram's translation; otherwise"
+			" translate yourself."_q,
 		.inputSchema = ToolSchema(
 			std::move(translate),
 			QJsonArray{ QJsonValue(u"to_lang"_q) }),
@@ -386,9 +391,10 @@ std::vector<ToolEntry> Entries() {
 		u"A free description of the wanted style instead of tone."_q));
 	result.push_back({
 		.name = u"ai_compose"_q,
-		.description = u"Rewrite a text with Telegram's own AI: proofread"
-			" it, add emoji, translate it or change its tone. Returns the"
-			" new text; nothing is sent."_q,
+		.description = u"Rewrite a text with Telegram's AI: proofread it,"
+			" add emoji, change its tone or translate it. Returns the new"
+			" text and sends nothing. Use it when the user asks for"
+			" Telegram's AI; otherwise write the text yourself."_q,
 		.inputSchema = ToolSchema(
 			std::move(compose),
 			QJsonArray{ QJsonValue(u"text"_q) }),
