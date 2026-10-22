@@ -19,7 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent {
 namespace {
 
-constexpr auto kFormatVersion = qint32(10);
+constexpr auto kFormatVersion = qint32(11);
 constexpr auto kMinFormatVersion = qint32(1);
 constexpr auto kMaxProviders = 1000;
 constexpr auto kMaxIgnoredRoutes = 100;
@@ -66,6 +66,16 @@ QByteArray SerializeProviders(const ProvidersState &state) {
 	stream << state.claudePath;
 	stream << state.agentName << state.agentPhoto;
 	stream << qint32(state.showBotIcon ? 1 : 0);
+	stream
+		<< state.chatGpt.clientId
+		<< state.chatGpt.hostId
+		<< state.chatGpt.email
+		<< state.chatGpt.subject
+		<< state.chatGpt.plan
+		<< state.chatGpt.accessToken
+		<< state.chatGpt.refreshToken
+		<< qint64(state.chatGpt.expiresAt)
+		<< state.chatGpt.scopes;
 	return result;
 }
 
@@ -104,7 +114,7 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			>> vision;
 		if (stream.status() != QDataStream::Ok
 			|| kind < 0
-			|| kind > int(ProviderKind::ClaudeCode)) {
+			|| kind > int(ProviderKind::OpenAiResponses)) {
 			return std::nullopt;
 		}
 		provider.kind = ProviderKind(kind);
@@ -140,7 +150,7 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			stream >> service >> routes;
 			if (stream.status() != QDataStream::Ok
 				|| service < 0
-				|| service > int(ProviderService::ClaudeSubscription)
+				|| service > int(ProviderService::ChatGptSubscription)
 				|| routes < 0
 				|| routes > kMaxIgnoredRoutes) {
 				return std::nullopt;
@@ -234,6 +244,21 @@ std::optional<ProvidersState> DeserializeProviders(const QByteArray &bytes) {
 			return std::nullopt;
 		}
 		state.showBotIcon = (showBotIcon != 0);
+	}
+	if (version >= 11) {
+		stream
+			>> state.chatGpt.clientId
+			>> state.chatGpt.hostId
+			>> state.chatGpt.email
+			>> state.chatGpt.subject
+			>> state.chatGpt.plan
+			>> state.chatGpt.accessToken
+			>> state.chatGpt.refreshToken
+			>> state.chatGpt.expiresAt
+			>> state.chatGpt.scopes;
+		if (stream.status() != QDataStream::Ok) {
+			return std::nullopt;
+		}
 	}
 	if (!stream.atEnd()) {
 		return std::nullopt;

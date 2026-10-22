@@ -565,20 +565,48 @@ std::vector<Check> ProvidersChecks() {
 			return QString();
 		} },
 		{ u"providers_v10_bot_icon"_q, [] {
-			auto state = SampleState();
-			state.showBotIcon = false;
-			auto bytes = SerializeProviders(state);
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(10)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0)
+					<< QString()
+					<< QString()
+					<< 1.0
+					<< qint64(1'000'000)
+					<< QString()
+					<< QString()
+					<< QByteArray()
+					<< qint32(0);
+			});
 			const auto restored = DeserializeProviders(bytes);
 			if (!restored) {
-				return u"v10 failed to deserialize"_q;
+				return u"v10 data failed to deserialize"_q;
 			} else if (restored->showBotIcon) {
 				return u"a hidden bot icon must round-trip"_q;
 			}
-			bytes.chop(4);
-			bytes.replace(0, 4, Written([](QDataStream &stream) {
-				stream << qint32(9);
-			}));
-			const auto old = DeserializeProviders(bytes);
+			const auto bytesV9 = Written([](QDataStream &stream) {
+				stream
+					<< qint32(9)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0)
+					<< QString()
+					<< QString()
+					<< 1.0
+					<< qint64(1'000'000)
+					<< QString()
+					<< QString()
+					<< QByteArray();
+			});
+			const auto old = DeserializeProviders(bytesV9);
 			if (!old) {
 				return u"v9 data failed to deserialize"_q;
 			} else if (!old->showBotIcon) {
@@ -673,7 +701,7 @@ std::vector<Check> ProvidersChecks() {
 			return QString();
 		} },
 		{ u"providers_v7_reject_bad_service"_q, [] {
-			for (const auto service : { qint32(4), qint32(-1) }) {
+			for (const auto service : { qint32(6), qint32(-1) }) {
 				const auto bytes = Written([&](QDataStream &stream) {
 					stream
 						<< qint32(7)
@@ -808,6 +836,167 @@ std::vector<Check> ProvidersChecks() {
 				if (provider.apiKey != expected) {
 					return u"key of "_q + provider.id + u" is wrong"_q;
 				}
+			}
+			return QString();
+		} },
+		{ u"providers_v11_round_trip"_q, [] {
+			auto state = SampleState();
+			state.chatGpt = ChatGptAccount{
+				.clientId = u"client-id"_q,
+				.hostId = u"urn:uuid:00000000-0000-4000-8000-000000000000"_q,
+				.email = u"me@example.com"_q,
+				.subject = u"subject"_q,
+				.plan = u"plus"_q,
+				.accessToken = u"at"_q,
+				.refreshToken = u"rt"_q,
+				.expiresAt = 1234567890123,
+				.scopes = u"openid chatgpt.tokens.use.direct"_q,
+			};
+			auto subscription = ProviderSettings();
+			subscription.id = u"openai-sub"_q;
+			subscription.kind = ProviderKind::OpenAiResponses;
+			subscription.service = ProviderService::ChatGptSubscription;
+			subscription.baseUrl = OpenAiBaseUrl();
+			auto key = ProviderSettings();
+			key.id = u"openai-key"_q;
+			key.kind = ProviderKind::OpenAiResponses;
+			key.service = ProviderService::OpenAi;
+			key.baseUrl = OpenAiBaseUrl();
+			key.apiKey = u"sk-openai"_q;
+			state.list.push_back(subscription);
+			state.list.push_back(key);
+			const auto bytes = SerializeProviders(state);
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v11 failed to deserialize"_q;
+			}
+			const auto &account = restored->chatGpt;
+			if (account.clientId != u"client-id"
+				|| account.hostId
+					!= u"urn:uuid:00000000-0000-4000-8000-000000000000"_q
+				|| account.email != u"me@example.com"
+				|| account.subject != u"subject"
+				|| account.plan != u"plus"
+				|| account.accessToken != u"at"
+				|| account.refreshToken != u"rt"
+				|| account.expiresAt != 1234567890123
+				|| account.scopes
+					!= u"openid chatgpt.tokens.use.direct"_q) {
+				return u"the account must round-trip"_q;
+			}
+			if (restored->list[3].kind != ProviderKind::OpenAiResponses
+				|| restored->list[3].service
+					!= ProviderService::ChatGptSubscription
+				|| restored->list[4].service != ProviderService::OpenAi) {
+				return u"the new kinds and services must round-trip"_q;
+			}
+			return (SerializeProviders(*restored) == bytes)
+				? QString()
+				: u"re-serialization is not byte-identical"_q;
+		} },
+		{ u"providers_v10_loads_empty_account"_q, [] {
+			const auto bytes = Written([](QDataStream &stream) {
+				stream
+					<< qint32(10)
+					<< qint32(0)
+					<< u"old"_q
+					<< u"инструкции"_q
+					<< qint32(1)
+					<< qint32(0)
+					<< qint32(0)
+					<< QString()
+					<< QString()
+					<< 1.0
+					<< qint64(1'000'000)
+					<< QString()
+					<< QString()
+					<< QByteArray()
+					<< qint32(1);
+			});
+			const auto restored = DeserializeProviders(bytes);
+			if (!restored) {
+				return u"v10 data failed to deserialize"_q;
+			}
+			const auto &account = restored->chatGpt;
+			if (!account.clientId.isEmpty()
+				|| !account.hostId.isEmpty()
+				|| !account.email.isEmpty()
+				|| !account.subject.isEmpty()
+				|| !account.plan.isEmpty()
+				|| !account.accessToken.isEmpty()
+				|| !account.refreshToken.isEmpty()
+				|| account.expiresAt != 0
+				|| !account.scopes.isEmpty()) {
+				return u"v10 must load an empty account"_q;
+			}
+			return QString();
+		} },
+		{ u"providers_v11_reject_beyond"_q, [] {
+			const auto bad = std::vector<QByteArray>{
+				Written([](QDataStream &stream) {
+					stream
+						<< qint32(11)
+						<< qint32(1)
+						<< u"x"_q
+						<< qint32(4)
+						<< QString()
+						<< QString()
+						<< QString()
+						<< QString()
+						<< qint32(0)
+						<< qint32(0);
+				}),
+				Written([](QDataStream &stream) {
+					stream
+						<< qint32(11)
+						<< qint32(1)
+						<< u"x"_q
+						<< qint32(0)
+						<< QString()
+						<< QString()
+						<< QString()
+						<< QString()
+						<< qint32(0)
+						<< qint32(0)
+						<< 0.
+						<< 0.
+						<< 0.
+						<< qint32(0)
+						<< qint32(0)
+						<< qint32(0)
+						<< qint32(6)
+						<< qint32(0);
+				}),
+			};
+			for (const auto &bytes : bad) {
+				if (DeserializeProviders(bytes)) {
+					return u"a value beyond the last must fail"_q;
+				}
+			}
+			return QString();
+		} },
+		{ u"providers_openai_subscription_helpers"_q, [] {
+			auto settings = ProviderSettings();
+			settings.kind = ProviderKind::OpenAiResponses;
+			settings.service = ProviderService::OpenAi;
+			settings.baseUrl = OpenAiBaseUrl();
+			if (!CreateAdapter(settings)) {
+				return u"expected an adapter for OpenAiResponses"_q;
+			} else if (UsesChatGptPlan(settings) || IsSubscription(settings)) {
+				return u"an api key profile is not a subscription"_q;
+			}
+			settings.service = ProviderService::ChatGptSubscription;
+			settings.apiKey = QString();
+			if (!UsesChatGptPlan(settings)) {
+				return u"ChatGptSubscription must use the plan"_q;
+			} else if (!IsSubscription(settings)) {
+				return u"ChatGptSubscription must be a subscription"_q;
+			}
+			auto claude = ProviderSettings();
+			claude.kind = ProviderKind::ClaudeCode;
+			claude.service = ProviderService::ClaudeSubscription;
+			if (!IsSubscription(claude) || UsesChatGptPlan(claude)) {
+				return u"ClaudeSubscription must be its own subscription"_q;
 			}
 			return QString();
 		} },
