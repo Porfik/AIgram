@@ -605,7 +605,6 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 			ChatButtonAction::Alternate,
 			id));
 	}
-	result.rows.push_back(std::move(first));
 	auto second = std::vector<Button>();
 	if (CardNeedsBox(card)) {
 		second.push_back(MakeButton(
@@ -622,7 +621,14 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 		ChatButtonAction::Decline,
 		id,
 		ButtonColor::Danger));
-	result.rows.push_back(std::move(second));
+	if (first.size() == 1 && second.size() == 1) {
+		first.push_back(std::move(second.front()));
+		second.clear();
+	}
+	result.rows.push_back(std::move(first));
+	if (!second.empty()) {
+		result.rows.push_back(std::move(second));
+	}
 	return result;
 }
 
