@@ -304,6 +304,10 @@ PeerData *ResolveRef(
 	if (!params) {
 		return result;
 	}
+	result.error = ForbiddenParamsError(*params);
+	if (!result.error.isEmpty()) {
+		return result;
+	}
 	auto encoded = EncodeCall(session, *schema, method, *params, false);
 	if (!encoded.error.isEmpty()) {
 		result.error = std::move(encoded.error);
@@ -464,6 +468,9 @@ void RunCallMethod(not_null<PendingCall*> call) {
 		? CheckMethod(*schema, method)
 		: u"The Telegram API schema is not available."_q;
 	const auto params = MethodParams(call->input, error);
+	if (error.isEmpty() && params) {
+		error = ForbiddenParamsError(*params);
+	}
 	if (!error.isEmpty() || !params) {
 		call->fail(error);
 		return;

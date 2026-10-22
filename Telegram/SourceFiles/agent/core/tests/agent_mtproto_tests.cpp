@@ -113,6 +113,28 @@ std::vector<Check> MtprotoChecks() {
 			}
 			return QString();
 		} },
+		{ u"mtproto_forbidden_params"_q, [] {
+			const auto stars = QJsonObject{
+				{ u"query"_q, u"news"_q },
+				{ u"allow_paid_stars"_q, 10 },
+			};
+			const auto floodskip = QJsonObject{
+				{ u"allow_paid_floodskip"_q, true },
+			};
+			const auto unset = QJsonObject{
+				{ u"query"_q, u"news"_q },
+				{ u"allow_paid_floodskip"_q, false },
+				{ u"allow_paid_stars"_q, QJsonValue() },
+			};
+			if (!ForbiddenParamsError(stars).contains(u"allow_paid_stars"_q)
+				|| ForbiddenParamsError(floodskip).isEmpty()) {
+				return u"star spending params must be refused"_q;
+			} else if (!ForbiddenParamsError(unset).isEmpty()
+				|| !ForbiddenParamsError(QJsonObject()).isEmpty()) {
+				return u"unset star params must pass"_q;
+			}
+			return QString();
+		} },
 		{ u"mtproto_namespaces"_q, [] {
 			const auto schema = RealSchema();
 			if (!schema) {

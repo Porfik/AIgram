@@ -1490,6 +1490,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   wrote) and `phone.getGroupCallStreamRtmpUrl` (it can revoke the key and
   returns it); `Read` when the name after the dot starts with
   `get`, `search`, `check` or `resolve`; otherwise `Write`.
+- `ForbiddenParamsError()` is an English error when the parameters set
+  `allow_paid_stars` or `allow_paid_floodskip` (anything but absent,
+  null or false): they spend Stars. Empty otherwise.
 - `MethodRedirect()` lists the tools that cover a method, empty for the
   rest: the visible actions with their own cards (sending, forwarding,
   editing, deleting, reactions, pins, reading, mute, archive, chat pins,
@@ -2463,8 +2466,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   providers drop optional arguments), though only `Write` methods
   enforce the description. Its `gateRequest` fails an unknown or
   forbidden method, a method with `MethodRedirect()` (naming the tools),
-  a `Write` method without a description, and any `EncodeTlCall()`
-  error; otherwise the key is `call_method <method>`, the policy `Read`
+  a `Write` method without a description, `ForbiddenParamsError()` of
+  the params, and any `EncodeTlCall()` error; otherwise the key is `call_method <method>`, the policy `Read`
   or `Visible` by `ClassifyMethod()` (always `outbound`), and the peers
   are every chat the references name. References resolve by
   `ParsePeerRef()`: `None` through `ResolveChatRef()`, `Peer` as a

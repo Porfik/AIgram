@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_tl_schema.h"
 
+#include <QtCore/QJsonObject>
 #include <QtCore/QJsonValue>
 #include <QtCore/QStringList>
 
@@ -26,6 +27,7 @@ enum class MethodClass : uchar {
 	const TlSchema &schema,
 	const QString &name);
 [[nodiscard]] std::vector<QString> MethodRedirect(const QString &name);
+[[nodiscard]] QString ForbiddenParamsError(const QJsonObject &params);
 
 enum class PeerRefKind : uchar {
 	None,

@@ -70,6 +70,11 @@ const auto kSideEffectNames = std::array{
 	u"bots.checkDownloadFileParams"_q,
 };
 
+const auto kForbiddenParams = std::array{
+	u"allow_paid_stars"_q,
+	u"allow_paid_floodskip"_q,
+};
+
 constexpr auto kMaxBareId = (uint64(1) << 48) - 1;
 constexpr auto kMaxJsonId = (uint64(1) << 53);
 constexpr auto kBotApiChannelShift = int64(1000000000000);
@@ -311,6 +316,20 @@ std::vector<QString> MethodRedirect(const QString &name) {
 	const auto &redirects = Redirects();
 	const auto i = redirects.find(name);
 	return (i != redirects.end()) ? i->second : std::vector<QString>();
+}
+
+QString ForbiddenParamsError(const QJsonObject &params) {
+	for (const auto &name : kForbiddenParams) {
+		const auto value = params.value(name);
+		if (value.isUndefined()
+			|| value.isNull()
+			|| (value.isBool() && !value.toBool())) {
+			continue;
+		}
+		return u"%1 spends Telegram Stars, which is never allowed for the"
+			" agent. Call the method without it."_q.arg(name);
+	}
+	return QString();
 }
 
 PeerRef ParsePeerRef(const QJsonValue &value) {
