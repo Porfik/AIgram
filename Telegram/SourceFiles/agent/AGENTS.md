@@ -1483,8 +1483,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `messages.startHistoryImport`, `messages.declineUrlAuth` and
   `messages.checkUrlAuthMatchCode`; `Write` for the reads with a side
   effect `messages.getBotCallbackAnswer`, `messages.getInlineBotResults`,
-  `messages.getMessagesViews`, `contacts.getLocated` and
-  `messages.startBot`; `Read` when the name after the dot starts with
+  `messages.getMessagesViews`, `contacts.getLocated`,
+  `messages.startBot`, `ephemeral.getCallbackAnswer` (bot buttons),
+  `messages.getWebPagePreview`, `messages.getWebPage`,
+  `bots.checkDownloadFileParams` (the server fetches a URL the model
+  wrote) and `phone.getGroupCallStreamRtmpUrl` (it can revoke the key and
+  returns it); `Read` when the name after the dot starts with
   `get`, `search`, `check` or `resolve`; otherwise `Write`.
 - `MethodRedirect()` lists the tools that cover a method, empty for the
   rest: the visible actions with their own cards (sending, forwarding,

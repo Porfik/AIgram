@@ -74,7 +74,14 @@ std::vector<Check> MtprotoChecks() {
 				|| !is(u"messages.getBotCallbackAnswer"_q, MethodClass::Write)
 				|| !is(u"messages.getInlineBotResults"_q, MethodClass::Write)
 				|| !is(u"messages.getMessagesViews"_q, MethodClass::Write)
-				|| !is(u"contacts.getLocated"_q, MethodClass::Write)) {
+				|| !is(u"contacts.getLocated"_q, MethodClass::Write)
+				|| !is(u"messages.getWebPagePreview"_q, MethodClass::Write)
+				|| !is(u"messages.getWebPage"_q, MethodClass::Write)
+				|| !is(u"ephemeral.getCallbackAnswer"_q, MethodClass::Write)
+				|| !is(
+					u"phone.getGroupCallStreamRtmpUrl"_q,
+					MethodClass::Write)
+				|| !is(u"bots.checkDownloadFileParams"_q, MethodClass::Write)) {
 				return u"writes must be classified Write"_q;
 			}
 			return QString();

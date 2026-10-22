@@ -63,6 +63,11 @@ const auto kSideEffectNames = std::array{
 	u"messages.getMessagesViews"_q,
 	u"contacts.getLocated"_q,
 	u"messages.startBot"_q,
+	u"messages.getWebPagePreview"_q,
+	u"messages.getWebPage"_q,
+	u"ephemeral.getCallbackAnswer"_q,
+	u"phone.getGroupCallStreamRtmpUrl"_q,
+	u"bots.checkDownloadFileParams"_q,
 };
 
 constexpr auto kMaxBareId = (uint64(1) << 48) - 1;
