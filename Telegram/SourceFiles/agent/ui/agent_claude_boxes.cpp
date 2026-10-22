@@ -1057,7 +1057,9 @@ void EditAnthropicBox(
 } // namespace
 
 QString EffortText(const QString &effort) {
-	if (effort == u"low"_q) {
+	if (effort == u"none"_q) {
+		return tr::lng_agent_effort_none(tr::now);
+	} else if (effort == u"low"_q) {
 		return tr::lng_agent_effort_low(tr::now);
 	} else if (effort == u"medium"_q) {
 		return tr::lng_agent_effort_medium(tr::now);

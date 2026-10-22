@@ -47,6 +47,12 @@ void Fetch(
 	rpl::lifetime &lifetime,
 	HttpRequest request,
 	Fn<void(FetchResult)> done);
+void Fetch(
+	not_null<Manager*> manager,
+	const ProviderSettings &provider,
+	rpl::lifetime &lifetime,
+	HttpRequest request,
+	Fn<void(FetchResult)> done);
 [[nodiscard]] QString FetchErrorText(
 	const FetchResult &result,
 	Fn<Error(const HttpHead&, const QByteArray&)> parse = nullptr);
@@ -54,6 +60,11 @@ void Fetch(
 [[nodiscard]] QString FormatContext(int tokens);
 [[nodiscard]] QString FormatPrice(double price);
 [[nodiscard]] QString ModelInfoDescription(const ModelInfo &model);
+
+void ApplyModelInfo(ProviderSettings &provider, const ModelInfo &model);
+
+[[nodiscard]] QString PriceText(double price);
+[[nodiscard]] std::optional<double> ParsePrice(QString text);
 
 [[nodiscard]] not_null<::Ui::PasswordInput*> AddKeyField(
 	not_null<::Ui::VerticalLayout*> container,

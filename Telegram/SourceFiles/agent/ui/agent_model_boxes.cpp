@@ -9,6 +9,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/ui/agent_claude_boxes.h"
 #include "agent/ui/agent_model_boxes_common.h"
+#include "agent/ui/agent_openai_boxes.h"
 
 #include "agent/agent_check.h"
 #include "agent/agent_manager.h"
@@ -112,6 +113,35 @@ QString FetchErrorText(
 		: (u"HTTP "_q + QString::number(result.status));
 }
 
+void Fetch(
+		not_null<Manager*> manager,
+		const ProviderSettings &provider,
+		rpl::lifetime &lifetime,
+		HttpRequest request,
+		Fn<void(FetchResult)> done) {
+	const auto result = std::make_shared<FetchResult>();
+	const auto id = manager->transportFor(provider).start(
+		std::move(request),
+		TransportHandlers{
+			[=](HttpHead head) {
+				result->status = head.status;
+			},
+			[=](QByteArray chunk) {
+				result->body += chunk;
+			},
+			[=](QString error) {
+				result->error = std::move(error);
+				done(std::move(*result));
+			},
+		});
+	const auto weak = base::make_weak(manager);
+	lifetime.add([=] {
+		if (const auto strong = weak.get()) {
+			strong->transportFor(provider).cancel(id);
+		}
+	});
+}
+
 QString FormatContext(int tokens) {
 	if (tokens >= 1'000'000) {
 		return QString::number(tokens / 1'000'000., 'g', 3) + 'M';
@@ -123,6 +153,33 @@ QString FormatContext(int tokens) {
 
 QString FormatPrice(double price) {
 	return '$' + QString::number(price, 'g', 3);
+}
+
+QString PriceText(double price) {
+	return (price > 0.) ? QString::number(price) : QString();
+}
+
+std::optional<double> ParsePrice(QString text) {
+	text = text.trimmed();
+	if (text.isEmpty()) {
+		return 0.;
+	}
+	text.replace(QChar(','), QChar('.'));
+	auto seenDot = false;
+	auto digits = 0;
+	for (const auto &ch : text) {
+		if (ch == QChar('.')) {
+			if (seenDot) {
+				return std::nullopt;
+			}
+			seenDot = true;
+		} else if (ch.isDigit()) {
+			++digits;
+		} else {
+			return std::nullopt;
+		}
+	}
+	return digits ? std::make_optional(text.toDouble()) : std::nullopt;
 }
 
 QString ModelInfoDescription(const ModelInfo &model) {
@@ -955,33 +1012,6 @@ void EditOpenRouterBox(
 	});
 }
 
-[[nodiscard]] QString PriceText(double price) {
-	return (price > 0.) ? QString::number(price) : QString();
-}
-
-[[nodiscard]] std::optional<double> ParsePrice(QString text) {
-	text = text.trimmed();
-	if (text.isEmpty()) {
-		return 0.;
-	}
-	text.replace(QChar(','), QChar('.'));
-	auto seenDot = false;
-	auto digits = 0;
-	for (const auto &ch : text) {
-		if (ch == QChar('.')) {
-			if (seenDot) {
-				return std::nullopt;
-			}
-			seenDot = true;
-		} else if (ch.isDigit()) {
-			++digits;
-		} else {
-			return std::nullopt;
-		}
-	}
-	return digits ? std::make_optional(text.toDouble()) : std::nullopt;
-}
-
 void EditCustomBox(
 		not_null<::Ui::GenericBox*> box,
 		not_null<Window::SessionController*> controller,
@@ -1226,6 +1256,15 @@ void AddModelBox(
 	});
 	Settings::AddButtonWithIcon(
 		container,
+		tr::lng_agent_add_openai(),
+		st::settingsButton,
+		{ &st::agentModelChoiceOpenAiIcon }
+	)->setClickedCallback([=] {
+		box->closeBox();
+		ShowOpenAiChoice(controller, added);
+	});
+	Settings::AddButtonWithIcon(
+		container,
 		tr::lng_agent_add_custom(),
 		st::settingsButton,
 		{ &st::agentModelChoiceCustomIcon }
@@ -1259,6 +1298,10 @@ QString ModelDescription(const ProviderSettings &provider) {
 		? tr::lng_agent_service_anthropic(tr::now)
 		: (provider.service == ProviderService::ClaudeSubscription)
 		? tr::lng_agent_service_claude(tr::now)
+		: (provider.service == ProviderService::OpenAi)
+		? tr::lng_agent_service_openai(tr::now)
+		: (provider.service == ProviderService::ChatGptSubscription)
+		? tr::lng_agent_service_chatgpt(tr::now)
 		: QUrl(provider.baseUrl).host();
 	return where.isEmpty()
 		? provider.model
@@ -1286,6 +1329,10 @@ void ShowEditModel(
 		ShowEditClaude(controller, *provider);
 	} else if (provider->service == ProviderService::Anthropic) {
 		ShowEditAnthropic(controller, *provider);
+	} else if (provider->service == ProviderService::ChatGptSubscription) {
+		ShowEditChatGpt(controller, *provider);
+	} else if (provider->service == ProviderService::OpenAi) {
+		ShowEditOpenAiKey(controller, *provider);
 	} else {
 		controller->show(Box(
 			EditCustomBox,

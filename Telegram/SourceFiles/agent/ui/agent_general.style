@@ -138,3 +138,9 @@ agentModelChoiceKeyIcon: icon {{ "menu/lock", menuIconColor }};
 agentModelChoiceOpenAiIcon: icon {{ "agent/chatgpt_logo", menuIconColor }};
 agentChatGptButtonIcon: icon {{ "agent/chatgpt_logo", activeButtonFg }};
 agentClaudeCommandPadding: margins(22px, 12px, 22px, 0px);
+agentChatGptButton: SettingsButton(settingsButtonNoIcon) {
+	textFg: activeButtonFg;
+	textFgOver: activeButtonFgOver;
+	textBg: activeButtonBg;
+	textBgOver: activeButtonBgOver;
+}
