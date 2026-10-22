@@ -235,6 +235,7 @@ Decision PolicyGate::check(const ActionRequest &request) const {
 		return { Verdict::Allow, DenyReason::None, false };
 	}
 	const auto blocked = _tainted
+		&& (_scope.kind == ScopeKind::Account)
 		&& request.policy.outbound
 		&& (request.peers.empty() || hasUnnamedPeer(request.peers));
 	if (!blocked && coversPeers(request.tool, request.peers)) {

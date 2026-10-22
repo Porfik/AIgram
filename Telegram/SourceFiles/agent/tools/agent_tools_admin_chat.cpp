@@ -1272,7 +1272,7 @@ std::vector<ToolEntry> Entries() {
 		.generalDescription = u"Create a new invite link for the chat. The"
 			" user confirms it on a card."_q,
 		.inputSchema = ToolSchema(std::move(createProperties), QJsonArray()),
-		.policy = ToolPolicy{ .risk = Risk::Visible },
+		.policy = ToolPolicy{ .risk = Risk::Visible, .outbound = true },
 		.chatParam = ChatParam::One,
 		.group = u"admin"_q,
 		.forPeer = forPeer,
@@ -1300,7 +1300,7 @@ std::vector<ToolEntry> Entries() {
 		.inputSchema = ToolSchema(
 			std::move(editProperties),
 			QJsonArray{ QJsonValue(u"link"_q) }),
-		.policy = ToolPolicy{ .risk = Risk::Visible },
+		.policy = ToolPolicy{ .risk = Risk::Visible, .outbound = true },
 		.chatParam = ChatParam::One,
 		.group = u"admin"_q,
 		.forPeer = forPeer,
@@ -1346,7 +1346,7 @@ std::vector<ToolEntry> Entries() {
 		.inputSchema = ToolSchema(
 			std::move(chatInfoProperties),
 			QJsonArray()),
-		.policy = ToolPolicy{ .risk = Risk::Visible },
+		.policy = ToolPolicy{ .risk = Risk::Visible, .outbound = true },
 		.chatParam = ChatParam::One,
 		.group = u"admin"_q,
 		.forPeer = forPeer,
@@ -1367,7 +1367,7 @@ std::vector<ToolEntry> Entries() {
 		.generalDescription = u"Set or remove the photo of the chat. The"
 			" user confirms it on a card."_q,
 		.inputSchema = ToolSchema(std::move(photoProperties), QJsonArray()),
-		.policy = ToolPolicy{ .risk = Risk::Visible },
+		.policy = ToolPolicy{ .risk = Risk::Visible, .outbound = true },
 		.chatParam = ChatParam::One,
 		.group = u"admin"_q,
 		.forPeer = forPeer,
@@ -1422,7 +1422,11 @@ std::vector<ToolEntry> Entries() {
 				QJsonValue(u"type"_q),
 				QJsonValue(u"title"_q),
 			}),
-		.policy = ToolPolicy{ .risk = Risk::Visible, .chat = false },
+		.policy = ToolPolicy{
+			.risk = Risk::Visible,
+			.chat = false,
+			.outbound = true,
+		},
 		.group = u"admin"_q,
 		.run = RunCreateChat,
 	});

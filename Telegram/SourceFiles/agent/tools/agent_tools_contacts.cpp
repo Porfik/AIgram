@@ -529,6 +529,7 @@ std::vector<ToolEntry> Entries() {
 			.risk = Risk::Visible,
 			.general = true,
 			.chat = true,
+			.outbound = true,
 		},
 		.chatParam = ChatParam::One,
 		.group = u"contacts"_q,

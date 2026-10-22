@@ -480,6 +480,24 @@ std::vector<Check> PolicyChecks() {
 			}
 			return QString();
 		} },
+		{ u"policy_taint_only_in_account_scope"_q, [] {
+			const auto outbound = Policy(Risk::Visible, true, true, true);
+			auto gate = PolicyGate(Scope::Chat(5), nullptr, true);
+			gate.beginTurn({});
+			const auto first = gate.check(Request(u"edit"_q, outbound, { 5 }));
+			gate.allowForTurn(Request(u"edit"_q, outbound, { 5 }));
+			if (const auto diff = ExpectDecision(
+					first,
+					Verdict::Confirm,
+					DenyReason::None,
+					true);
+				!diff.isEmpty()) {
+				return u"chat scope card: "_q + diff;
+			}
+			return ExpectDecision(
+				gate.check(Request(u"edit"_q, outbound, { 5 })),
+				Verdict::Allow);
+		} },
 		{ u"policy_taint_survives_begin_turn"_q, [] {
 			auto gate = PolicyGate(Scope::Account());
 			gate.markTainted();

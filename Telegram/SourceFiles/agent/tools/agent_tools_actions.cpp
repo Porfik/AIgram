@@ -700,7 +700,7 @@ std::vector<ToolEntry> BuildEntries() {
 				QJsonValue(u"message_id"_q),
 				QJsonValue(u"text"_q),
 			}),
-		.policy = VisiblePolicy(true, true, false),
+		.policy = VisiblePolicy(true, true, true),
 		.chatParam = ChatParam::One,
 		.run = RunEditMessage,
 	});

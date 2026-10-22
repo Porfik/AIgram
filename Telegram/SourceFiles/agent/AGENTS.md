@@ -908,10 +908,15 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   tool cover every requested peer (any allowance for the tool covers an
   empty peer list) and the taint rule does not block it; otherwise it is
   `Confirm`.
-- Taint rule: when the gate is tainted and the policy is `outbound`, an
-  empty peer list or any requested peer missing from the turn's named
-  peers blocks allowances, and `Decision::canAllowForTurn` is false.
-  Otherwise `Confirm` offers it.
+- Taint rule (account scope only: a chat agent writes nowhere but its
+  chat): when the gate is tainted and the policy is `outbound`, an empty
+  peer list or any requested peer missing from the turn's named peers
+  blocks allowances, and `Decision::canAllowForTurn` is false. Otherwise
+  `Confirm` offers it. `outbound` tools are those that put text or an
+  image others see: `send_message`, `forward_messages`, `send_files`,
+  `call_method`, `edit_message`, `update_profile`, `set_profile_photo`,
+  `edit_chat_info`, `set_chat_photo`, `create_chat`,
+  `create_invite_link`, `edit_invite_link` and `add_contact`.
 - `allowForTurn()` adds the request's peers to the tool's allowance.
   `beginTurn()` replaces the named peers and drops all allowances.
 - Taint is sticky for the session: `markTainted()` is never undone, and the
@@ -2548,7 +2553,7 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 | `send_message` | actions | Visible, outbound | general | Many | `Send` card |
 | `set_draft` | actions | Reversible, action | chat | None | `Draft` card when the field is not empty |
 | `forward_messages` | actions | Visible, outbound | general | Many | `from_chat`, `message_ids` |
-| `edit_message` | actions | Visible | both | One | own messages |
+| `edit_message` | actions | Visible, outbound | both | One | own messages |
 | `delete_messages` | actions | Visible | both | One | own messages |
 | `react` | actions | Visible | both | One | |
 | `pin_message` | actions | Visible | both | One | `unpin` |
@@ -2581,13 +2586,13 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 | `delete_task` | tasks | Reversible, action | both | None | `task` |
 | `notify` | tasks | Read | background | None | not in a group |
 | `list_invite_links` | admin_chat | Read | both | One | group `admin` |
-| `create_invite_link` | admin_chat | Visible | both | One | `Change` card |
-| `edit_invite_link` | admin_chat | Visible | both | One | `Change` card |
+| `create_invite_link` | admin_chat | Visible, outbound | both | One | `Change` card |
+| `edit_invite_link` | admin_chat | Visible, outbound | both | One | `Change` card |
 | `revoke_invite_links` | admin_chat | Visible | both | One | `Change` card |
-| `edit_chat_info` | admin_chat | Visible | both | One | `Change` card |
-| `set_chat_photo` | admin_chat | Visible | both | One | `Change` card |
+| `edit_chat_info` | admin_chat | Visible, outbound | both | One | `Change` card |
+| `set_chat_photo` | admin_chat | Visible, outbound | both | One | `Change` card |
 | `set_chat_permissions` | admin_chat | Visible | both | One | `Change` card |
-| `create_chat` | admin_chat | Visible | general | None | `Change` card |
+| `create_chat` | admin_chat | Visible, outbound | general | None | `Change` card |
 | `join_chat` | admin_chat | Visible | general | None | `Change` card |
 | `leave_chat` | admin_chat | Visible | both | One | `Change` card |
 | `add_members` | admin_members | Visible | both | One | `Change` card |
@@ -2602,12 +2607,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 | `answer_join_requests` | admin_members | Visible | both | One | `Change` card |
 | `list_contacts` | contacts | Read | general | None | group `contacts` |
 | `list_blocked` | contacts | Read | general | None | |
-| `add_contact` | contacts | Visible | both | One | `Change` card |
+| `add_contact` | contacts | Visible, outbound | both | One | `Change` card |
 | `rename_contact` | contacts | Reversible, action | both | One | undo |
 | `delete_contacts` | contacts | Visible | both | Many | `Change` card |
 | `set_blocked` | contacts | Visible | both | Many | `Change` card |
-| `update_profile` | profile | Visible | general | None | `Change` card |
-| `set_profile_photo` | profile | Visible | general | None | `Change` card |
+| `update_profile` | profile | Visible, outbound | general | None | `Change` card |
+| `set_profile_photo` | profile | Visible, outbound | general | None | `Change` card |
 | `list_emoji_statuses` | profile | Read | general | None | |
 | `set_emoji_status` | profile | Visible | general | None | `Change` card |
 | `summarize_message` | telegram_ai | Read | both | One | untrusted |
