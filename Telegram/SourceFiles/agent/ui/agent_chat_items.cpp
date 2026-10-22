@@ -379,7 +379,7 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 	const auto action = rest.left(colon).toInt(&ok);
 	if (!ok
 		|| action < 0
-		|| action > int(ChatButtonAction::ShowInFolder)) {
+		|| action > int(ChatButtonAction::ChangeModel)) {
 		return std::nullopt;
 	}
 	return ChatButton{
@@ -1006,7 +1006,8 @@ bool ChatItems::apply(
 		auto entry = Prepared{
 			.key = u"error"_q,
 			.signature = extras.error
-				+ (extras.errorSettings ? u"+"_q : QString()),
+				+ (extras.errorSettings ? u"+"_q : QString())
+				+ (extras.errorUsage ? u"$"_q : QString()),
 			.date = lastDate(),
 			.text = TextWithEntities{ extras.error },
 		};
@@ -1016,7 +1017,16 @@ bool ChatItems::apply(
 			ChatButtonAction::Retry,
 			QString(),
 			ButtonColor::Primary) };
-		if (extras.errorSettings) {
+		if (extras.errorUsage) {
+			row.push_back(MakeButton(
+				tr::lng_agent_chatgpt_usage(tr::now),
+				ChatButtonAction::ManageUsage,
+				QString()));
+			row.push_back(MakeButton(
+				tr::lng_agent_change_model(tr::now),
+				ChatButtonAction::ChangeModel,
+				QString()));
+		} else if (extras.errorSettings) {
 			row.push_back(MakeButton(
 				tr::lng_agent_model_settings(tr::now),
 				ChatButtonAction::ModelSettings,

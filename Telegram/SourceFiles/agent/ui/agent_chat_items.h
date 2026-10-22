@@ -30,6 +30,8 @@ enum class ChatButtonAction : uchar {
 	Retry,
 	ModelSettings,
 	ShowInFolder,
+	ManageUsage,
+	ChangeModel,
 };
 
 struct ChatButton {
@@ -41,6 +43,7 @@ struct ChatExtras {
 	QString note;
 	QString error;
 	bool errorSettings = false;
+	bool errorUsage = false;
 	bool compacting = false;
 	QString spending;
 	std::vector<QString> queued;

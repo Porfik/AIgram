@@ -54,3 +54,10 @@ agentSessionListDeleteTextGap: 8px;
 
 agentChatEmptyWidth: 260px;
 agentPaletteNaturalList: 320px;
+
+agentModelMenu: Menu(menuWithIcons) {
+	itemIconPosition: point(15px, 11px);
+	itemPadding: margins(54px, 6px, 17px, 23px);
+}
+agentModelMenuAboutFont: font(12px);
+agentModelMenuAboutTop: 25px;

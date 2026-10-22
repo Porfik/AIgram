@@ -16,6 +16,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "agent/agent_settings.h"
 #include "agent/agent_tasks.h"
 #include "agent/core/agent_card.h"
+#include "agent/core/agent_chatgpt_auth.h"
 #include "agent/core/agent_context.h"
 #include "agent/core/agent_media.h"
 #include "agent/core/agent_prompts.h"
@@ -59,6 +60,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "ui/widgets/buttons.h"
 #include "ui/widgets/elastic_scroll.h"
 #include "ui/widgets/labels.h"
+#include "ui/widgets/menu/menu_action.h"
+#include "ui/widgets/menu/menu_common.h"
 #include "ui/widgets/popup_menu.h"
 #include "window/section_widget.h"
 #include "window/themes/window_theme.h"
@@ -124,6 +127,64 @@ constexpr auto kRebuildDelay = crl::time(50);
 	}
 	result.option = card.option;
 	return result;
+}
+
+class ModelMenuAction final : public ::Ui::Menu::Action {
+public:
+	ModelMenuAction(
+		not_null<::Ui::Menu::Menu*> parent,
+		not_null<QAction*> action,
+		const style::icon *icon,
+		QString about);
+
+protected:
+	void paintEvent(QPaintEvent *e) override;
+
+private:
+	const QString _about;
+
+};
+
+ModelMenuAction::ModelMenuAction(
+	not_null<::Ui::Menu::Menu*> parent,
+	not_null<QAction*> action,
+	const style::icon *icon,
+	QString about)
+: Action(parent, st::agentModelMenu, action, icon, icon)
+, _about(std::move(about)) {
+	const auto &padding = st::agentModelMenu.itemPadding;
+	const auto wanted = padding.left()
+		+ st::agentModelMenuAboutFont->width(_about)
+		+ padding.right();
+	setMinWidth(std::clamp(
+		std::max(minWidth(), wanted),
+		st::agentModelMenu.widthMin,
+		st::agentModelMenu.widthMax));
+}
+
+void ModelMenuAction::paintEvent(QPaintEvent *e) {
+	Action::paintEvent(e);
+	auto p = Painter(this);
+	const auto &padding = st().itemPadding;
+	const auto available = width() - padding.left() - padding.right();
+	const auto &font = st::agentModelMenuAboutFont;
+	p.setFont(font);
+	p.setPen(isSelected() ? st().itemFgShortcutOver : st().itemFgShortcut);
+	p.drawTextLeft(
+		padding.left(),
+		st::agentModelMenuAboutTop,
+		width(),
+		font->elided(_about, available));
+}
+
+[[nodiscard]] bool IsPlanLimit(const Error &error) {
+	return (error.code == u"subscription_sharing_usage_limit_exceeded"_q);
+}
+
+[[nodiscard]] bool IsPlanSignedOut(const Error &error) {
+	return (error.code == u"chatgpt_signed_out"_q)
+		|| (error.code == u"subscription_sharing_invalid_user"_q)
+		|| (error.httpStatus == 401);
 }
 
 } // namespace
@@ -654,10 +715,15 @@ void ChatView::showModelMenu() {
 		st::popupMenuWithIcons);
 	for (const auto &provider : providers.list) {
 		const auto id = provider.id;
-		_modelMenu->addAction(
-			ModelTitle(provider),
-			crl::guard(this, [=] { chooseModel(id); }),
-			(id == current) ? &st::mediaPlayerMenuCheck : nullptr);
+		const auto menu = _modelMenu->menu();
+		_modelMenu->addAction(base::make_unique_q<ModelMenuAction>(
+			menu,
+			::Ui::Menu::CreateAction(
+				menu.get(),
+				ModelTitle(provider),
+				crl::guard(this, [=] { chooseModel(id); })),
+			(id == current) ? &st::mediaPlayerMenuCheck : nullptr,
+			ModelDescription(provider)));
 	}
 	_modelMenu->addSeparator();
 	_modelMenu->addAction(
@@ -751,10 +817,24 @@ QString ChatView::errorText() const {
 	const auto &state = _session->state();
 	if (state.status != SessionStatus::Failed || !state.error) {
 		return QString();
-	} else if (state.error->kind == ErrorKind::Auth) {
-		const auto provider = _manager->sessionProvider(
-			_session->profileId());
-		if (state.error->text == ClaudeMissingText()) {
+	}
+	const auto &error = *state.error;
+	const auto provider = _manager->sessionProvider(_session->profileId());
+	if (provider && UsesChatGptPlan(*provider)) {
+		if (IsPlanLimit(error)) {
+			return tr::lng_agent_chatgpt_error_limit(tr::now);
+		} else if (error.code
+			== u"subscription_sharing_user_not_eligible"_q) {
+			return tr::lng_agent_chatgpt_error_plan(
+				tr::now,
+				lt_error,
+				error.text);
+		} else if (IsPlanSignedOut(error)) {
+			return tr::lng_agent_chatgpt_error_signed_out(tr::now);
+		}
+		return tr::lng_agent_failed(tr::now, lt_error, error.text);
+	} else if (error.kind == ErrorKind::Auth) {
+		if (error.text == ClaudeMissingText()) {
 			return tr::lng_agent_claude_error_missing(tr::now);
 		} else if (provider && UsesClaudeCode(*provider)) {
 			return tr::lng_agent_claude_error_login(tr::now);
@@ -839,8 +919,15 @@ void ChatView::rebuildMessages() {
 		extras.queued = state.queued;
 		extras.live = (state.status == SessionStatus::Working);
 		extras.error = errorText();
-		extras.errorSettings = !extras.error.isEmpty()
-			&& state.error
+		const auto failed = !extras.error.isEmpty() && state.error;
+		const auto provider = _manager->sessionProvider(
+			_session->profileId());
+		extras.errorUsage = failed
+			&& provider
+			&& UsesChatGptPlan(*provider)
+			&& IsPlanLimit(*state.error);
+		extras.errorSettings = failed
+			&& !extras.errorUsage
 			&& (state.error->kind == ErrorKind::Auth);
 	}
 	if (_items->apply(_messages, extras)) {
@@ -905,6 +992,12 @@ void ChatView::handleButton(const ChatButton &button) {
 		break;
 	case ChatButtonAction::ShowInFolder:
 		File::ShowInFolder(button.id);
+		break;
+	case ChatButtonAction::ManageUsage:
+		File::OpenUrl(ChatGpt::UsageUrl());
+		break;
+	case ChatButtonAction::ChangeModel:
+		showModelMenu();
 		break;
 	}
 }
