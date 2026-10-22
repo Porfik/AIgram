@@ -448,6 +448,38 @@ std::vector<Check> PolicyChecks() {
 			}
 			return QString();
 		} },
+		{ u"policy_taint_blocks_peerless_outbound"_q, [] {
+			const auto outbound = Policy(Risk::Visible, true, true, true);
+			auto clean = PolicyGate(Scope::Account());
+			clean.allowForTurn(Request(u"method"_q, outbound, {}));
+			auto gate = PolicyGate(Scope::Account(), nullptr, true);
+			gate.beginTurn({ 5 });
+			const auto first = gate.check(Request(u"method"_q, outbound, {}));
+			gate.allowForTurn(Request(u"method"_q, outbound, {}));
+			const auto allowed = gate.check(
+				Request(u"method"_q, outbound, {}));
+			if (const auto diff = ExpectDecision(
+					clean.check(Request(u"method"_q, outbound, {})),
+					Verdict::Allow);
+				!diff.isEmpty()) {
+				return u"clean session: "_q + diff;
+			} else if (const auto diff = ExpectDecision(
+					first,
+					Verdict::Confirm,
+					DenyReason::None,
+					false);
+				!diff.isEmpty()) {
+				return u"tainted: "_q + diff;
+			} else if (const auto diff = ExpectDecision(
+					allowed,
+					Verdict::Confirm,
+					DenyReason::None,
+					false);
+				!diff.isEmpty()) {
+				return u"tainted after allowance: "_q + diff;
+			}
+			return QString();
+		} },
 		{ u"policy_taint_survives_begin_turn"_q, [] {
 			auto gate = PolicyGate(Scope::Account());
 			gate.markTainted();

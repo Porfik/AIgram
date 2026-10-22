@@ -901,9 +901,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   tool cover every requested peer (any allowance for the tool covers an
   empty peer list) and the taint rule does not block it; otherwise it is
   `Confirm`.
-- Taint rule: when the gate is tainted and the policy is `outbound`, any
-  requested peer missing from the turn's named peers blocks allowances, and
-  `Decision::canAllowForTurn` is false. Otherwise `Confirm` offers it.
+- Taint rule: when the gate is tainted and the policy is `outbound`, an
+  empty peer list or any requested peer missing from the turn's named
+  peers blocks allowances, and `Decision::canAllowForTurn` is false.
+  Otherwise `Confirm` offers it.
 - `allowForTurn()` adds the request's peers to the tool's allowance.
   `beginTurn()` replaces the named peers and drops all allowances.
 - Taint is sticky for the session: `markTainted()` is never undone, and the

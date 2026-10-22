@@ -232,7 +232,7 @@ Decision PolicyGate::check(const ActionRequest &request) const {
 	}
 	const auto blocked = _tainted
 		&& request.policy.outbound
-		&& hasUnnamedPeer(request.peers);
+		&& (request.peers.empty() || hasUnnamedPeer(request.peers));
 	if (!blocked && coversPeers(request.tool, request.peers)) {
 		return { Verdict::Allow, DenyReason::None, false };
 	}
