@@ -55,7 +55,11 @@ private:
 	};
 
 	void startRefresh();
-	void finishRefresh(int status, const QByteArray &body, QString error);
+	void finishRefresh(
+		const QString &used,
+		int status,
+		const QByteArray &body,
+		QString error);
 	void resolve(const QString &token, const QString &error);
 
 	std::optional<ChatGptAccount> _account;
@@ -133,6 +137,7 @@ void Tokens::cancel(uint64 waiterId) {
 void Tokens::startRefresh() {
 	_refreshing = true;
 	const auto &current = account();
+	const auto used = current.refreshToken;
 	const auto status = std::make_shared<int>(0);
 	const auto body = std::make_shared<QByteArray>();
 	(void)transport().start(
@@ -145,17 +150,31 @@ void Tokens::startRefresh() {
 				*body += chunk;
 			},
 			[=](QString error) {
-				finishRefresh(*status, *body, std::move(error));
+				finishRefresh(used, *status, *body, std::move(error));
 			},
 		});
 }
 
 void Tokens::finishRefresh(
+		const QString &used,
 		int status,
 		const QByteArray &body,
 		QString error) {
 	_refreshing = false;
-	if (!error.isEmpty()) {
+	if (!ChatGpt::RefreshStillCurrent(account(), used)) {
+		LOG(("Agent Info: dropped a ChatGPT token refresh of an old login."));
+		const auto &current = account();
+		if (!ChatGpt::SignedIn(current)) {
+			resolve(
+				QString(),
+				tr::lng_agent_chatgpt_error_signed_out(tr::now));
+		} else if (ChatGpt::NeedsRefresh(current, NowMs())) {
+			startRefresh();
+		} else {
+			resolve(current.accessToken, QString());
+		}
+		return;
+	} else if (!error.isEmpty()) {
 		resolve(QString(), error);
 		return;
 	}

@@ -399,6 +399,13 @@ void ClearTokens(ChatGptAccount &account) {
 	account.scopes = QString();
 }
 
+bool RefreshStillCurrent(
+		const ChatGptAccount &account,
+		const QString &usedRefreshToken) {
+	return !usedRefreshToken.isEmpty()
+		&& (account.refreshToken == usedRefreshToken);
+}
+
 QByteArray SignedOutBody(const QString &text) {
 	return QJsonDocument(QJsonObject{
 		{ u"error"_q, QJsonObject{

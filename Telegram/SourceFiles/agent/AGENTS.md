@@ -599,7 +599,9 @@ I/O. Nothing here logs or prints tokens.
   (when the answer has one), `scopes` and `expiresAt = now + expiresIn *
   1000` together. `ClearTokens()` empties the access and refresh tokens,
   `expiresAt` and `scopes`, keeping `clientId`, `hostId`, `email`,
-  `subject` and `plan`.
+  `subject` and `plan`. `RefreshStillCurrent()` is true when the
+  account's refresh token is the non-empty one a refresh was started
+  with: only then may its answer change the account.
 - `SignedOutBody()` is the JSON body `{"error": {"code":
   "chatgpt_signed_out", "message": <text>}}` that `ChatGptTransport`
   answers with status 401 when there is no usable token.
@@ -1893,7 +1895,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   is refreshed with `RefreshRequest()`; success saves the new pair right
   away; a `terminal` error clears the tokens (`ClearTokens()`), saves and
   fires `ChatGptAccountChanged()`; other errors keep the tokens and fail
-  only the waiting requests.
+  only the waiting requests. An answer that is no longer
+  `RefreshStillCurrent()` (the user signed out or in again meanwhile)
+  changes nothing: the waiting requests get the signed-out error, the
+  new login's token, or wait for a refresh of the new login.
 - `ChatGptTransport` wraps the manager's `HttpTransport` for
   `UsesChatGptPlan()` profiles (`Manager::transportFor()`): `start()`
   returns an id at once, gets a fresh access token, sets

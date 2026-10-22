@@ -114,6 +114,9 @@ void ApplyTokens(
 	const TokenResult &tokens,
 	qint64 nowMs);
 void ClearTokens(ChatGptAccount &account);
+[[nodiscard]] bool RefreshStillCurrent(
+	const ChatGptAccount &account,
+	const QString &usedRefreshToken);
 
 [[nodiscard]] QByteArray SignedOutBody(const QString &text);
 

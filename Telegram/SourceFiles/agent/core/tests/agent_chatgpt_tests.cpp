@@ -692,6 +692,22 @@ std::vector<Check> ChatGptChecks() {
 			}
 			return QString();
 		} },
+		{ u"chatgpt_refresh_still_current"_q, [] {
+			auto account = ChatGptAccount();
+			account.refreshToken = u"rt1"_q;
+			if (!RefreshStillCurrent(account, u"rt1"_q)) {
+				return u"the same login must take the answer"_q;
+			} else if (RefreshStillCurrent(account, u"rt0"_q)) {
+				return u"a new login must not take an old answer"_q;
+			} else if (RefreshStillCurrent(account, QString())) {
+				return u"a refresh without a token is never current"_q;
+			}
+			ClearTokens(account);
+			if (RefreshStillCurrent(account, u"rt1"_q)) {
+				return u"a signed out account must not take an answer"_q;
+			}
+			return QString();
+		} },
 		{ u"chatgpt_clear_tokens"_q, [] {
 			auto account = ChatGptAccount();
 			account.clientId = u"cid"_q;
