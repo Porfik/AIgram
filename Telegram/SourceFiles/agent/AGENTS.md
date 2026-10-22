@@ -2157,8 +2157,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   account scope when it is set. Entries with a `group` are listed only
   after `load_tools` loaded it, after all other tools, in load order, so
   earlier specs never move. Every call goes through `PolicyGate::check()`,
-  even for a tool that was never offered; a group tool that is not loaded
-  fails with a hint to call `load_tools`.
+  even for a tool that was never offered; a call of a group tool that is
+  not loaded loads its group first when the group is available in the
+  scope (stage 7: the catalog shows every tool, so the model calls them
+  by name), else it fails as not available here.
 - Media abilities: every call gets `sessionId`, `mainAbilities`
   (`Manager::abilities()` of the session's provider from `setProvider()`:
   the running turn's provider while the loop is busy, else the session's

@@ -714,15 +714,22 @@ void ToolRegistry::executeResolved(
 	if (!entry.group.isEmpty()
 		&& !_gate->background()
 		&& !ranges::contains(_loadedGroups, entry.group)) {
-		done(ToolResultBlock{
-			.toolUseId = call.id,
-			.content = CapToolResult(
-				u"Tool %1 is not loaded. Call load_tools with group"
-				" \"%2\" first."_q.arg(call.name, entry.group),
-				kToolResultMaxChars),
-			.error = true,
-		});
-		return;
+		if (!groupAvailable(entry.group)) {
+			done(ToolResultBlock{
+				.toolUseId = call.id,
+				.content = CapToolResult(
+					u"Tool %1 is not available here."_q.arg(call.name),
+					kToolResultMaxChars),
+				.error = true,
+			});
+			return;
+		}
+		_loadedGroups.push_back(entry.group);
+		const auto weak = base::make_weak(this);
+		_loadedGroupsChanges.fire({});
+		if (!weak) {
+			return;
+		}
 	}
 	const auto account = (_gate->scope().kind == ScopeKind::Account);
 	const auto schema = account
