@@ -1510,7 +1510,8 @@ void ChatView::listPaintEmpty(
 			st::agentChatEmptyWidth,
 			_inner->width() - 2 * padding.left()),
 		1);
-	auto string = ::Ui::Text::String(st::serviceTextStyle, text);
+	auto string = ::Ui::Text::String(1);
+	string.setText(st::serviceTextStyle, text);
 	const auto textWidth = std::min(string.maxWidth(), maxWidth);
 	const auto textHeight = string.countHeight(textWidth);
 	const auto width = textWidth + padding.left() + padding.right();
