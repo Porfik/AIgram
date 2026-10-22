@@ -448,6 +448,7 @@ void BuildProviders(
 		SectionBuilder &builder,
 		const std::shared_ptr<AgentState> &state,
 		not_null<Window::SessionController*> controller) {
+	builder.addSkip();
 	builder.addSubsectionTitle({
 		.id = u"agent/providers"_q,
 		.title = tr::lng_agent_providers_title(),
