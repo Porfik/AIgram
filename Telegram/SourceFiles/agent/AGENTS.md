@@ -2189,6 +2189,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `peers`; `touched()` reports them.
 - Stage 7: `ToolEntry::snippet` is the tool's line in the prompt catalog
   (English, at most 60 characters) and `section` its catalog section.
+  `ToolsTable()` fills both from one table, `CatalogInfo()` in
+  `agent_tools.cpp`, so all catalog lines are tuned in one place; an
+  entry's own non-empty snippet wins.
   `ToolRegistry::beginTurn()` (called by the session with the gate's
   `beginTurn()`) clears the turn's seen messages; `PendingCall::seen()`
   and `markSeen()` read and add a `FullMsgId` to them, so tools can

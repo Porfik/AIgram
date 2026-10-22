@@ -363,11 +363,151 @@ ToolEntry LoadToolsEntry() {
 	};
 }
 
+[[nodiscard]] const base::flat_map<QString, CatalogEntry> &CatalogInfo() {
+	static const auto result = [] {
+		auto result = base::flat_map<QString, CatalogEntry>();
+		auto section = CatalogSection::Other;
+		const auto add = [&](const QString &name, const QString &snippet) {
+			result.emplace(name, CatalogEntry{
+				.name = name,
+				.snippet = snippet,
+				.section = section,
+			});
+		};
+		section = CatalogSection::Read;
+		add(u"get_context"_q,
+			u"your account and, in a chat, the chat summary"_q);
+		add(u"read_history"_q,
+			u"read a chat: latest, by ids, around a message, from a date"_q);
+		add(u"search_messages"_q,
+			u"find messages by words, media type or dates"_q);
+		add(u"get_peer_info"_q,
+			u"details of a chat or person: bio, members, your role"_q);
+		add(u"list_members"_q,
+			u"group members: all, admins, banned, restricted, bots"_q);
+		add(u"list_chats"_q,
+			u"the user's chats by title, folder, unread or kind"_q);
+		add(u"find_setting"_q, u"find an app setting and its deep link"_q);
+		add(u"open"_q,
+			u"show a settings page, a chat or a message on screen"_q);
+		add(u"continue_in_general"_q,
+			u"hand the request over to the general agent"_q);
+		section = CatalogSection::Messages;
+		add(u"send_message"_q, u"send a text message, also as a reply"_q);
+		add(u"set_draft"_q,
+			u"put a text or reply into this chat's message field"_q);
+		add(u"forward_messages"_q, u"forward messages to chats"_q);
+		add(u"edit_message"_q, u"edit one of the user's own messages"_q);
+		add(u"delete_messages"_q, u"delete the user's own messages"_q);
+		add(u"react"_q, u"set a reaction on messages"_q);
+		add(u"pin_message"_q, u"pin or unpin a message inside a chat"_q);
+		section = CatalogSection::ChatState;
+		add(u"mark_read"_q, u"mark chats read (senders see it)"_q);
+		add(u"set_mute"_q, u"mute or unmute chats"_q);
+		add(u"set_archived"_q, u"move chats to the archive or back"_q);
+		add(u"set_pinned"_q, u"pin chats at the top of the chat list"_q);
+		section = CatalogSection::Folders;
+		add(u"list_folders"_q,
+			u"chat folders with their ids and chat counts"_q);
+		add(u"create_folder"_q, u"create a chat folder with chats"_q);
+		add(u"rename_folder"_q, u"rename a chat folder"_q);
+		add(u"set_folder_chats"_q, u"add chats to a folder or take them out"_q);
+		add(u"reorder_folders"_q, u"change the order of chat folders"_q);
+		add(u"delete_folder"_q, u"delete a chat folder, chats stay"_q);
+		section = CatalogSection::MediaFiles;
+		add(u"view_media"_q, u"look at photos, stickers, GIFs and videos"_q);
+		add(u"listen_audio"_q,
+			u"listen to voice messages, audio or video sound"_q);
+		add(u"transcribe_voice"_q,
+			u"Telegram's transcript of a voice or round video"_q);
+		add(u"read_file"_q, u"read documents: text, office files, PDF"_q);
+		add(u"save_files"_q,
+			u"save photos and files of messages to the computer"_q);
+		add(u"send_files"_q, u"send attached files or agent folder files"_q);
+		add(u"draft_files"_q,
+			u"open the send window with files in this chat"_q);
+		add(u"list_agent_files"_q, u"list the files in the agent folder"_q);
+		section = CatalogSection::Memory;
+		add(u"memory_add"_q, u"remember a lasting fact about the user"_q);
+		add(u"memory_update"_q, u"change a remembered fact"_q);
+		add(u"memory_remove"_q, u"forget a remembered fact"_q);
+		add(u"read_chat_memory"_q, u"read the memory of a chat"_q);
+		section = CatalogSection::Tasks;
+		add(u"create_task"_q,
+			u"reminder, schedule or watcher for new messages"_q);
+		add(u"update_task"_q, u"change a background task"_q);
+		add(u"list_tasks"_q, u"list background tasks"_q);
+		add(u"pause_task"_q, u"pause or resume a background task"_q);
+		add(u"delete_task"_q, u"delete a background task"_q);
+		add(u"notify"_q, u"show the user a system notification"_q);
+		section = CatalogSection::Admin;
+		add(u"list_invite_links"_q,
+			u"the user's invite links of a group or channel"_q);
+		add(u"create_invite_link"_q, u"create an invite link"_q);
+		add(u"edit_invite_link"_q, u"change an invite link"_q);
+		add(u"revoke_invite_links"_q, u"revoke invite links"_q);
+		add(u"edit_chat_info"_q,
+			u"change a group's or channel's title or description"_q);
+		add(u"set_chat_photo"_q,
+			u"set or remove a group's or channel's photo"_q);
+		add(u"set_chat_permissions"_q,
+			u"default member permissions and slow mode"_q);
+		add(u"create_chat"_q, u"create a group or a channel"_q);
+		add(u"join_chat"_q, u"join a chat by an invite link or @username"_q);
+		add(u"leave_chat"_q, u"leave a group or channel"_q);
+		add(u"add_members"_q, u"add people to a group or channel"_q);
+		add(u"remove_members"_q, u"remove or ban members"_q);
+		add(u"unban_members"_q, u"lift bans and restrictions"_q);
+		add(u"restrict_members"_q, u"restrict what members may do"_q);
+		add(u"promote_admins"_q,
+			u"make members admins with rights and a title"_q);
+		add(u"demote_admins"_q, u"take admin rights away"_q);
+		add(u"delete_chat_messages"_q,
+			u"delete anyone's messages as an admin"_q);
+		add(u"delete_member_history"_q, u"delete all messages of a member"_q);
+		add(u"list_join_requests"_q, u"pending requests to join"_q);
+		add(u"answer_join_requests"_q, u"approve or decline join requests"_q);
+		section = CatalogSection::Contacts;
+		add(u"list_contacts"_q, u"the user's contacts with phones"_q);
+		add(u"list_blocked"_q, u"people the user blocked"_q);
+		add(u"add_contact"_q, u"add a person to contacts"_q);
+		add(u"rename_contact"_q, u"rename a contact, only the user sees it"_q);
+		add(u"delete_contacts"_q, u"remove people from contacts"_q);
+		add(u"set_blocked"_q, u"block or unblock people"_q);
+		section = CatalogSection::Profile;
+		add(u"update_profile"_q, u"change the user's name or bio"_q);
+		add(u"set_profile_photo"_q,
+			u"set or remove the user's profile photo"_q);
+		add(u"list_emoji_statuses"_q,
+			u"current and available emoji statuses"_q);
+		add(u"set_emoji_status"_q, u"set or clear the user's emoji status"_q);
+		section = CatalogSection::TelegramAi;
+		add(u"summarize_message"_q,
+			u"Telegram's AI summary of a long message"_q);
+		add(u"translate"_q, u"translate messages or text with Telegram"_q);
+		add(u"ai_compose"_q,
+			u"rewrite a text: proofread, tone, emoji, translate"_q);
+		section = CatalogSection::Mtproto;
+		add(u"find_methods"_q, u"search raw Telegram API methods"_q);
+		add(u"describe_method"_q, u"parameters of a Telegram API method"_q);
+		add(u"call_method"_q, u"call a Telegram API method no tool covers"_q);
+		return result;
+	}();
+	return result;
+}
+
 const std::vector<ToolEntry> &ToolsTable() {
 	static const auto table = [] {
 		auto result = std::vector<ToolEntry>();
 		const auto append = [&](std::vector<ToolEntry> &&entries) {
 			for (auto &entry : entries) {
+				const auto &info = CatalogInfo();
+				if (const auto i = info.find(entry.name); i != end(info)) {
+					if (entry.snippet.isEmpty()) {
+						entry.snippet = i->second.snippet;
+					}
+					entry.section = i->second.section;
+				}
 				result.push_back(std::move(entry));
 			}
 		};
