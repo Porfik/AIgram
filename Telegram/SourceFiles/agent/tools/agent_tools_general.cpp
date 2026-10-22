@@ -132,6 +132,7 @@ void RunListChats(not_null<PendingCall*> call) {
 	const auto unreadOnly = JsonBool(input, "unread_only", error);
 	const auto archived = JsonBool(input, "archived", error);
 	const auto kind = input.value("kind").toString().trimmed();
+	const auto query = input.value("query").toString().trimmed();
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;
@@ -207,6 +208,13 @@ void RunListChats(not_null<PendingCall*> call) {
 				continue;
 			}
 			if (!kindFilter.isEmpty() && KindFilter(peer) != kindFilter) {
+				continue;
+			}
+			if (!query.isEmpty()
+				&& !peer->name().contains(query, Qt::CaseInsensitive)
+				&& !ToolFormat::PeerUsername(peer).contains(
+					query,
+					Qt::CaseInsensitive)) {
 				continue;
 			}
 			if (skipped < offset) {
@@ -356,6 +364,9 @@ void RunContinueInGeneral(not_null<PendingCall*> call) {
 std::vector<ToolEntry> BuildEntries() {
 	auto result = std::vector<ToolEntry>();
 	auto listProperties = QJsonObject();
+	listProperties.insert("query", StringProperty(
+		u"Only chats whose title or username contains this, case"
+		u" ignored."_q));
 	listProperties.insert("folder_id", IntProperty(
 		0,
 		std::numeric_limits<int>::max(),
@@ -405,9 +416,10 @@ std::vector<ToolEntry> BuildEntries() {
 	push(
 		u"list_chats"_q,
 		u"List the account's chats with titles, kinds, unread counts"
-		" and last message dates. Filters narrow the list; page with"
-		" limit and offset. complete=false means the chat list is"
-		" still loading and the result may miss chats."_q,
+		" and last message dates. Filters narrow the list; query"
+		" matches titles and usernames. Page with limit and offset."
+		" complete=false means the chat list is still loading and the"
+		" result may miss chats."_q,
 		ToolSchema(std::move(listProperties), QJsonArray()),
 		ToolPolicy{ .general = true, .chat = false },
 		ChatParam::None,
