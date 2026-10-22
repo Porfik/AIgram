@@ -221,6 +221,9 @@ struct OutMessage {
 				}
 			} else if (const auto *thinking
 				= std::get_if<ThinkingBlock>(block)) {
+				if (thinking->signature.startsWith('{')) {
+					continue;
+				}
 				if (auto mapped = SerializeThinking(*thinking)) {
 					content.append(*mapped);
 				}

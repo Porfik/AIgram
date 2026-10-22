@@ -417,6 +417,35 @@ std::vector<Check> ClaudeChecks() {
 				? QString()
 				: u"thinking must be dropped"_q;
 		} },
+		{ u"claude_replay_drops_thinking"_q, [] {
+			const auto messages = std::vector<Message>{
+				Message{ Role::User, { TextBlock{ u"q"_q } } },
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"think"_q, "sig" },
+					TextBlock{ u"answer"_q },
+				} },
+				Message{ Role::Assistant, {
+					ThinkingBlock{ u"more"_q, "{json" },
+				} },
+			};
+			const auto frames = ReplayFrames(messages);
+			if (frames.size() != 2) {
+				return u"expected 2 frames, got %1"_q.arg(frames.size());
+			}
+			if (frames[0].role != Role::User
+				|| frames[0].content.size() != 1) {
+				return u"bad user frame"_q;
+			}
+			const auto parts = frames[1].content;
+			if (parts.size() != 1
+				|| parts[0].toObject().value(u"type"_q).toString()
+					!= u"text"_q
+				|| parts[0].toObject().value(u"text"_q).toString()
+					!= u"answer"_q) {
+				return u"thinking must be dropped"_q;
+			}
+			return QString();
+		} },
 		{ u"claude_parse_lines"_q, [] {
 			const auto request = ParseLine(Line(
 				"{\"type\":\"control_request\",\"request_id\":\"r1\","

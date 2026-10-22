@@ -854,6 +854,23 @@ namespace {
 			};
 			return CheckRequestMessages(request, u"[]"_q);
 		} },
+		{ u"anthropic_request_openai_thinking_dropped"_q, [] {
+			auto request = Request();
+			request.model = u"claude-haiku-4-5-20251001"_q;
+			request.messages = {
+				Message{ Role::Assistant, {
+					ThinkingBlock{
+						u"other"_q,
+						QByteArray("{\"openai\":{\"model\":\"gpt-5\"}}") },
+					ThinkingBlock{ u"th"_q, QByteArray("sig") },
+					TextBlock{ u"Hey"_q } } },
+			};
+			return CheckRequestMessages(request,
+				u"[{\"content\":[{\"signature\":\"sig\","
+				u"\"thinking\":\"th\",\"type\":\"thinking\"},"
+				u"{\"text\":\"Hey\",\"type\":\"text\"}],"
+				u"\"role\":\"assistant\"}]"_q);
+		} },
 		{ u"anthropic_request_tool_input_error"_q, [] {
 			auto request = Request();
 			request.model = u"claude-haiku-4-5-20251001"_q;
