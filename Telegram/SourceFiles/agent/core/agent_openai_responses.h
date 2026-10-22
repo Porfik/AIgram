@@ -19,6 +19,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 namespace Agent::OpenAi {
 
 struct KnownModel {
+	QString id;
 	QString name;
 	double priceInput = 0.;
 	double priceOutput = 0.;

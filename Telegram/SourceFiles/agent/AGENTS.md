@@ -451,7 +451,8 @@ the body to what it accepts.
   final response event"). Otherwise the assistant message has the items
   in `output_index` order: `reasoning` → `ThinkingBlock` (the summary
   texts joined with `"\n\n"`, `signature` `ReasoningSignature()` when
-  `encrypted_content` is not empty, else empty), `message` →
+  `encrypted_content` is not empty, else empty; no block when both are
+  empty), `message` →
   `TextBlock` (its `output_text` and `refusal` parts joined; empty text
   gives no block), `function_call` → `ToolUseBlock` (`call_id` as the
   id, `name`, `arguments` parsed like the OpenAI parser: empty is `{}`,
@@ -479,8 +480,10 @@ the body to what it accepts.
   `subscription_sharing_route_not_supported` → `BadRequest`; else the
   fallback.
 - `ResponsesEffortLevels()` is `none`, `low`, `medium`, `high`, `xhigh`,
-  `max`. `FindKnownModel()` matches an id or a dated id that starts with
-  it (`gpt-6.1-sol-2026-09-29`), the longest match wins; dollars per
+  `max`. `FindKnownModel()` matches an id or an id that continues it after
+  a `-` (`gpt-6.1-sol-2026-09-29`, not `gpt-5.4o`), the longest match
+  wins, and gives the table entry (`KnownModel::id` is the table id);
+  dollars per
   million tokens input / output / cached input, effort levels:
   `gpt-6-astra` "GPT-6 Astra" 10 / 50 / 1, `gpt-6.1-sol` "GPT-6.1 Sol"
   2 / 10 / 0.1, `gpt-6-sol` "GPT-6 Sol" 2 / 10 / 0.2 (these three
@@ -504,19 +507,20 @@ the body to what it accepts.
     entry), `slug` is the id, `display_name` the name (else the id); when
     present, `context_window` (a number) is the window (at most
     `ContextWindowLimit()`), `input_modalities` (strings) sets `vision`
-    (`image`) and `files` (`file`), `supported_reasoning_levels` (strings,
+    (`image`) and `files` (`file`), false when missing from the list,
+    `supported_reasoning_levels` (strings,
     or objects with `effort`) the effort levels (only values of
     `ResponsesEffortLevels()`, in that order). The server's order is
     kept.
   - the API answer `{"data": [{"id", ...}]}`: only ids starting with
     `gpt-`, or `o` and a digit, that contain none of `audio`, `realtime`,
     `transcribe`, `tts`, `image`, `embedding`, `moderation`, `search`,
-    `instruct`, `codex`; known models first in the table's order, then
-    the rest by id.
+    `instruct`, `codex`; known models (dated ids too) first in the
+    table's order, then the rest by id.
   Each model gets what `FindKnownModel()` knows for what the answer
   didn't say (name, window, abilities, prices, levels); unknown models
-  get the window `ContextWindowLimit()`, `vision` and `files` true and no
-  prices. `tools` is true for every listed model. Malformed JSON gives an
+  get the id as the name, the window `ContextWindowLimit()`, `vision` and
+  `files` true and no prices. `tools` is true for every listed model. Malformed JSON gives an
   empty list.
 
 ## ChatGPT sign-in (`agent_chatgpt_auth.h`, stage 6)
