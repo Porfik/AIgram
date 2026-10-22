@@ -291,6 +291,11 @@ bool TaskRunner::checkCanRun(const Task &task) {
 			).arg(int(task.state)));
 		_queues.remove(task.id);
 		return false;
+	} else if (task.scope.kind == ScopeKind::Chat
+		&& _manager->exclusions().excluded(task.scope.peer)) {
+		LOG(("Agent Info: skipped a run of a task of a hidden chat."));
+		_queues.remove(task.id);
+		return false;
 	} else if (!_manager->taskProvider(task)) {
 		LOG(("Agent Warning: no provider for a background task."));
 		return false;

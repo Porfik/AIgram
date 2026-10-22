@@ -2023,6 +2023,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   at most `kTaskMaxSteps` requests each, `kTaskMaxQueued` waiting
   triggers per task (repeats of one message dropped). A card in a run
   waits up to `kTaskCardExpireSeconds`, then it is decided `Expired`.
+  A chat-scope task whose chat is hidden never starts a run (its
+  triggers, schedule and catch-up included, are dropped).
   Limits pause the task (`DailyLimit` until the next local midnight,
   `HourlyLimit` until `HourlyResumeTime()`) and the background limit
   skips every run until the next day; each pause notifies. Finished run
