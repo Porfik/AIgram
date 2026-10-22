@@ -112,6 +112,34 @@ namespace {
 	return word;
 }
 
+[[nodiscard]] int Levenshtein(const QString &a, const QString &b) {
+	const auto columns = b.size() + 1;
+	auto previous = std::vector<int>(columns);
+	for (auto j = 0; j != columns; ++j) {
+		previous[j] = j;
+	}
+	for (auto i = 1; i != a.size() + 1; ++i) {
+		auto current = std::vector<int>(columns, 0);
+		current[0] = i;
+		for (auto j = 1; j != columns; ++j) {
+			const auto cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
+			current[j] = std::min({
+				previous[j] + 1,
+				current[j - 1] + 1,
+				previous[j - 1] + cost });
+		}
+		previous = std::move(current);
+	}
+	return previous[columns - 1];
+}
+
+[[nodiscard]] QString StripSeparators(const QString &name) {
+	auto result = name;
+	result.remove(u'-');
+	result.remove(u'_');
+	return result;
+}
+
 } // namespace
 
 QString FormatToolCatalog(
@@ -282,34 +310,6 @@ std::vector<int> RankToolDocuments(
 	return result;
 }
 
-[[nodiscard]] int Levenshtein(const QString &a, const QString &b) {
-	const auto columns = b.size() + 1;
-	auto previous = std::vector<int>(columns);
-	for (auto j = 0; j != columns; ++j) {
-		previous[j] = j;
-	}
-	for (auto i = 1; i != a.size() + 1; ++i) {
-		auto current = std::vector<int>(columns, 0);
-		current[0] = i;
-		for (auto j = 1; j != columns; ++j) {
-			const auto cost = (a[i - 1] == b[j - 1]) ? 0 : 1;
-			current[j] = std::min({
-				previous[j] + 1,
-				current[j - 1] + 1,
-				previous[j - 1] + cost });
-		}
-		previous = std::move(current);
-	}
-	return previous[columns - 1];
-}
-
-[[nodiscard]] QString StripSeparators(const QString &name) {
-	auto result = name;
-	result.remove(u'-');
-	result.remove(u'_');
-	return result;
-}
-
 std::vector<QString> NearestToolNames(
 		const QString &name,
 		const std::vector<QString> &names,
@@ -370,7 +370,10 @@ std::vector<QString> NearestToolNames(
 	}
 	for (const auto &candidate : names) {
 		auto words = base::flat_set<QString>();
-		for (const auto &word : candidate.toLower().split('_', Qt::SkipEmptyParts)) {
+		const auto parts = candidate.toLower().split(
+			'_',
+			Qt::SkipEmptyParts);
+		for (const auto &word : parts) {
 			words.insert(word);
 		}
 		auto shared = false;
@@ -407,7 +410,8 @@ QString MatchSnippet(
 			continue;
 		}
 		for (const auto &word : words) {
-			if (text.mid(i, word.size()).startsWith(word, Qt::CaseInsensitive)) {
+			const auto part = text.mid(i, word.size());
+			if (part.startsWith(word, Qt::CaseInsensitive)) {
 				match = i;
 				break;
 			}
@@ -460,8 +464,9 @@ QString FormatTurnContext(const TurnContext &context) {
 	}
 	if (!context.loadedGroups.empty()) {
 		lines.push_back(u"Loaded tool groups: %1."_q.arg(
-			QStringList(context.loadedGroups.begin(), context.loadedGroups.end())
-				.join(u", ")));
+			QStringList(
+				context.loadedGroups.begin(),
+				context.loadedGroups.end()).join(u", "_q)));
 	}
 	if (!context.topic.isEmpty()) {
 		lines.push_back(u"The user has %1 open."_q.arg(context.topic));
