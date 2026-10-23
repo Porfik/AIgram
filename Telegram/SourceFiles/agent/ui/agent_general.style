@@ -150,3 +150,23 @@ agentChatGptButton: RoundButton(defaultActiveButton) {
 	iconOver: agentChatGptButtonIconOver;
 	iconPosition: point(-8px, 9px);
 }
+
+agentSettingsEmptyAbout: FlatLabel(defaultFlatLabel) {
+	textFg: windowSubTextFg;
+	minWidth: 100px;
+}
+agentSettingsEmptyAboutPadding: margins(22px, 2px, 22px, 14px);
+agentSettingsAddFirst: RoundButton(defaultActiveButton) {
+	height: 42px;
+	radius: 6px;
+	textTop: 11px;
+	style: TextStyle(semiboldTextStyle) {
+		font: font(boxFontSize semibold);
+	}
+}
+agentSettingsAddFirstPadding: margins(22px, 0px, 22px, 12px);
+agentSettingsInfoButton: SettingsButton(settingsButtonNoIcon) {
+	rightLabel: FlatLabel(defaultSettingsRightLabel) {
+		textFg: windowSubTextFg;
+	}
+}

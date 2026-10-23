@@ -1398,6 +1398,16 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_title" = "AI Agent";
 "lng_agent_providers_title" = "Models";
 "lng_agent_add_provider" = "Add model";
+"lng_agent_models_empty" = "Connect a model to start using the agent. OpenRouter gives hundreds of models with one key, Claude and ChatGPT subscriptions work too, and so does any OpenAI-compatible provider.";
+"lng_agent_roles_title" = "Model roles";
+"lng_agent_roles_about" = "New sessions start with the default model, the button left of the message field switches a session to another one. Background tasks use the background model unless a task has its own. The media model looks at images, video, audio and files the session's model can't handle and describes them to it.";
+"lng_agent_role_default" = "default";
+"lng_agent_role_background" = "background";
+"lng_agent_role_media" = "media";
+"lng_agent_cover_edit" = "Change name and photo";
+"lng_agent_settings_agent" = "Agent";
+"lng_agent_settings_chats" = "Chat list";
+"lng_agent_settings_more_about" = "The agent can't read, search or write to hidden chats and to the chats in hidden folders. It saves files to {path}.";
 "lng_agent_new_provider" = "New Model";
 "lng_agent_edit_provider" = "Edit Model";
 "lng_agent_provider_default" = "Model";
@@ -1408,7 +1418,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_provider_make_active" = "Default model";
 "lng_agent_default_model" = "Default model";
 "lng_agent_default_model_title" = "Default Model";
-"lng_agent_default_model_about" = "New sessions start with this model. To switch the model of a session, use the model button left of the message field.";
 "lng_agent_add_model_title" = "Add Model";
 "lng_agent_add_openrouter" = "OpenRouter";
 "lng_agent_add_custom" = "Other provider";
@@ -1523,8 +1532,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_routes_failed" = "Couldn't load the providers: {text}";
 "lng_agent_routes_none_error" = "Leave at least one provider checked.";
 "lng_agent_instructions_title" = "General instructions";
-"lng_agent_instructions_placeholder" = "Extra text that every agent will see, e.g. 'Keep answers short and always reply in the user's language.'";
-"lng_agent_instructions_about" = "Every session follows these instructions: the agent chat, chat panels, the palette and background tasks.";
+"lng_agent_instructions_box_title" = "General Instructions";
+"lng_agent_instructions_field" = "Instructions";
+"lng_agent_instructions_box_about" = "Extra text every agent sees, for example: \"Keep answers short and always reply in my language.\"";
+"lng_agent_instructions_empty" = "Not set";
+"lng_agent_instructions_about" = "Every session follows the general instructions: the agent chat, chat panels, the palette and background tasks. Memory keeps what the agent remembers about you.";
 "lng_agent_check_button" = "Check connection";
 "lng_agent_check_title" = "Check Connection";
 "lng_agent_check_prompt" = "Call get_current_time, then tell me the time you got in one short sentence.";
@@ -1671,7 +1683,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_profile_name" = "Name";
 "lng_agent_profile_photo_reset" = "Use the default photo";
 "lng_agent_profile_about" = "The agent's name and photo are only visible to you, in every account of this app.";
-"lng_agent_profile_button" = "Agent name and photo";
 "lng_agent_profile_settings" = "Agent Settings";
 "lng_agent_chat_card_edit" = "Edit...";
 "lng_agent_chat_card_details" = "Details...";
@@ -1710,6 +1721,10 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_spending_details" = "Input: {input}, cached: {cached}, output: {output}";
 "lng_agent_spending_session" = "This session: {text}";
 "lng_agent_spending_title" = "Spending";
+"lng_agent_spending_limits" = "Spending and limits";
+"lng_agent_spending_limits_title" = "Spending and Limits";
+"lng_agent_spending_today_short" = "{text} today";
+"lng_agent_limits_title" = "Subscription limits";
 "lng_agent_spending_today" = "Today";
 "lng_agent_spending_month" = "Last 30 days";
 "lng_agent_spending_all" = "All time";
@@ -1733,7 +1748,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_folder_hidden" = "The agent can no longer see the chats in this folder.";
 "lng_agent_folder_shown" = "The agent can see the chats in this folder again.";
 "lng_agent_hidden_title" = "Hidden chats";
-"lng_agent_hidden_about" = "The agent can't read, search or write to hidden chats and to the chats in hidden folders.";
 "lng_agent_hidden_box_title" = "Hidden Chats";
 "lng_agent_hidden_add" = "Add chats";
 "lng_agent_hidden_choose" = "Hide Chats";
@@ -1746,12 +1760,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_export_sessions" = "Export sessions for debugging";
 "lng_agent_export_sessions_done" = "Sessions saved to the agent folder.";
 "lng_agent_export_sessions_failed" = "Could not save the sessions file.";
-"lng_agent_row_preview" = "Agent row shows";
-"lng_agent_row_preview_title" = "Agent Row";
+"lng_agent_row_preview" = "Under the name";
+"lng_agent_row_preview_title" = "Under the Name";
 "lng_agent_row_preview_message" = "Last message";
 "lng_agent_row_preview_session" = "Session title";
-"lng_agent_row_preview_hint" = "Hint";
-"lng_agent_show_bot_icon" = "Bot icon in the chat list";
+"lng_agent_show_bot_icon" = "Bot icon next to the name";
 "lng_agent_attach_too_big" = "The agent takes files up to {size}.";
 "lng_agent_attach_too_many#one" = "The agent takes up to {count} file at once.";
 "lng_agent_attach_too_many#other" = "The agent takes up to {count} files at once.";
@@ -1783,7 +1796,6 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_card_saved" = "Saved to the agent folder";
 "lng_agent_card_title_send_files" = "Send files";
 "lng_agent_card_uncompressed" = "Send without compression";
-"lng_agent_media_title" = "Media";
 "lng_agent_provider_abilities" = "Model abilities";
 "lng_agent_provider_images" = "Sees images";
 "lng_agent_provider_audio" = "Hears audio";
@@ -1793,9 +1805,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_media_model" = "Media model";
 "lng_agent_media_model_title" = "Media Model";
 "lng_agent_media_model_none" = "None";
-"lng_agent_media_model_about" = "Looks at images, video, audio and files the session's model can't handle and describes them to it.";
 "lng_agent_folder" = "Agent folder";
-"lng_agent_folder_about" = "The agent saves files to {path}.";
 "lng_agent_tasks_tab" = "Tasks";
 "lng_agent_tasks_empty" = "No background tasks yet. Ask the agent, for example: \"Answer everyone in private chats that I'm on vacation until Monday.\"";
 "lng_agent_tasks_back" = "All tasks";
@@ -1936,12 +1946,11 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_background_model" = "Background model";
 "lng_agent_background_model_title" = "Background Model";
 "lng_agent_background_model_main" = "Default model";
-"lng_agent_background_model_about" = "Background tasks use this model unless a task has its own.";
 "lng_agent_background_limit" = "Daily limit";
 "lng_agent_background_limit_title" = "Background Daily Limit";
 "lng_agent_background_limit_cost" = "Dollars a day";
 "lng_agent_background_limit_tokens" = "Tokens a day, when the price is unknown";
-"lng_agent_background_limit_value" = "{cost} or {amount} tokens";
+"lng_agent_background_limit_value" = "{cost} a day";
 "lng_agent_background_limit_about" = "When background tasks spend this much in a day, they pause until the next day.";
 
 "lng_agent_pass_to_agent" = "Pass to agent";

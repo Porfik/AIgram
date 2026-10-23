@@ -2960,8 +2960,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   click opens the session (a chat session opens its chat); the top bar "Edit" opens
   `ShowEditAgentProfileBox()` (a `UserpicButton` choosing a photo, "Use
   the default photo", the name field; saved as a 320 px JPEG and the name
-  through `UpdateProviders()`). The settings page has "Agent name and
-  photo" opening the same box.
+  through `UpdateProviders()`). The settings page cover opens the same
+  box.
 - `ChatView` is the native session view: a `HistoryView::ListWidget`
   (`Context::Replies`) over `ChatItems::ids()`, its own default chat
   theme (`DefaultChatThemeOn()`) as the background, since a theme caches
@@ -3035,12 +3035,36 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
 - `FillPeerMenu()` adds "Hide from agent" or "Show to agent" (by
   `Exclusions::peerListed()`) when `Manager::available()`, with a toast.
   `FillFolderMenu()` does the same for a folder other than "All chats".
-- The settings page adds price fields to the provider box, a "Spending"
-  block (today, last 30 days, all time, "Reset statistics", the "Show
-  spending in sessions" toggle), "Hidden chats" (a box listing hidden
-  folders and chats with a way to show each again and "Add chats") and
-  "Delete agent data" (`Manager::clearAllData()` after a confirmation).
-  The spending, hidden chats and data belong to the current account.
+- Settings layout (plan 11.14). The "AI Agent" page (`Agent` section in
+  `settings_agent.cpp`) is, top to bottom: a cover like the main
+  settings one (the agent user's userpic, name, `lng_agent_profile_status`
+  and a "Change name and photo" link; the userpic and the link open
+  `ShowEditAgentProfileBox()`); "Models" (without profiles: the
+  `lng_agent_models_empty` text and a big "Add model" button; with them:
+  a row per profile whose second line ends with its roles in the active
+  color, " · default, background, media" for `DefaultProvider()`,
+  `backgroundId` and `mediaId`, then "Add model"); "Model roles" (only
+  with profiles: "Default model", "Background model" and "Media model",
+  each a single-choice box, one `lng_agent_roles_about`); "Agent"
+  ("General instructions" with the first line of the text, a box with a
+  multi-line field and Save; "Memory", "Tasks" with their counts and
+  "Action Journal", opening the agent profile pages through
+  `ProfileMemento` in the same Info stack); "Chat list" ("Show the agent
+  in chats", and while it is on "Under the name" and "Bot icon next to
+  the name"); "Spending and limits" (today's cost, else tokens, as
+  "{text} today"; opens the `AgentSpending` section), "Hidden chats" (a
+  box listing hidden folders and chats with a way to show each again and
+  "Add chats") and "Agent folder" with `lng_agent_settings_more_about`;
+  "Export sessions for debugging" and "Delete agent data"
+  (`Manager::clearAllData()` after a confirmation).
+- The "Spending and Limits" page: "Spending" (today, last 30 days, all
+  time and "Prompt cache" as rows that don't react to the mouse, values
+  in the secondary color; the "Show spending in sessions" toggle;
+  `lng_agent_spending_about`), "Subscription limits" when a Claude or
+  ChatGPT plan profile exists (the two Claude rows, "ChatGPT usage"),
+  "Background tasks" ("Daily limit", "$N a day", a box with the dollars
+  and tokens fields) and "Reset statistics". The spending, hidden chats
+  and data belong to the current account.
 - The agent UI reuses the chat's own widgets wherever they fit: the
   attach button style, `SendFilesBox`, the `ui/chat/attach/` previews,
   `DragArea`, the media viewer and "Show in Folder".
@@ -3123,11 +3147,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   names and add "Show in Folder" (`File::ShowInFolder()` of the first
   saved path) next to "Undo".
 - The provider box has "Model abilities": checkboxes for `vision`,
-  `audio`, `video` and `files` and the about line. The agent page adds a
-  "Media" block: "Media model" with the chosen provider's title or
-  "None", opening a single-choice box (none plus every profile) that
-  sets `mediaId`, its about line, and "Agent folder" opening the folder,
-  with `lng_agent_folder_about`.
+  `audio`, `video` and `files` and the about line. "Media model" in
+  "Model roles" shows the chosen provider's title or "None" and opens a
+  single-choice box (none plus every profile) that sets `mediaId`.
 - `HistoryView` has three tabs: "Sessions", "Tasks" and "Memory". The
   "Tasks" tab is a `TasksView` of the scope in a scroll area;
   `HistoryView::openRunRequests()` forwards its run clicks, and the panel
@@ -3301,11 +3323,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   variant clears the selection after passing. The selection bar shows
   "To agent" next to "Forward" when forwarding is allowed and the chat
   can be passed.
-- Model profiles (plan 11.7). The page starts with "Models": a row per
-  profile (`ModelTitle()`, `ModelDescription()` under it, the
-  `ai_prompt` icon for OpenRouter and `ip_address` for the rest; a click
-  is `ShowEditModel()`), "Add model" (`ShowAddModel()`) and "Default
-  model" with a single-choice box over the profiles that sets
+- Model profiles (plan 11.7). The "Models" block has a row per profile
+  (`ModelTitle()`, `ModelDescription()` under it, the `ai_prompt` icon
+  for OpenRouter and `ip_address` for the rest; a click is
+  `ShowEditModel()`) and "Add model" (`ShowAddModel()`); "Default model"
+  in "Model roles" is a single-choice box over the profiles that sets
   `defaultId`. The page reloads its state on every `ProvidersChanged()`;
   every box saves through `UpdateProviders()` (load, change, save).
 - `agent_model_boxes.*`: `ModelTitle()` is the title, else the model id,
@@ -3414,12 +3436,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `lng_agent_chatgpt_error_limit` with "Manage usage" (opens
   `UsageUrl()`) and "Change model" (the model menu) instead of
   "Model settings".
-- The settings "Spending" block adds "ChatGPT usage" (opens
-  `UsageUrl()`) when a plan profile exists.
+- The "Subscription limits" block of the spending page adds "ChatGPT
+  usage" (opens `UsageUrl()`) when a plan profile exists.
 - `ClaudeLimitValue(week)` is "<percent>% used · resets <time or date>"
   of the latest limits, or "Known after the first request";
-  `AddClaudeLimits()` adds both rows. The settings "Spending" block adds
-  them when a subscription profile exists, shows the totals without the
+  `AddClaudeLimits()` adds both rows. The spending page adds them when a
+  subscription profile exists, shows the totals without the
   cache share and a "Prompt cache" row (`CachedPercent()` of the last 30
   days); `FormatSpending()` adds "cache N%" when asked to and the share
   is positive (the session line).
@@ -3437,9 +3459,8 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   the session's profile (`Session::setProfile()`), or remembers it until
   the view creates its session; a model added from the menu is chosen
   right away. Showing another session or a new one forgets that choice.
-- The settings page adds a "Background tasks" block after "Media":
-  "Background model" with the chosen provider's title or "Default
-  model", opening a single-choice box (the default plus every profile) that
-  sets `backgroundId`, its about line, and "Daily limit" with
-  `lng_agent_background_limit_value`, opening a box with the dollars and
-  tokens fields, with `lng_agent_background_limit_about`.
+- "Background model" in "Model roles" shows the chosen provider's title
+  or "Default model" and opens a single-choice box (the default plus
+  every profile) that sets `backgroundId`; "Daily limit" on the spending
+  page shows `lng_agent_background_limit_value` and opens a box with the
+  dollars and tokens fields.
