@@ -500,7 +500,7 @@ void ChatView::showSession(Session *session) {
 	_queueStrip->setSuppressed(session && session->isRun());
 	if (session) {
 		_handoff.reset();
-		std::move(session->recordChanges()
+		session->recordChanges(
 		) | rpl::on_next_error_done([=] {
 			_tail.clear();
 			rebuildMessages();
@@ -518,12 +518,12 @@ void ChatView::showSession(Session *session) {
 			refreshModel();
 			scheduleRebuild();
 		}, _sessionLifetime);
-		std::move(session->live()
+		session->live(
 		) | rpl::on_next([=](const EngineEvent &event) {
 			_tail.apply(event);
 			scheduleRebuild();
 		}, _sessionLifetime);
-		std::move(session->undoErrors()
+		session->undoErrors(
 		) | rpl::on_next([=](const QString &error) {
 			_controller->showToast(tr::lng_agent_undo_failed(
 				tr::now,

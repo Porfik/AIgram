@@ -136,7 +136,6 @@ private:
 	base::Timer _pauseTimer;
 	bool _scheduled = false;
 	bool _rescheduling = false;
-	bool _startupChecked = false;
 	int _backgroundNotifiedDay = 0;
 	rpl::event_stream<> _waitingChanges;
 	rpl::event_stream<QString> _runningChanges;

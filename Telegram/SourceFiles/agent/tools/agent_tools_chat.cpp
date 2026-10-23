@@ -424,7 +424,7 @@ void OnFullPeer(not_null<PendingCall*> call, Fn<void()> ready) {
 		return;
 	}
 	const auto once = call->lifetime.make_state<bool>(false);
-	const auto trigger = [call, once, ready = std::move(ready)] {
+	const auto trigger = [once, ready = std::move(ready)] {
 		if (*once) {
 			return;
 		}
