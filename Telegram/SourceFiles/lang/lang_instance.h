@@ -102,11 +102,15 @@ public:
 			|| _nonDefaultSet[key + 3]
 			|| _nonDefaultSet[key + 4]
 			|| _nonDefaultSet[key + 5]
+			|| hasLocalPlural(key)
 			|| (_base && _base->isNonDefaultPlural(key));
 	}
 
 private:
 	void setBaseId(const QString &baseId, const QString &pluralId);
+	void loadLocalValues();
+	[[nodiscard]] QString originalValue(ushort key) const;
+	[[nodiscard]] bool hasLocalPlural(ushort key) const;
 
 	void applyDifferenceToMe(const MTPDlangPackDifference &difference);
 	void applyValue(const QByteArray &key, const QByteArray &value);
@@ -147,6 +151,7 @@ private:
 	std::vector<QString> _values;
 	std::vector<uchar> _nonDefaultSet;
 	std::map<QByteArray, QByteArray> _nonDefaultValues;
+	base::flat_map<ushort, QString> _localValues;
 
 	std::unique_ptr<Instance> _base;
 

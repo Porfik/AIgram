@@ -121,6 +121,15 @@ contracts and invariants of the code under `SourceFiles/agent/`.
 - The settings page is `settings/sections/settings_agent*`. Encrypted storage
   of provider settings is `Storage::Domain` in `storage/storage_domain*`,
   next to the wallet keyring.
+- User-facing texts are `lng_agent_*` keys in `lang.strings`. Telegram's
+  cloud language packs never have them, so their Russian lives in
+  `Resources/langs/ru.strings` (the resource `:/langs/ru.strings`):
+  `Lang::Instance` applies `:/langs/<id>.strings` of the current language or
+  its base pack under the cloud values. Every new or changed `lng_agent_*`
+  key gets its Russian there in the same commit, with the same tags and all
+  four plural forms (`#one`, `#few`, `#many`, `#other`). Phrases built from
+  pieces (`agent_task_format.cpp`) use prepositional pieces after "в":
+  "Новое сообщение в {chats}" with "личных чатах", "папке {folder}".
 
 ## Conversation model (`agent_types.h`)
 

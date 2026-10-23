@@ -2525,6 +2525,7 @@ PRIVATE
     winrc/Telegram.manifest
     langs/lang.strings
     langs/cloud_lang.strings
+    langs/ru.strings
     numbers.txt
 )
 

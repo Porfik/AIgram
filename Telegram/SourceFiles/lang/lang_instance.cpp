@@ -214,6 +214,20 @@ void ParseKeyValue(
 	}
 }
 
+[[nodiscard]] QString LocalValuesPath(
+		const QString &id,
+		const QString &baseId) {
+	for (const auto &code : { id, baseId }) {
+		if (!code.isEmpty()) {
+			const auto path = u":/langs/%1.strings"_q.arg(code);
+			if (QFile::exists(path)) {
+				return path;
+			}
+		}
+	}
+	return QString();
+}
+
 } // namespace
 
 QString CloudLangPackName() {
@@ -271,6 +285,54 @@ void Instance::setBaseId(const QString &baseId, const QString &pluralId) {
 	}
 }
 
+void Instance::loadLocalValues() {
+	_localValues.clear();
+	if (_derived) {
+		return;
+	}
+	const auto path = LocalValuesPath(id(), baseId());
+	if (path.isEmpty()) {
+		return;
+	}
+	auto file = QFile(path);
+	if (!file.open(QIODevice::ReadOnly)) {
+		LOG(("Lang Error: Could not open local values at '%1'.").arg(path));
+		return;
+	}
+	Lang::FileParser loader(file.readAll(), [&](
+			QLatin1String key,
+			const QByteArray &value) {
+		ParseKeyValue(
+			QByteArray(key.data(), key.size()),
+			value,
+			[&](ushort index, QString &&parsed) {
+				_localValues[index] = std::move(parsed);
+			});
+	});
+	if (!loader.errors().isEmpty()) {
+		LOG(("Lang Error: Local values: %1").arg(loader.errors()));
+	}
+	for (const auto &[key, value] : _localValues) {
+		if (!_nonDefaultSet[key] && !(_base && _base->_nonDefaultSet[key])) {
+			_values[key] = value;
+		}
+	}
+}
+
+QString Instance::originalValue(ushort key) const {
+	const auto i = _localValues.find(key);
+	return (i != end(_localValues)) ? i->second : GetOriginalValue(key);
+}
+
+bool Instance::hasLocalPlural(ushort key) const {
+	for (auto i = 0; i != 6; ++i) {
+		if (_localValues.contains(ushort(key + i))) {
+			return true;
+		}
+	}
+	return false;
+}
+
 void Instance::switchToCustomFile(const QString &filePath) {
 	if (loadFromCustomFile(filePath)) {
 		Local::writeLangPack();
@@ -299,6 +361,7 @@ void Instance::reset(const Language &data) {
 		_values[i] = GetOriginalValue(ushort(i));
 	}
 	ranges::fill(_nonDefaultSet, 0);
+	loadLocalValues();
 	updateChoosingStickerReplacement();
 
 	_idChanges.fire_copy(_id);
@@ -544,6 +607,7 @@ void Instance::fillFromSerialized(
 	for (auto i = 0, count = nonDefaultValuesCount * 2; i != count; i += 2) {
 		applyValue(nonDefaultStrings[i], nonDefaultStrings[i + 1]);
 	}
+	loadLocalValues();
 	updatePluralRules();
 	updateChoosingStickerReplacement();
 
@@ -771,9 +835,9 @@ void Instance::resetValue(const QByteArray &key) {
 				: QString();
 			_values[keyIndex] = !base.isEmpty()
 				? base
-				: GetOriginalValue(keyIndex);
+				: originalValue(keyIndex);
 		} else if (!_derived->_nonDefaultSet[keyIndex]) {
-			_derived->_values[keyIndex] = GetOriginalValue(keyIndex);
+			_derived->_values[keyIndex] = _derived->originalValue(keyIndex);
 		}
 		if (keyIndex == tr::lng_send_action_choose_sticker.base
 			|| keyIndex == tr::lng_user_action_choose_sticker.base) {
