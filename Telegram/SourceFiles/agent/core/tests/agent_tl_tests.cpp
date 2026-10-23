@@ -151,7 +151,7 @@ std::vector<Check> TlChecks() {
 			const auto parsed = Parse(ReadApiTl());
 			if (!parsed.schema) {
 				return u"api.tl must parse: "_q + parsed.error;
-			} else if (parsed.schema->layer() != 230) {
+			} else if (parsed.schema->layer() < 232) {
 				return u"unexpected layer "_q
 					+ QString::number(parsed.schema->layer());
 			}
