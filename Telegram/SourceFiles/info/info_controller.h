@@ -311,6 +311,15 @@ public:
 		return _parent;
 	}
 
+	void setJumpToMessageCallback(Fn<void()> callback) {
+		_jumpToMessageCallback = std::move(callback);
+	}
+	void notifyJumpToMessage() {
+		if (const auto callback = _jumpToMessageCallback) {
+			callback();
+		}
+	}
+
 protected:
 	using SearchQuery = Api::DelayedSearchController::Query;
 
@@ -319,6 +328,7 @@ protected:
 
 private:
 	not_null<Window::SessionController*> _parent;
+	Fn<void()> _jumpToMessageCallback;
 
 };
 

@@ -9,6 +9,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 class QKeyEvent;
 class QShortcutEvent;
+class QString;
+class QKeySequence;
 
 namespace Shortcuts {
 
@@ -185,5 +187,7 @@ void Change(
 void ResetToDefaults();
 
 [[nodiscard]] bool AllowWithoutModifiers(int key);
+
+[[nodiscard]] QString ToDisplayString(const QKeySequence &sequence);
 
 } // namespace Shortcuts

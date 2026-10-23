@@ -80,13 +80,11 @@ TabbedPanel::TabbedPanel(
 		if (_regularWindow) {
 			_regularWindow->enableGifPauseReason(_selector->level());
 		}
-		_pauseAnimations.fire(true);
 	});
 	_selector->setBeforeHidingCallback([=](SelectorTab tab) {
 		if (_regularWindow) {
 			_regularWindow->disableGifPauseReason(_selector->level());
 		}
-		_pauseAnimations.fire(false);
 	});
 	_selector->showRequests(
 	) | rpl::on_next([=] {
@@ -148,14 +146,6 @@ TabbedPanel::TabbedPanel(
 
 not_null<TabbedSelector*> TabbedPanel::selector() const {
 	return _selector;
-}
-
-rpl::producer<bool> TabbedPanel::pauseAnimations() const {
-	return _pauseAnimations.events();
-}
-
-bool TabbedPanel::isSelectorStolen() const {
-	return (_selector->parent() != this);
 }
 
 void TabbedPanel::moveBottomRight(int bottom, int right) {
@@ -268,7 +258,7 @@ void TabbedPanel::moveHorizontally() {
 		- padding.left()
 		- padding.right();
 	const auto inner = std::max(std::min(st::emojiPanWidth, available), 1);
-	if (innerRect().width() != inner && !isSelectorStolen()) {
+	if (innerRect().width() != inner && _selector->parent() == this) {
 		resize(inner + padding.left() + padding.right(), height());
 		_selector->resize(inner, _selector->height());
 	}

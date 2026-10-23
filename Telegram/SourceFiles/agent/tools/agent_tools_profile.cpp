@@ -85,7 +85,10 @@ void RunUpdateProfileLoaded(not_null<PendingCall*> call) {
 		return;
 	}
 	if (hasBio) {
-		const auto limit = Data::PremiumLimits(session).aboutLengthCurrent();
+		const auto limits = Data::PremiumLimits(session);
+		const auto limit = user->isPremium()
+			? limits.aboutLengthPremium()
+			: limits.aboutLengthDefault();
 		if (bio.size() > limit) {
 			call->fail(u"The bio must be at most %1 characters."_q.arg(limit));
 			return;

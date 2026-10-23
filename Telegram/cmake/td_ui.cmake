@@ -42,6 +42,7 @@ set(style_files
     boxes/share_box.style
     boxes/stickers_box.style
     boxes/url_auth_box_content.style
+    boxes/keys_legend.style
     info/community_requests/info_community_requests_widget.style
     settings/sections/settings_notifications.style
     ui/boxes/calendar_box.style
@@ -399,8 +400,6 @@ PRIVATE
     statistics/widgets/point_details_widget.cpp
     statistics/widgets/point_details_widget.h
 
-    ui/boxes/auto_delete_settings.cpp
-    ui/boxes/auto_delete_settings.h
     ui/boxes/boost_box.cpp
     ui/boxes/boost_box.h
     ui/boxes/calendar_box.cpp
@@ -574,6 +573,8 @@ PRIVATE
     ui/effects/fireworks_animation.h
     ui/effects/glare.cpp
     ui/effects/glare.h
+    ui/effects/layer_backdrop.cpp
+    ui/effects/layer_backdrop.h
     ui/effects/loading_element.cpp
     ui/effects/loading_element.h
     ui/effects/ministar_particles.cpp
@@ -733,6 +734,8 @@ PRIVATE
     wallet/wallet_card_angle.h
     wallet/wallet_card_gradient.cpp
     wallet/wallet_card_gradient.h
+    wallet/wallet_card_tint.cpp
+    wallet/wallet_card_tint.h
     wallet/wallet_sending_effects.cpp
     wallet/wallet_sending_effects.h
 

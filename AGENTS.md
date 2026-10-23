@@ -330,6 +330,17 @@ publication at a construction seam).
   production files — but they are exceptions and each new one needs a solid,
   stated reason. "The test needed it" is not one.
 
+## Harness documentation
+
+Keep `Telegram/SourceFiles/test/README.md` a short mandatory guide, under
+8 KiB. When adding or changing a harness helper, follow
+`Telegram/SourceFiles/test/docs/adding-helpers.md`: add or update one helper
+index row and its on-demand reference, and keep the source header focused on
+its callable contract. Detailed examples, platform caveats and diagnostic
+history belong in the references, not in the mandatory README. Overlay work
+reads that guide, the references selected by the task and their headers;
+never require reading every helper page.
+
 ## Text File Format
 
 - On Windows, keep project text files with CRLF line endings.
@@ -362,6 +373,9 @@ publication at a construction seam).
   implementation notes out of the commit message; put a short durable note
   under `tasks/<task-id>.md` only when useful. Do not copy commit hashes into
   that note or any AI task artifact; the task id is the cross-repository link.
+- Never create backup branches or tags before a rebase, reorder, squash or any
+  other history rewrite. The branch reflog keeps the old tip; report its sha
+  as the undo path instead.
 
 ## Local Storage Serialization
 
@@ -801,6 +815,23 @@ void MyWidget::paintEvent(QPaintEvent *e) {
     p.fillRect(rect(), st::chatInput.backgroundColor);
 }
 ```
+
+## Input Method Hints
+
+A field for typed content tells the input method what it is for: call `setInputMethodHints` right after creating it (`Ui::InputField` forwards the hints to its inner editor; `Ui::MaskedInputField` subclasses set them in the constructor). Combinations already used in the code:
+
+- URL: `Qt::ImhUrlCharactersOnly | Qt::ImhNoAutoUppercase | Qt::ImhNoPredictiveText`
+- E-mail: `Qt::ImhEmailCharactersOnly | Qt::ImhNoAutoUppercase | Qt::ImhNoPredictiveText`
+- Phone: `Qt::ImhDialableCharactersOnly | Qt::ImhNoPredictiveText`
+- Digits only (codes, date and time parts): `Qt::ImhDigitsOnly | Qt::ImhNoPredictiveText`
+- Numbers with separators (amounts, timestamps): `Qt::ImhFormattedNumbersOnly | Qt::ImhNoPredictiveText`
+- Latin identifiers (usernames, file extensions, keys): `Qt::ImhLatinOnly | Qt::ImhNoAutoUppercase | Qt::ImhNoPredictiveText`
+- Add `Qt::ImhSensitiveData` to one-time codes and to secrets shown in clear text, such as recovery phrase words
+- Free text (names, titles, comments, search) gets no hints; `Ui::PasswordInput` sets its own
+
+Prefer the hint that says what the field is for, as long as it works or at least doesn't conflict with what works. To see what works, check every consumer on every platform tdesktop ships at the Qt version in use: the Qt platform plugins (windows, cocoa, xcb, wayland) and the input context plugins, including the bundled ones (fcitx5-qt). If the semantic hint conflicts, pick what works. Hints don't filter input: the field still drops unwanted characters itself.
+
+As of 2026-10-20, `Qt::ImhDate` and `Qt::ImhTime` do nothing anywhere tdesktop runs. Qt on Wayland sends them as the date/time content purpose, but no Wayland on-screen keyboard implements those purposes (Qt Virtual Keyboard, which Plasma Keyboard is built on, GNOME Shell, Squeekboard). Qt reads them on none of tdesktop's other platforms (Windows, macOS, X11), and neither does the bundled fcitx5-qt. Used instead of the digit hints, they lose the digit layouts, so date and time fields use the digit hints above.
 
 ## Localization
 
