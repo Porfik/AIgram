@@ -99,8 +99,17 @@ jobs:
 
       - name: Telegram Desktop build.
         if: env.ONLY_CACHE == 'false'
+        env:
+          API_ID: ${{ secrets.TDESKTOP_API_ID }}
+          API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
         run: |
           cd $REPO_NAME/Telegram
+
+          API="-D TDESKTOP_API_TEST=ON"
+          if [ -n "$API_ID" ] && [ -n "$API_HASH" ]; then
+            echo "Use the repository credentials."
+            API="-D TDESKTOP_API_ID=$API_ID -D TDESKTOP_API_HASH=$API_HASH"
+          fi
 
           DEFINE=""
           if [ -n "${{ matrix.defines }}" ]; then
@@ -115,7 +124,7 @@ jobs:
           -D CMAKE_CONFIGURATION_TYPES=Debug \
           -D CMAKE_COMPILE_WARNING_AS_ERROR=ON \
           -D CMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-          -D TDESKTOP_API_TEST=ON \
+          $API \
           -D DESKTOP_APP_DISABLE_AUTOUPDATE=OFF \
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=OFF \
           $DEFINE

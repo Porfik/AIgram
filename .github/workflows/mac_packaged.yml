@@ -221,6 +221,9 @@ jobs:
 
       - name: Telegram Desktop build.
         if: env.ONLY_CACHE == 'false'
+        env:
+          API_ID: ${{ secrets.TDESKTOP_API_ID }}
+          API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
         run: |
           cd $REPO_NAME
           export CMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH$(find $LibrariesPath/local -mindepth 1 -maxdepth 1 -type d -exec printf ':%s' {} +)"
@@ -234,7 +237,13 @@ jobs:
             echo "ARTIFACT_NAME=Telegram" >> $GITHUB_ENV
           fi
 
-          cmake -Bbuild . -DTDESKTOP_API_TEST=ON $DEFINE
+          API="-D TDESKTOP_API_TEST=ON"
+          if [ -n "$API_ID" ] && [ -n "$API_HASH" ]; then
+            echo "Use the repository credentials."
+            API="-D TDESKTOP_API_ID=$API_ID -D TDESKTOP_API_HASH=$API_HASH"
+          fi
+
+          cmake -Bbuild . $API $DEFINE
           cmake --build build
           macdeployqt build/Telegram.app
           codesign --remove-signature build/Telegram.app
