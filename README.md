@@ -1,45 +1,106 @@
-# [Telegram Desktop][telegram_desktop] – Official Messenger
+# AIgram
 
-This is the complete source code and the build instructions for the official [Telegram][telegram] messenger desktop client, based on the [Telegram API][telegram_api] and the [MTProto][telegram_proto] secure protocol.
+AIgram is an unofficial fork of [Telegram Desktop][tdesktop] with a built-in
+AI agent. You describe a task in plain words, and the agent reads, searches
+and acts in your chats on your behalf. Anything other people would see
+waits for your confirmation first.
 
-[![Version](https://badge.fury.io/gh/telegramdesktop%2Ftdesktop.svg)](https://github.com/telegramdesktop/tdesktop/releases)
-[![Build Status](https://github.com/telegramdesktop/tdesktop/workflows/Windows./badge.svg)](https://github.com/telegramdesktop/tdesktop/actions)
-[![Build Status](https://github.com/telegramdesktop/tdesktop/workflows/MacOS./badge.svg)](https://github.com/telegramdesktop/tdesktop/actions)
-[![Build Status](https://github.com/telegramdesktop/tdesktop/workflows/Linux./badge.svg)](https://github.com/telegramdesktop/tdesktop/actions)
-[![Built with Depot](https://img.shields.io/badge/Built%20with-Depot.dev-46A75A)](https://depot.dev)
+AIgram is not affiliated with Telegram. It is the regular Telegram Desktop
+client plus the agent, and it follows upstream development.
 
-[![Preview of Telegram Desktop][preview_image]][preview_image_url]
+## The agent
 
-The source code is published under GPLv3 with OpenSSL exception, the license is available [here][license].
+- **General agent.** A local "✦ Agent" chat pinned in your chat list. It can
+  work with every chat you didn't hide from it, open settings and run
+  background tasks. Each conversation is a session you can reopen later.
+- **Chat agent.** The ✦ button in a chat's top bar opens a side panel bound
+  to that chat only. It reads that chat, writes drafts into its message field
+  and hands bigger requests over to the general agent.
+- **Command palette.** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd>
+  opens the general agent over the window for a quick one-off request.
+  "Pass to agent" in the message menu hands it the selected messages.
+- **What it can do:** read and search history across chats; look at photos
+  and videos, listen to voice messages, read documents; send, forward, edit
+  and delete messages; reactions, pins, mute, archive and read state;
+  folders; files in its own folder; group and channel administration;
+  contacts and blocking; your profile; Telegram's own summaries and
+  translation; and, with a confirmation for every change, any other
+  Telegram API method.
+- **Background tasks.** Rules such as "when a message mentioning the
+  invoice arrives in these chats, forward it to Saved Messages" or "every
+  morning, summarize the channels in this folder". Tasks run while the
+  client is open, within the actions you allowed them, with daily and
+  hourly limits. Everything else waits in a decision queue.
+- **Memory and instructions.** Every chat has its own memory, the general
+  agent has another one, and your general instructions apply to all of
+  them. You can review and edit every fact.
 
-## Supported systems
+## Staying in control
 
-The latest version is available for
+- Actions others can see (sending, editing, admin changes, API writes) show
+  a card first. You can edit the text, uncheck chats or decline. One card
+  can allow the same action for the rest of the request.
+- Reversible actions (mute, archive, folders, memory) run right away and
+  get an "Undo" button. The action journal in the agent's profile lists
+  the agent's actions.
+- Text that other people wrote is passed to the model as data, never as
+  instructions. After the agent has read such text, it can't send anything
+  to a chat you didn't name in the request without asking you.
+- You can hide chats and folders from the agent completely.
+- Logging in, passwords, payments, Stars, gifts and account deletion are
+  never available to the agent.
+- Model keys and tokens are stored encrypted in the local client data. The
+  agent's sessions, memory and tasks stay on your computer; only what the
+  agent sends to the model you chose (and to Telegram, when it uses
+  Telegram's own AI features) leaves it.
 
-* [Windows 7 and above (64 bit)](https://telegram.org/dl/desktop/win64) ([portable](https://telegram.org/dl/desktop/win64_portable))
-* [Windows 7 and above (32 bit)](https://telegram.org/dl/desktop/win) ([portable](https://telegram.org/dl/desktop/win_portable))
-* [macOS 10.13 and above](https://telegram.org/dl/desktop/mac)
-* [Linux static build for 64 bit](https://telegram.org/dl/desktop/linux)
-* [Snap](https://snapcraft.io/telegram-desktop)
-* [Flatpak](https://flathub.org/apps/details/org.telegram.desktop)
+## Models
 
-## Old system versions
+Add one or more model profiles in Settings → AI Agent:
 
-Version **4.9.9** was the last that supports older systems
+| Service | How it connects |
+|---|---|
+| OpenRouter | API key, any model with tool support |
+| Anthropic | API key, or your Claude subscription through the Claude Code CLI you install and sign in to |
+| OpenAI | API key, or your ChatGPT plan through "Sign in with ChatGPT" |
+| Other provider | Any OpenAI-compatible endpoint, local servers included |
 
-* [macOS 10.12](https://updates.tdesktop.com/tmac/tsetup.4.9.9.dmg)
-* [Linux with glibc < 2.28 static build](https://updates.tdesktop.com/tlinux/tsetup.4.9.9.tar.xz)
+Separate profiles can serve as the default model, the background task model
+and the media model (for media the main model can't handle). The settings
+show what the agent spent, today and in total.
 
-Version **2.4.4** was the last that supports older systems
+The agent's interface is available in English and Russian.
 
-* [OS X 10.10 and 10.11](https://updates.tdesktop.com/tosx/tsetup-osx.2.4.4.dmg)
-* [Linux static build for 32 bit](https://updates.tdesktop.com/tlinux32/tsetup32.2.4.4.tar.xz)
+## Building
 
-Version **1.8.15** was the last that supports older systems
+AIgram builds exactly like Telegram Desktop: follow the instructions for
+your system, cloning this repository instead of `telegramdesktop/tdesktop`.
+You need your own `api_id` and `api_hash` ([how to get them][api_credentials]).
 
-* [Windows XP and Vista](https://updates.tdesktop.com/tsetup/tsetup.1.8.15.exe) ([portable](https://updates.tdesktop.com/tsetup/tportable.1.8.15.zip))
-* [OS X 10.8 and 10.9](https://updates.tdesktop.com/tmac/tsetup.1.8.15.dmg)
-* [OS X 10.6 and 10.7](https://updates.tdesktop.com/tmac32/tsetup32.1.8.15.dmg)
+* [Windows (32-bit and 64-bit)][win]
+* [macOS][mac]
+* [GNU/Linux using Docker][linux]
+
+The agent's unit tests are a separate target: build and run
+`td_agent_test`.
+
+There are no prebuilt releases yet.
+
+## For contributors
+
+- `Telegram/SourceFiles/agent/` holds the agent. The pure core in
+  `agent/core/` has no client dependencies and is covered by
+  `td_agent_test`.
+- `Telegram/SourceFiles/agent/AGENTS.md` and its submaps describe the code
+  contracts. `docs/ai-agent-plan.md` is the product plan and decision log
+  (in Russian).
+- Changes to upstream files stay one call wide, so the regular merges from
+  upstream stay easy.
+
+## License
+
+AIgram is published under GPLv3 with the OpenSSL exception, like Telegram
+Desktop; the license is available [here][license].
 
 ## Third-party
 
@@ -69,33 +130,10 @@ Version **1.8.15** was the last that supports older systems
 * zxcvbn-c ([MIT License](https://github.com/tsyrogit/zxcvbn-c/blob/master/LICENSE.txt))
 * FrequencyWords by Hermit Dave ([Creative Commons Attribution-ShareAlike 4.0](https://creativecommons.org/licenses/by-sa/4.0/))
 
-## Build instructions
-
-* [Windows (32-bit and 64-bit)][win]
-* [macOS][mac]
-* [GNU/Linux using Docker][linux]
-
 [//]: # (LINKS)
-[telegram]: https://telegram.org
-[telegram_desktop]: https://desktop.telegram.org
-[telegram_api]: https://core.telegram.org
-[telegram_proto]: https://core.telegram.org/mtproto
+[tdesktop]: https://github.com/telegramdesktop/tdesktop
+[api_credentials]: docs/api_credentials.md
 [license]: LICENSE
 [win]: docs/building-win.md
 [mac]: docs/building-mac.md
 [linux]: docs/building-linux.md
-[preview_image]: https://github.com/telegramdesktop/tdesktop/blob/dev/docs/assets/preview.png "Preview of Telegram Desktop"
-[preview_image_url]: https://raw.githubusercontent.com/telegramdesktop/tdesktop/dev/docs/assets/preview.png
-
-## Thanks to
-
-<a href="https://depot.dev">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://depot.dev/assets/brand/1693758816/depot-logo-horizontal-on-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://depot.dev/assets/brand/1693758816/depot-logo-horizontal-on-light.svg">
-    <img alt="Depot" src="https://depot.dev/assets/brand/1693758816/depot-logo-horizontal-on-light.svg" width="150">
-  </picture>
-</a>
-
-CI infrastructure sponsored by [Depot](https://depot.dev) — fast GitHub Actions runners.
-
