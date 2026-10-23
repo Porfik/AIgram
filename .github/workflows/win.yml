@@ -162,6 +162,34 @@ jobs:
           key: ${{ runner.OS }}-${{ matrix.arch }}-${{ matrix.qt || 'qt' }}-${{ env.CACHE_KEY }}
           restore-keys: ${{ runner.OS }}-${{ matrix.arch }}-${{ matrix.qt || 'qt' }}-
 
+      - name: Free up disk space for Libraries.
+        shell: pwsh
+        run: |
+          Get-PSDrive C | Format-Table Name,Used,Free
+          $unused = @(
+            'C:\Android',
+            'C:\Program Files (x86)\Android',
+            'C:\ghcup',
+            'C:\Julia',
+            'C:\Miniconda',
+            'C:\rtools45',
+            'C:\selenium',
+            'C:\SeleniumWebDrivers',
+            'C:\Program Files\R',
+            'C:\Program Files\Microsoft SQL Server',
+            'C:\Program Files\PostgreSQL',
+            'C:\Program Files\MongoDB',
+            'C:\hostedtoolcache\windows\CodeQL',
+            'C:\hostedtoolcache\windows\go',
+            'C:\hostedtoolcache\windows\Ruby',
+            'C:\hostedtoolcache\windows\PyPy',
+            'C:\hostedtoolcache\windows\node'
+          )
+          foreach ($path in $unused) {
+            if (Test-Path $path) { cmd /c "rmdir /s /q `"$path`"" }
+          }
+          Get-PSDrive C | Format-Table Name,Used,Free
+
       - name: Libraries.
         run: |
           %TBUILD%\%REPO_NAME%\Telegram\build\prepare\win.bat skip-release silent ${{ matrix.qt }}
