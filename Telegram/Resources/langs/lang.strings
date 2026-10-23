@@ -1738,6 +1738,8 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_provider_price_output" = "Output";
 "lng_agent_provider_price_cached" = "Cached input";
 "lng_agent_provider_prices_about" = "Optional. Used when the provider doesn't report the cost itself.";
+"lng_agent_provider_advanced_show" = "Show advanced settings";
+"lng_agent_provider_advanced_hide" = "Hide advanced settings";
 "lng_agent_error_price" = "Prices must be non-negative numbers.";
 "lng_agent_hide_chat" = "Hide from agent";
 "lng_agent_show_chat" = "Show to agent";

@@ -630,18 +630,6 @@ struct PriceFields {
 	) | rpl::map(compute);
 }
 
-not_null<::Ui::Checkbox*> AddDefaultCheckbox(
-		not_null<::Ui::VerticalLayout*> container,
-		const QString &id) {
-	return container->add(
-		object_ptr<::Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_make_active(),
-			(id == LoadProviders().defaultId),
-			st::defaultBoxCheckbox),
-		st::boxRowPadding);
-}
-
 void AddEffortRow(
 		not_null<::Ui::VerticalLayout*> container,
 		not_null<Window::SessionController*> controller,
@@ -708,7 +696,6 @@ void AddCheckRow(
 
 void SaveEdited(
 		const ProviderSettings &result,
-		bool makeDefault,
 		ProviderService keyService) {
 	UpdateProviders([&](ProvidersState &state) {
 		for (auto &item : state.list) {
@@ -719,9 +706,6 @@ void SaveEdited(
 		}
 		if (keyService != ProviderService::Custom) {
 			SetServiceKey(state, keyService, result.apiKey);
-		}
-		if (FindProvider(state, result.id)) {
-			ApplyDefault(state, result.id, makeDefault);
 		}
 	});
 }
@@ -815,18 +799,13 @@ void EditChatGptBox(
 	};
 	AddCheckRow(container, controller, collect);
 	::Ui::AddSkip(container);
-	const auto makeDefault = AddDefaultCheckbox(container, provider.id);
-	::Ui::AddSkip(container);
 	const auto save = [=] {
 		const auto result = collect();
 		if (result.title.isEmpty()) {
 			name->showError();
 			return;
 		}
-		SaveEdited(
-			result,
-			makeDefault->checked(),
-			ProviderService::Custom);
+		SaveEdited(result, ProviderService::Custom);
 		box->closeBox();
 	};
 	name->submits(
@@ -935,17 +914,12 @@ void EditOpenAiKeyBox(
 		return collect().value_or(state->current);
 	});
 	::Ui::AddSkip(container);
-	const auto makeDefault = AddDefaultCheckbox(container, provider.id);
-	::Ui::AddSkip(container);
 	const auto save = [=] {
 		const auto result = collect();
 		if (!result) {
 			return;
 		}
-		SaveEdited(
-			*result,
-			makeDefault->checked(),
-			ProviderService::OpenAi);
+		SaveEdited(*result, ProviderService::OpenAi);
 		box->closeBox();
 	};
 	name->submits(

@@ -3345,9 +3345,13 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   model copies its id, context window, abilities and prices into the
   profile. A new OpenRouter profile gets `SetServiceKey()` of its key.
 - `ShowEditModel()` opens the OpenRouter box (name, key, "Model ID" with
-  the same list, "OpenRouter providers", "Check connection", "Default
-  model", Delete) or the "Other provider" form (the manual fields plus
-  "Check connection" and "Default model"). Changing the model of an
+  the same list, "OpenRouter providers", "Check connection", Delete) or
+  the "Other provider" form (name, address, key and model, then "Show
+  advanced settings" unfolding the abilities and the prices, opened by
+  itself when a price is wrong, then "Check connection"). Edit boxes
+  don't change the default model; only the add flows (the name boxes and
+  a new "Other provider" form) have the "Default model" checkbox.
+  Changing the model of an
   OpenRouter profile clears its `ignoredRoutes`; saving one sets the key
   of every OpenRouter profile. "OpenRouter providers" lists the
   `ParseEndpoints()` routes that have `tools` as checkboxes (unchecked
@@ -3381,9 +3385,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   "Thinking effort" (`EffortText()`; the levels the model reported, else
   all of `Anthropic::EffortLevels()`), "Account" (`auth status`; a click
   opens the setup box), "Claude Code program" (choose a file or go back
-  to automatic search), the two limit rows, "Check connection", "Default
-  model" and Delete. The API key box has name, key, model, effort, "Check
-  connection", "Default model" and Delete. `ShowCheckBox()` runs a
+  to automatic search), the two limit rows, "Check connection" and
+  Delete. The API key box has name, key, model, effort, "Check
+  connection" and Delete. `ShowCheckBox()` runs a
   `Claude::Engine` with the test tool for subscription profiles.
 - Stage 6 (plan 11.11): `ShowAddModel()` also offers "OpenAI", which
   opens `ShowOpenAiChoice()` ("ChatGPT subscription" and "API key",
@@ -3418,9 +3422,9 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
     the plan, or "Not signed in"; a click when signed out opens the
     sign-in), "Sign out" (confirm, `ChatGptSignOut()`), "Manage usage"
     (opens `ChatGpt::UsageUrl()`, with `lng_agent_chatgpt_usage_about`),
-    "Check connection", "Default model" and Delete.
+    "Check connection" and Delete.
     `ShowEditOpenAiKey()`: name, key, model, effort, the three prices,
-    "Check connection", "Default model" and Delete.
+    "Check connection" and Delete.
   - `ShowEditModel()` opens these for the two services;
     `ModelDescription()` is "ChatGPT subscription · <model>" and "OpenAI
     · <model>" for them; the settings list shows them with the OpenAI

@@ -963,15 +963,6 @@ void EditOpenRouterBox(
 		ShowCheckBox(controller, collect());
 	});
 	::Ui::AddSkip(container);
-	const auto wasDefault = (provider.id == LoadProviders().defaultId);
-	const auto makeDefault = container->add(
-		object_ptr<::Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_make_active(),
-			wasDefault,
-			st::defaultBoxCheckbox),
-		st::boxRowPadding);
-	::Ui::AddSkip(container);
 
 	const auto save = [=] {
 		const auto result = collect();
@@ -982,7 +973,6 @@ void EditOpenRouterBox(
 			key->showError();
 			return;
 		}
-		const auto checked = makeDefault->checked();
 		UpdateProviders([&](ProvidersState &state) {
 			for (auto &item : state.list) {
 				if (item.id == result.id) {
@@ -994,9 +984,6 @@ void EditOpenRouterBox(
 				state,
 				ProviderService::OpenRouter,
 				result.apiKey);
-			if (FindProvider(state, result.id)) {
-				ApplyDefault(state, result.id, checked);
-			}
 		});
 		box->closeBox();
 	};
@@ -1051,8 +1038,23 @@ void EditCustomBox(
 			provider.model),
 		st::boxRowPadding);
 	::Ui::AddSkip(container);
-	::Ui::AddSubsectionTitle(
+	const auto advancedShown = container->lifetime().make_state<
+		rpl::variable<bool>>(false);
+	const auto advancedToggle = Settings::AddButtonWithIcon(
 		container,
+		rpl::conditional(
+			advancedShown->value(),
+			tr::lng_agent_provider_advanced_hide(),
+			tr::lng_agent_provider_advanced_show()),
+		st::settingsButtonLightNoIcon);
+	const auto advanced = container->add(
+		object_ptr<::Ui::SlideWrap<::Ui::VerticalLayout>>(
+			container,
+			object_ptr<::Ui::VerticalLayout>(container)));
+	const auto inner = advanced->entity();
+	::Ui::AddSkip(inner);
+	::Ui::AddSubsectionTitle(
+		inner,
 		tr::lng_agent_provider_abilities(),
 		style::margins(
 			st::boxRowPadding.left() - st::defaultSubsectionTitlePadding.left(),
@@ -1060,9 +1062,9 @@ void EditCustomBox(
 			0,
 			0));
 	const auto addAbility = [&](rpl::producer<QString> text, bool checked) {
-		return container->add(
+		return inner->add(
 			object_ptr<::Ui::Checkbox>(
-				container,
+				inner,
 				std::move(text),
 				checked,
 				st::defaultBoxCheckbox),
@@ -1084,13 +1086,11 @@ void EditCustomBox(
 	const auto files = addAbility(
 		tr::lng_agent_provider_files(),
 		provider.files);
-	::Ui::AddSkip(container);
-	::Ui::AddDividerText(
-		container,
-		tr::lng_agent_provider_abilities_about());
-	::Ui::AddSkip(container);
+	::Ui::AddSkip(inner);
+	::Ui::AddDividerText(inner, tr::lng_agent_provider_abilities_about());
+	::Ui::AddSkip(inner);
 	::Ui::AddSubsectionTitle(
-		container,
+		inner,
 		tr::lng_agent_provider_prices(),
 		style::margins(
 			st::boxRowPadding.left() - st::defaultSubsectionTitlePadding.left(),
@@ -1098,9 +1098,9 @@ void EditCustomBox(
 			0,
 			0));
 	const auto addPrice = [&](rpl::producer<QString> text, double price) {
-		return container->add(
+		return inner->add(
 			object_ptr<::Ui::InputField>(
-				container,
+				inner,
 				st::defaultInputField,
 				std::move(text),
 				PriceText(price)),
@@ -1115,22 +1115,16 @@ void EditCustomBox(
 	const auto priceCached = addPrice(
 		tr::lng_agent_provider_price_cached(),
 		provider.priceCached);
-	::Ui::AddDividerText(
-		container,
-		tr::lng_agent_provider_prices_about());
-	::Ui::AddSkip(container);
-
-	const auto state = LoadProviders();
-	const auto makeDefault = container->add(
-		object_ptr<::Ui::Checkbox>(
-			container,
-			tr::lng_agent_provider_make_active(),
-			creating
-				? !FindProvider(state, state.defaultId)
-				: (provider.id == state.defaultId),
-			st::defaultBoxCheckbox),
-		st::boxRowPadding);
-	::Ui::AddSkip(container);
+	::Ui::AddDividerText(inner, tr::lng_agent_provider_prices_about());
+	::Ui::AddSkip(inner);
+	advanced->toggle(false, anim::type::instant);
+	const auto showAdvanced = [=](bool shown, anim::type animated) {
+		*advancedShown = shown;
+		advanced->toggle(shown, animated);
+	};
+	advancedToggle->setClickedCallback([=] {
+		showAdvanced(!advancedShown->current(), anim::type::normal);
+	});
 
 	const auto collect = [=]() -> std::optional<ProviderSettings> {
 		auto result = provider;
@@ -1150,6 +1144,7 @@ void EditCustomBox(
 		const auto parse = [&](not_null<::Ui::InputField*> field) {
 			const auto value = ParsePrice(field->getLastText());
 			if (!value) {
+				showAdvanced(true, anim::type::instant);
 				field->showError();
 				box->uiShow()->showToast(tr::lng_agent_error_price(tr::now));
 			}
@@ -1183,6 +1178,19 @@ void EditCustomBox(
 		}
 	});
 	::Ui::AddSkip(container);
+	const auto state = LoadProviders();
+	const auto makeDefault = creating
+		? container->add(
+			object_ptr<::Ui::Checkbox>(
+				container,
+				tr::lng_agent_provider_make_active(),
+				!FindProvider(state, state.defaultId),
+				st::defaultBoxCheckbox),
+			st::boxRowPadding)
+		: nullptr;
+	if (makeDefault) {
+		::Ui::AddSkip(container);
+	}
 
 	const auto save = [=] {
 		auto result = collect();
@@ -1192,7 +1200,7 @@ void EditCustomBox(
 		if (creating) {
 			result->id = GenerateProviderId();
 		}
-		const auto checked = makeDefault->checked();
+		const auto checked = makeDefault && makeDefault->checked();
 		UpdateProviders([&](ProvidersState &state) {
 			auto found = false;
 			for (auto &item : state.list) {
@@ -1206,7 +1214,7 @@ void EditCustomBox(
 				state.list.push_back(*result);
 				found = true;
 			}
-			if (found) {
+			if (found && creating) {
 				ApplyDefault(state, result->id, checked);
 			}
 		});
