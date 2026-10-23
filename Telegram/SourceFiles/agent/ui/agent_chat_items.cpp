@@ -340,6 +340,16 @@ using AttachmentPhoto = Fn<PhotoData*(const MediaBlock &media)>;
 }
 
 [[nodiscard]] QString ActionLine(const FeedTool &tool) {
+	if (tool.result && tool.result->error) {
+		return QString(QChar(0x2717))
+			+ ' '
+			+ ToolTitleText(tool.call, tool.result, nullptr)
+			+ '\n'
+			+ tr::lng_agent_action_failed(
+				tr::now,
+				lt_error,
+				CutForDisplay(UnwrapUntrusted(tool.result->content)));
+	}
 	const auto parsed = ParseActionResult(tool.result);
 	auto result = QString(QChar(parsed.failed.isEmpty() ? 0x2713 : 0x2717))
 		+ ' '

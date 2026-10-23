@@ -185,6 +185,9 @@ QString JournalList::entryText(const JournalEntry &entry) const {
 			? title
 			: (title + u": "_q + titles.join(u", "_q));
 	}
+	if (entry.result && entry.result->error) {
+		return ToolTitleText(entry.call, entry.result, nullptr);
+	}
 	const auto parsed = ParseActionResult(entry.result);
 	return ActionMainText(
 		entry.call.name,

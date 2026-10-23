@@ -3024,7 +3024,10 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   `lng_agent_sessions_empty`. The context menu stays.
 - With `showSpending` a session with usage ends with a "This session: …"
   service message. Memory action lines read "Remembered: …", "Updated
-  memory: …" or "Forgot: …" with the result's `fact.text`.
+  memory: …" or "Forgot: …" with the result's `fact.text`. An action
+  call whose result is an error reads ✗, `ToolTitleText()` of the call
+  and, on the next line, `lng_agent_action_failed` with the error text;
+  the journal shows such an entry as ✗ and `ToolTitleText()`.
 - `PanelAvailable()` is also false for an excluded peer;
   `PanelAvailabilityChanges()` fires on `enabledValue()` and exclusion
   changes. An open panel whose chat becomes excluded closes: the third
