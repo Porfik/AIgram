@@ -221,7 +221,7 @@ void Manager::startModels(const ProviderSettings &provider) {
 	}
 	_learning.insert(url);
 	const auto body = std::make_shared<QByteArray>();
-	_transport->start(
+	(void)_transport->start(
 		OpenAi::ModelsRequest(provider),
 		TransportHandlers{
 			[](HttpHead) {},
@@ -495,7 +495,7 @@ void Manager::stopExcluded() {
 			stopping.push_back(session.get());
 		}
 	}
-	for (const auto session : stopping) {
+	for (const auto &session : stopping) {
 		session->stop();
 	}
 }

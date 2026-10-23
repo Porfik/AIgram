@@ -225,7 +225,7 @@ void SaveItems(
 		Fn<void(std::vector<SaveResult>)> done) {
 	const auto session = call->session;
 	const auto results = std::make_shared<std::vector<SaveResult>>();
-	for (const auto item : items) {
+	for (const auto &item : items) {
 		const auto media = FindMessageMedia(item);
 		if (!media) {
 			results->push_back({
@@ -329,7 +329,7 @@ void RunSaveFiles(not_null<PendingCall*> call) {
 			.kind = CardKind::Download,
 			.detail = AgentFolderPath(session),
 		};
-		for (const auto item : items) {
+		for (const auto &item : items) {
 			const auto media = FindMessageMedia(item);
 			const auto size = media ? media->size : int64(0);
 			total += size;
@@ -433,7 +433,7 @@ void RunSendFiles(not_null<PendingCall*> call) {
 		.text = caption,
 		.proposedText = caption,
 	};
-	for (const auto peer : call->peers) {
+	for (const auto &peer : call->peers) {
 		card.targets.push_back(CardTarget{
 			.peer = peer->id.value,
 			.title = peer->name(),

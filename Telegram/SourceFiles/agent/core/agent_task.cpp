@@ -913,7 +913,7 @@ std::optional<TimeWindow> ParseTimeWindow(
 	}
 	const auto window = value.toObject();
 	auto result = TimeWindow();
-	for (const auto key : { u"from"_q, u"till"_q }) {
+	for (const auto &key : { u"from"_q, u"till"_q }) {
 		if (!window.contains(key)) {
 			continue;
 		}
@@ -962,7 +962,7 @@ TriggerResult ParseTrigger(
 	if (typeName == u"message"_q) {
 		trigger.kind = TriggerKind::Message;
 		if (chatScope) {
-			for (const auto key : { u"chats"_q, u"chat_types"_q, u"folders"_q }) {
+			for (const auto &key : { u"chats"_q, u"chat_types"_q, u"folders"_q }) {
 				if (object.contains(key)) {
 					result.error = u"trigger."_q + key
 						+ u" is only available in the account scope."_q;

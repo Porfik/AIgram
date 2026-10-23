@@ -893,7 +893,7 @@ void ToolRegistry::executeResolved(
 			}
 			if (resolveError.isEmpty()) {
 				auto unique = std::vector<not_null<PeerData*>>();
-				for (const auto resolved : peers) {
+				for (const auto &resolved : peers) {
 					if (!ranges::contains(unique, resolved)) {
 						unique.push_back(resolved);
 					}
@@ -913,7 +913,7 @@ void ToolRegistry::executeResolved(
 		} else {
 			gateTool = std::move(request.key);
 			gatePolicy = request.policy;
-			for (const auto resolved : request.peers) {
+			for (const auto &resolved : request.peers) {
 				if (!ranges::contains(peers, resolved)) {
 					peers.push_back(resolved);
 				}
@@ -923,7 +923,7 @@ void ToolRegistry::executeResolved(
 		}
 	}
 	if (resolveError.isEmpty() && entry.forPeer) {
-		for (const auto resolved : peers) {
+		for (const auto &resolved : peers) {
 			if (!entry.forPeer(resolved)) {
 				resolveError = entry.forPeerError.isEmpty()
 					? u"This tool does not work with this chat."_q
@@ -938,7 +938,7 @@ void ToolRegistry::executeResolved(
 	}
 	auto keys = std::vector<PeerKey>();
 	keys.reserve(peers.size());
-	for (const auto resolved : peers) {
+	for (const auto &resolved : peers) {
 		keys.push_back(resolved->id.value);
 	}
 	const auto decision = _gate->check({ gateTool, gatePolicy, keys });
@@ -1050,7 +1050,7 @@ void ToolRegistry::confirmAction(
 		const ToolEntry &entry,
 		not_null<PendingCall*> call) {
 	auto titles = QStringList();
-	for (const auto peer : call->peers) {
+	for (const auto &peer : call->peers) {
 		titles.push_back(peer->isSelf()
 			? tr::lng_saved_messages(tr::now)
 			: peer->name());

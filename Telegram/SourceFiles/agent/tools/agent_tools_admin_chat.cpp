@@ -912,7 +912,7 @@ void RunCreateChat(not_null<PendingCall*> call) {
 	}
 	if (!users.empty()) {
 		auto names = QStringList();
-		for (const auto user : users) {
+		for (const auto &user : users) {
 			names.push_back(PeerTitle(&*user));
 		}
 		card.rows.push_back({
@@ -1056,7 +1056,6 @@ void RunJoinChat(not_null<PendingCall*> call) {
 			const auto title = qs(data.vtitle());
 			const auto count = data.vparticipants_count().v;
 			const auto about = qs(data.vabout().value_or_empty());
-			const auto requestNeeded = data.is_request_needed();
 			auto card = Card{ .kind = CardKind::Change };
 			card.text = tr::lng_agent_card_title_join_chat(tr::now);
 			card.detail = u"join_chat"_q;

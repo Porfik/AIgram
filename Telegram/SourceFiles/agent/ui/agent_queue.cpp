@@ -61,8 +61,6 @@ class QueueRow final : public SettingsButton {
 public:
 	QueueRow(QWidget *parent, QString title, QString subtitle);
 
-	void updateTexts(QString title, QString subtitle);
-
 protected:
 	int resizeGetHeight(int newWidth) override;
 	void resizeEvent(QResizeEvent *e) override;
@@ -79,12 +77,6 @@ QueueRow::QueueRow(QWidget *parent, QString title, QString subtitle)
 , _subtitle(this, std::move(subtitle), st::agentQueueRowSubtitle) {
 	_title->setAttribute(Qt::WA_TransparentForMouseEvents);
 	_subtitle->setAttribute(Qt::WA_TransparentForMouseEvents);
-}
-
-void QueueRow::updateTexts(QString title, QString subtitle) {
-	_title->setText(std::move(title));
-	_subtitle->setText(std::move(subtitle));
-	resizeToWidth(width());
 }
 
 int QueueRow::resizeGetHeight(int newWidth) {

@@ -508,7 +508,7 @@ void RunCallMethod(not_null<PendingCall*> call) {
 		call->fail(encoded.error);
 		return;
 	}
-	for (const auto peer : encoded.peers) {
+	for (const auto &peer : encoded.peers) {
 		if (!call->gate || !call->gate->visible(peer->id.value)) {
 			call->fail(u"The user hid this chat from the agent. Tell the"
 				" user you can't see it and don't try to reach it another"
@@ -529,7 +529,7 @@ void RunCallMethod(not_null<PendingCall*> call) {
 	card.proposedText = IndentedJson(*params);
 	if (!encoded.peers.empty()) {
 		auto titles = QStringList();
-		for (const auto peer : encoded.peers) {
+		for (const auto &peer : encoded.peers) {
 			titles.push_back(PeerTitle(peer));
 		}
 		card.rows.push_back({

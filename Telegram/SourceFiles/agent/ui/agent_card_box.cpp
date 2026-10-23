@@ -82,13 +82,6 @@ void AddTitle(
 		: tr::lng_agent_card_notify(tr::now);
 }
 
-[[nodiscard]] QString TargetLineText(const CardTarget &target) {
-	if (target.messageId && !target.preview.isEmpty()) {
-		return target.preview;
-	}
-	return target.title;
-}
-
 [[nodiscard]] QString CheckedButtonCount(int count) {
 	return tr::lng_agent_card_send_count(tr::now, lt_count, count);
 }

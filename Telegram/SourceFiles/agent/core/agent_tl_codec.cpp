@@ -890,7 +890,7 @@ struct PeerRef {
 [[nodiscard]] bool ObjectRemoved(
 		const QJsonObject &object,
 		const Fn<bool(const QString &kind, int64 id)> &excluded) {
-	for (const auto field : { u"peer_id"_q, u"peer"_q, u"saved_peer_id"_q }) {
+	for (const auto &field : { u"peer_id"_q, u"peer"_q, u"saved_peer_id"_q }) {
 		const auto ref = PeerRefOf(object.value(field));
 		if (ref && excluded(ref->kind, ref->id)) {
 			return true;

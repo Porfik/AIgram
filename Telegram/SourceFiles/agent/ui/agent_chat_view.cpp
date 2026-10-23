@@ -471,11 +471,11 @@ void ChatView::setupDragArea() {
 		nullptr,
 		[=] { updateControlsGeometry(); });
 	dragAreas.document->setDroppedCallback([=](const QMimeData *data) {
-		confirmSendingFiles(data, false, QString());
+		(void)confirmSendingFiles(data, false, QString());
 		Window::ActivateWindow(_controller);
 	});
 	dragAreas.photo->setDroppedCallback([=](const QMimeData *data) {
-		confirmSendingFiles(data, true, QString());
+		(void)confirmSendingFiles(data, true, QString());
 		Window::ActivateWindow(_controller);
 	});
 	dragAreas.photo->setArchiveDroppedCallback([=](const QMimeData *data) {

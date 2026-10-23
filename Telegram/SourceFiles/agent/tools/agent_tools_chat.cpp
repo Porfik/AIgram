@@ -284,48 +284,6 @@ enum class Page : uchar {
 	After,
 };
 
-void DeliverMessagesPage(
-		not_null<PendingCall*> call,
-		ParsedSlice parsed,
-		int limit,
-		Page page,
-		bool withNextOffset) {
-	auto messages = QJsonArray();
-	const auto &items = parsed.items;
-	for (auto i = items.rbegin(); i != items.rend(); ++i) {
-		messages.push_back(ToolFormat::SerializeMessage(*i));
-	}
-	const auto full = int(items.size()) == limit;
-	auto hasOlder = false;
-	auto hasNewer = false;
-	switch (page) {
-	case Page::Newest:
-		hasOlder = full;
-		break;
-	case Page::Around:
-		hasOlder = hasNewer = full;
-		break;
-	case Page::Before:
-		hasNewer = true;
-		hasOlder = full;
-		break;
-	case Page::After:
-		hasOlder = true;
-		hasNewer = full;
-		break;
-	}
-	auto json = QJsonObject();
-	json.insert("messages", messages);
-	json.insert("has_older", QJsonValue(hasOlder));
-	json.insert("has_newer", QJsonValue(hasNewer));
-	if (withNextOffset && !items.empty() && full) {
-		json.insert(
-			"next_offset_id",
-			QJsonValue(qint64(items.back()->id.bare)));
-	}
-	call->done(std::move(json));
-}
-
 [[nodiscard]] std::vector<MsgId> ParseHistoryIds(
 		const QJsonObject &input,
 		QString &error) {
@@ -1313,7 +1271,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 	state->context = context;
 	if (!global) {
 		auto filtered = std::vector<not_null<PeerData*>>();
-		for (const auto peer : state->targets) {
+		for (const auto &peer : state->targets) {
 			if (call->gate->visible(peer->id.value)
 				&& call->gate->inFrame(peer->id.value)) {
 				filtered.push_back(peer);
@@ -1366,7 +1324,7 @@ void RunSearchMessages(not_null<PendingCall*> call) {
 				}).send();
 			});
 		} else {
-			for (const auto peer : state->targets) {
+			for (const auto &peer : state->targets) {
 				state->tasks.push_back([=](Fn<void()> done) {
 					const auto flags = (fromGiven
 						? MTPmessages_Search::Flag::f_from_id

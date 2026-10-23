@@ -203,14 +203,14 @@ Session::Session(
 	_tools->loadedGroupsChanges(
 	) | rpl::on_next([=] {
 		_record.loadedGroups = _tools->loadedGroups();
-		publishRecord();
+		(void)publishRecord();
 	}, _lifetime);
 }
 
 void Session::finishOpen() {
 	if (_repairedOnLoad) {
 		_repairedOnLoad = false;
-		publishRecord();
+		(void)publishRecord();
 	}
 }
 
@@ -225,9 +225,7 @@ void Session::applyCard(Card card) {
 		*i = std::move(card);
 	}
 	_state.pendingCards = CountPendingCards(_record.cards);
-	const auto weak = base::make_weak(this);
-	publishRecord();
-	if (!weak) {
+	if (!publishRecord()) {
 		return;
 	}
 	_stateChanges.fire({});
@@ -425,8 +423,7 @@ void Session::undo(const std::vector<QString> &toolUseIds) {
 				if (!ranges::contains(_record.undone, toolUseId)) {
 					_record.undone.push_back(toolUseId);
 				}
-				publishRecord();
-				if (!weak) {
+				if (!publishRecord()) {
 					return;
 				}
 			} else {
@@ -565,8 +562,7 @@ void Session::dispatch(SendRequest request) {
 	if (!weak) {
 		return;
 	}
-	publishRecord();
-	if (!weak) {
+	if (!publishRecord()) {
 		return;
 	}
 	const auto provider = currentProvider();
@@ -583,7 +579,7 @@ void Session::dispatch(SendRequest request) {
 }
 
 void Session::failWithoutProvider() {
-	applyState(
+	(void)applyState(
 		SessionStatus::Failed,
 		Error{
 			ErrorKind::BadRequest,
@@ -594,7 +590,7 @@ void Session::failWithoutProvider() {
 }
 
 void Session::failWithoutClaude() {
-	applyState(
+	(void)applyState(
 		SessionStatus::Failed,
 		Error{
 			ErrorKind::Auth,
@@ -692,7 +688,7 @@ void Session::startCompaction(int until) {
 				if (!text.isEmpty()) {
 					_record.summary = text;
 					_record.summaryUntil = until;
-					publishRecord();
+					(void)publishRecord();
 				}
 			}
 			if (!weak) {
@@ -1064,14 +1060,14 @@ void Session::startTitleRequest() {
 			}
 			_record.info.title = title;
 			_record.info.titleFinal = true;
-			publishRecord();
+			(void)publishRecord();
 		});
 }
 
 void Session::applyRename(const QString &title) {
 	_record.info.title = title;
 	_record.info.titleFinal = true;
-	publishRecord();
+	(void)publishRecord();
 }
 
 } // namespace Agent
