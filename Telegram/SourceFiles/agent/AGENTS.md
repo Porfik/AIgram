@@ -129,7 +129,8 @@ contracts and invariants of the code under `SourceFiles/agent/`.
   key gets its Russian there in the same commit, with the same tags and all
   four plural forms (`#one`, `#few`, `#many`, `#other`). Phrases built from
   pieces (`agent_task_format.cpp`) use prepositional pieces after "в":
-  "Новое сообщение в {chats}" with "личных чатах", "папке {folder}".
+  "Новое сообщение в {chats}" with "личных чатах", "папке {folder}" and
+  "чате {chat}" (names don't decline, so each chat name gets "чате").
 
 ## Conversation model (`agent_types.h`)
 

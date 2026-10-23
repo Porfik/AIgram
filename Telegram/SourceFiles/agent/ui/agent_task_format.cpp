@@ -96,9 +96,11 @@ constexpr auto kWeekendBits = 0x60; // Saturday and Sunday.
 [[nodiscard]] QString FormatChatSet(
 		not_null<Main::Session*> session,
 		const ChatSet &set) {
-	auto parts = PeerTitles(session, set.peers)
-		+ KindNames(set.kinds)
-		+ FolderTitles(session, set.folders);
+	auto parts = QStringList();
+	for (const auto &title : PeerTitles(session, set.peers)) {
+		parts.append(tr::lng_agent_task_in_chat(tr::now, lt_chat, title));
+	}
+	parts += KindNames(set.kinds) + FolderTitles(session, set.folders);
 	if (set.triggerChat) {
 		parts.append(tr::lng_agent_task_trigger_chat(tr::now));
 	}

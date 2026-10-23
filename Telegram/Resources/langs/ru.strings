@@ -472,6 +472,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 "lng_agent_task_kind_channels" = "каналах";
 "lng_agent_task_kind_bots" = "чатах с ботами";
 "lng_agent_task_in_folder" = "папке {folder}";
+"lng_agent_task_in_chat" = "чате {chat}";
 "lng_agent_task_trigger_chat" = "чате входящего сообщения";
 "lng_agent_task_from" = "от {users}";
 "lng_agent_task_keywords" = "со словами {text}";
