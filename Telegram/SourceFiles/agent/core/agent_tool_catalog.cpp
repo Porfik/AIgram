@@ -11,6 +11,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #include "base/flat_map.h"
 #include "base/flat_set.h"
 
+#include <QtCore/QJsonArray>
 #include <QtCore/QLocale>
 #include <QtCore/QStringList>
 
@@ -138,6 +139,30 @@ namespace {
 	result.remove(u'-');
 	result.remove(u'_');
 	return result;
+}
+
+[[nodiscard]] QJsonValue CoerceScalar(
+		const QJsonValue &value,
+		const QString &type) {
+	if (!value.isString()) {
+		return value;
+	}
+	const auto text = value.toString().trimmed();
+	auto ok = false;
+	if (type == u"integer"_q) {
+		const auto number = text.toLongLong(&ok);
+		return ok ? QJsonValue(number) : value;
+	} else if (type == u"number"_q) {
+		const auto number = text.toDouble(&ok);
+		return (ok && std::isfinite(number)) ? QJsonValue(number) : value;
+	} else if (type == u"boolean"_q) {
+		if (text == u"true"_q) {
+			return QJsonValue(true);
+		} else if (text == u"false"_q) {
+			return QJsonValue(false);
+		}
+	}
+	return value;
 }
 
 } // namespace
@@ -478,6 +503,27 @@ QString FormatTurnContext(const TurnContext &context) {
 				context.pendingCards));
 	}
 	return lines.join(u'\n');
+}
+
+QJsonObject CoerceToolInput(const QJsonObject &schema, QJsonObject input) {
+	const auto properties = schema.value(u"properties"_q).toObject();
+	for (const auto &key : input.keys()) {
+		const auto property = properties.value(key).toObject();
+		const auto type = property.value(u"type"_q).toString();
+		const auto value = input.value(key);
+		if (type == u"array"_q && value.isArray()) {
+			const auto items = property.value(u"items"_q).toObject()
+				.value(u"type"_q).toString();
+			auto list = value.toArray();
+			for (auto i = 0; i != list.size(); ++i) {
+				list[i] = CoerceScalar(list.at(i), items);
+			}
+			input.insert(key, list);
+		} else {
+			input.insert(key, CoerceScalar(value, type));
+		}
+	}
+	return input;
 }
 
 } // namespace Agent

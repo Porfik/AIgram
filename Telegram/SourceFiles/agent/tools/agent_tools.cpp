@@ -739,6 +739,7 @@ void ToolRegistry::executeResolved(
 				? entry.inputSchema
 				: entry.generalSchema))
 		: entry.inputSchema;
+	call.input = CoerceToolInput(schema, std::move(call.input));
 	if (const auto missing = MissingRequired(schema, call.input)
 		; !missing.isEmpty()) {
 		done(ToolResultBlock{

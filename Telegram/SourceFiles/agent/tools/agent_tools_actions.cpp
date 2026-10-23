@@ -33,7 +33,6 @@ namespace Agent::ActionTools {
 namespace {
 
 constexpr auto kPreviewLimit = 100;
-constexpr auto kMaxMessages = 100;
 constexpr auto kMaxEmojiLength = 16;
 
 [[nodiscard]] QString ChatTitle(not_null<PeerData*> peer) {
@@ -58,36 +57,6 @@ constexpr auto kMaxEmojiLength = 16;
 		return std::nullopt;
 	}
 	return MsgId(qint64(value.toDouble()));
-}
-
-[[nodiscard]] std::vector<MsgId> ParseMessageIds(
-		const QJsonObject &input,
-		const QString &key,
-		QString &error) {
-	const auto value = input.value(key);
-	if (!value.isArray()) {
-		error = u"%1 must be an array of message ids."_q.arg(key);
-		return {};
-	}
-	const auto list = value.toArray();
-	if (list.isEmpty() || list.size() > kMaxMessages) {
-		error = u"%1 must contain 1 to %2 message ids."_q
-			.arg(key)
-			.arg(kMaxMessages);
-		return {};
-	}
-	auto result = std::vector<MsgId>();
-	for (const auto &item : list) {
-		if (!item.isDouble() || item.toDouble() < 1) {
-			error = u"%1 must contain message ids."_q.arg(key);
-			return {};
-		}
-		const auto id = MsgId(qint64(item.toDouble()));
-		if (!ranges::contains(result, id)) {
-			result.push_back(id);
-		}
-	}
-	return result;
 }
 
 void WithMessages(

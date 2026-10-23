@@ -1757,6 +1757,14 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   <zone>.` (without `, <zone>` when the zone is empty; no line for an
   invalid `now`), `Loaded tool groups: a, b.`, `The user has <topic>
   open.`, `Waiting for the user's decision: 1 card.` / `N cards.`.
+- `CoerceToolInput()` fixes scalars a model sent as strings, by the
+  schema's top-level `properties`: a string value of an `integer`
+  property (or an item of an `array` whose `items` are `integer`) that
+  `QString::toLongLong()` reads after trimming becomes that number, a
+  `number` one that `toDouble()` reads as a finite value becomes that
+  number, and `"true"` / `"false"` of a `boolean` one become booleans.
+  Anything else, keys without a property and values of other shapes stay
+  as they are.
 
 ## Single requests (`agent_request.h`)
 
@@ -2280,8 +2288,11 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   that works with the scope peer, with its group (no group in background
   runs, where every tool is listed) and the available groups with their
   `when` lines (none in runs). The session passes it to both prompts.
-- Before running a call the registry checks the `required` parameters
-  of the scope's schema: a missing one fails with `Missing required
+- Before running a call the registry passes the input through
+  `CoerceToolInput()` with the scope's schema (models send ids like
+  `["244"]`), so the tool, the gate and the repeated reads key see the
+  fixed input; the session record keeps the call as the model sent it.
+  Then it checks the `required` parameters of the scope's schema: a missing one fails with `Missing required
   parameter "<p>". Call it as <name>(<p>: <type>, <q>?: <type>, ...).`
   An unknown tool name fails with up to three `NearestToolNames()` (with
   their groups) or, without any, "Use only tools of the tool catalog."
@@ -2393,6 +2404,12 @@ stream-json control protocol (plan 4.4 and 11.8). Everything here is pure
   "title": ..., "error": ...}]}`, folder tools add `"folder": {"id": id,
   "title": ...}`, `reorder_folders` returns `{"order": [ids]}`.
 - `ActionToolNames()` lists the names of entries with `action`.
+- `ParseMessageIds()` (`agent_tool_table.h`) reads a `message_ids`-like
+  array for every tool taking `MessageIdsProperty()`: not an array fails
+  with "<key> must be an array of message ids.", an empty one or more
+  than 100 with "<key> must contain 1 to 100 message ids.", an item that
+  is not a number of at least 1 with "<key> must contain message ids.";
+  repeated ids are kept once.
 - Memory tools work on the scope's own memory (owner `Scope::peer`).
   `memory_add` and `memory_update` have `taintedAsks`: while the session
   has read nothing others wrote they run at once (an action row with

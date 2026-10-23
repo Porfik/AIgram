@@ -156,6 +156,10 @@ void ForEachTarget(
 	QString description);
 [[nodiscard]] QJsonObject MessageIdProperty(QString description);
 [[nodiscard]] QJsonObject MessageIdsProperty(QString description);
+[[nodiscard]] std::vector<MsgId> ParseMessageIds(
+	const QJsonObject &input,
+	const QString &key,
+	QString &error);
 [[nodiscard]] QJsonObject UsersProperty(int max, QString description);
 
 namespace ChatTools {

@@ -275,25 +275,6 @@ void SaveItems(
 	}
 }
 
-[[nodiscard]] std::optional<std::vector<MsgId>> MessageIds(
-		not_null<PendingCall*> call) {
-	const auto value = call->input.value("message_ids");
-	if (!value.isArray()
-		|| value.toArray().isEmpty()
-		|| value.toArray().size() > 100) {
-		return std::nullopt;
-	}
-	auto result = std::vector<MsgId>();
-	for (const auto &id : value.toArray()) {
-		const auto bare = int64(id.toDouble());
-		if (bare <= 0) {
-			return std::nullopt;
-		}
-		result.push_back(MsgId(bare));
-	}
-	return result;
-}
-
 void SaveWithoutCard(
 		not_null<PendingCall*> call,
 		std::vector<not_null<HistoryItem*>> items) {
@@ -331,16 +312,17 @@ void SaveWithoutCard(
 
 void RunSaveFiles(not_null<PendingCall*> call) {
 	const auto peer = call->peer;
-	const auto ids = MessageIds(call);
+	auto error = QString();
+	const auto ids = ParseMessageIds(call->input, u"message_ids"_q, error);
 	if (!peer) {
 		call->fail(u"chat is required."_q);
 		return;
-	} else if (!ids) {
-		call->fail(u"message_ids must be 1 to 100 message ids."_q);
+	} else if (!error.isEmpty()) {
+		call->fail(error);
 		return;
 	}
 	const auto session = call->session;
-	WithItems(call, not_null(peer), *ids, [=](
+	WithItems(call, not_null(peer), ids, [=](
 			std::vector<not_null<HistoryItem*>> items) {
 		auto total = int64(0);
 		auto card = Card{

@@ -8,6 +8,7 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 #pragma once
 
 #include <QtCore/QDateTime>
+#include <QtCore/QJsonObject>
 #include <QtCore/QString>
 
 #include <vector>
@@ -75,5 +76,9 @@ struct TurnContext {
 };
 
 [[nodiscard]] QString FormatTurnContext(const TurnContext &context);
+
+[[nodiscard]] QJsonObject CoerceToolInput(
+	const QJsonObject &schema,
+	QJsonObject input);
 
 } // namespace Agent

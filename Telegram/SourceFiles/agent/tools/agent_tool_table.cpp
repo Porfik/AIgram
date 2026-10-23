@@ -30,6 +30,7 @@ namespace Agent {
 namespace {
 
 constexpr auto kTargetGap = crl::time(300);
+constexpr auto kMaxMessageIds = 100;
 
 void RunNextTarget(
 		base::weak_ptr<PendingCall> weak,
@@ -327,7 +328,37 @@ QJsonObject MessageIdsProperty(QString description) {
 	result.insert("description", description);
 	result.insert("items", MessageIdProperty(u"Message id."_q));
 	result.insert("minItems", QJsonValue(1));
-	result.insert("maxItems", QJsonValue(100));
+	result.insert("maxItems", QJsonValue(kMaxMessageIds));
+	return result;
+}
+
+std::vector<MsgId> ParseMessageIds(
+		const QJsonObject &input,
+		const QString &key,
+		QString &error) {
+	const auto value = input.value(key);
+	if (!value.isArray()) {
+		error = u"%1 must be an array of message ids."_q.arg(key);
+		return {};
+	}
+	const auto list = value.toArray();
+	if (list.isEmpty() || list.size() > kMaxMessageIds) {
+		error = u"%1 must contain 1 to %2 message ids."_q
+			.arg(key)
+			.arg(kMaxMessageIds);
+		return {};
+	}
+	auto result = std::vector<MsgId>();
+	for (const auto &item : list) {
+		if (!item.isDouble() || item.toDouble() < 1) {
+			error = u"%1 must contain message ids."_q.arg(key);
+			return {};
+		}
+		const auto id = MsgId(qint64(item.toDouble()));
+		if (!ranges::contains(result, id)) {
+			result.push_back(id);
+		}
+	}
 	return result;
 }
 

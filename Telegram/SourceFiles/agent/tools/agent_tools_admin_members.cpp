@@ -34,7 +34,6 @@ constexpr auto kMaxUsers = 50;
 constexpr auto kMaxTitleLength = 16;
 constexpr auto kForwardMessagesOnAdd = 100;
 constexpr auto kPreviewLimit = 100;
-constexpr auto kMaxMessageIds = 100;
 constexpr auto kDefaultRequestsLimit = 50;
 
 [[nodiscard]] std::optional<int> JsonInt(
@@ -87,36 +86,6 @@ constexpr auto kDefaultRequestsLimit = 50;
 	return text.left(kPreviewLimit);
 }
 
-[[nodiscard]] std::vector<MsgId> ParseMessageIds(
-		const QJsonObject &input,
-		const QString &key,
-		QString &error) {
-	const auto value = input.value(key);
-	if (!value.isArray()) {
-		error = u"%1 must be an array of message ids."_q.arg(key);
-		return {};
-	}
-	const auto list = value.toArray();
-	if (list.isEmpty() || list.size() > kMaxMessageIds) {
-		error = u"%1 must contain 1 to %2 message ids."_q
-			.arg(key)
-			.arg(kMaxMessageIds);
-		return {};
-	}
-	auto result = std::vector<MsgId>();
-	for (const auto &item : list) {
-		if (!item.isDouble() || item.toDouble() < 1) {
-			error = u"%1 must contain message ids."_q.arg(key);
-			return {};
-		}
-		const auto id = MsgId(qint64(item.toDouble()));
-		if (!ranges::contains(result, id)) {
-			result.push_back(id);
-		}
-	}
-	return result;
-}
-
 // WHY: requestMessageData has no single ready callback for a set of ids,
 // so count the loads down before reporting the messages as missing.
 void WithMessages(
@@ -166,7 +135,7 @@ void WithMessages(
 void RunDeleteChatMessages(not_null<PendingCall*> call) {
 	const auto peer = call->peer;
 	auto error = QString();
-	const auto ids = ParseMessageIds(call->input, "message_ids", error);
+	const auto ids = ParseMessageIds(call->input, u"message_ids"_q, error);
 	if (!error.isEmpty()) {
 		call->fail(error);
 		return;

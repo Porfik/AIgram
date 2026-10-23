@@ -9,6 +9,9 @@ https://github.com/telegramdesktop/tdesktop/blob/master/LEGAL
 
 #include "agent/core/agent_tool_catalog.h"
 
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+
 namespace Agent::Tests {
 namespace {
 
@@ -91,6 +94,39 @@ namespace {
 			u"transcribe_voice"_q,
 			u"Transcribe a voice message to text."_q },
 	};
+}
+
+[[nodiscard]] QJsonObject Property(const QString &type) {
+	auto result = QJsonObject();
+	result.insert(u"type"_q, type);
+	return result;
+}
+
+[[nodiscard]] QJsonObject CoerceSchema() {
+	auto ids = Property(u"array"_q);
+	ids.insert(u"items"_q, Property(u"integer"_q));
+	auto chats = Property(u"array"_q);
+	chats.insert(u"items"_q, Property(u"string"_q));
+	auto properties = QJsonObject();
+	properties.insert(u"message_ids"_q, ids);
+	properties.insert(u"chats"_q, chats);
+	properties.insert(u"limit"_q, Property(u"integer"_q));
+	properties.insert(u"cost"_q, Property(u"number"_q));
+	properties.insert(u"muted"_q, Property(u"boolean"_q));
+	properties.insert(u"text"_q, Property(u"string"_q));
+	auto result = QJsonObject();
+	result.insert(u"type"_q, u"object"_q);
+	result.insert(u"properties"_q, properties);
+	return result;
+}
+
+[[nodiscard]] QString Compact(const QJsonObject &object) {
+	return QString::fromUtf8(
+		QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+[[nodiscard]] QJsonObject Parse(const QString &json) {
+	return QJsonDocument::fromJson(json.toUtf8()).object();
 }
 
 } // namespace
@@ -485,6 +521,35 @@ std::vector<Check> ToolCatalogChecks() {
 		} },
 		{ u"turn_context_empty"_q, [] {
 			return Same(FormatTurnContext(TurnContext()), QString());
+		} },
+		{ u"coerce_tool_input_strings"_q, [] {
+			return Same(
+				Compact(CoerceToolInput(CoerceSchema(), Parse(
+					u"{\"message_ids\":[\"244\",\" 245 \",246],"
+					u"\"chats\":[\"12\"],\"limit\":\"10\","
+					u"\"cost\":\"0.5\",\"muted\":\"false\","
+					u"\"text\":\"7\",\"other\":\"8\"}"_q))),
+				u"{\"chats\":[\"12\"],\"cost\":0.5,\"limit\":10,"
+				u"\"message_ids\":[244,245,246],\"muted\":false,"
+				u"\"other\":\"8\",\"text\":\"7\"}"_q);
+		} },
+		{ u"coerce_tool_input_keeps_invalid"_q, [] {
+			return Same(
+				Compact(CoerceToolInput(CoerceSchema(), Parse(
+					u"{\"message_ids\":[\"x\",\"1.5\",\"\"],"
+					u"\"limit\":\"ten\",\"cost\":\"inf\","
+					u"\"muted\":\"yes\"}"_q))),
+				u"{\"cost\":\"inf\",\"limit\":\"ten\","
+				u"\"message_ids\":[\"x\",\"1.5\",\"\"],"
+				u"\"muted\":\"yes\"}"_q);
+		} },
+		{ u"coerce_tool_input_shapes"_q, [] {
+			return Same(
+				Compact(CoerceToolInput(CoerceSchema(), Parse(
+					u"{\"message_ids\":\"244\",\"limit\":[\"1\"],"
+					u"\"muted\":true}"_q))),
+				u"{\"limit\":[\"1\"],\"message_ids\":\"244\","
+				u"\"muted\":true}"_q);
 		} },
 	};
 }
