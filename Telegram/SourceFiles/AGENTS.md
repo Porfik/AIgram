@@ -384,7 +384,7 @@ This atlas divides Telegram Desktop's sources into named areas, ordered from fou
 
 ### agent — AI agent
 - Paths: `SourceFiles/agent/`, `cmake/td_agent.cmake`
-- The provider-neutral conversation model, provider adapters and the agent loop in the pure `td_agent` library with its tests, plus the client transport, sessions, tools, policy and agent UI around it. Read `SourceFiles/agent/AGENTS.md` first. The core under `agent/core` must not include client headers.
+- The provider-neutral conversation model, provider adapters and the agent loop in the pure `td_agent` library with its tests, plus the client transport, sessions, tools, policy and agent UI around it. Read `SourceFiles/agent/AGENTS.md` first, then the map of the subdirectory you touch (`core/`, `tools/`, `ui/`). The core under `agent/core` must not include client headers.
 
 ## Platform
 
