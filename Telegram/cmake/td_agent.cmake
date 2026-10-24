@@ -157,3 +157,8 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         COMPILE_OPTIONS -Wno-error=range-loop-construct
     )
 endif()
+
+# Static QtNetwork pulls in QDnsLookup on Windows; Qt links it with Dnsapi.
+if (WIN32)
+    target_link_libraries(td_agent PUBLIC Dnsapi)
+endif()
