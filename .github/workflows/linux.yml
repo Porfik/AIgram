@@ -56,7 +56,7 @@ jobs:
           - ""
 
     env:
-      UPLOAD_ARTIFACT: "true"
+      UPLOAD_ARTIFACT: "false"
       ONLY_CACHE: "false"
       IMAGE_TAG: tdesktop:centos_env
 
@@ -108,6 +108,8 @@ jobs:
 
       - name: Libraries.
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: Telegram/build/docker/centos_env
           load: ${{ env.ONLY_CACHE == 'false' }}
