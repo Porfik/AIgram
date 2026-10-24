@@ -1,15 +1,40 @@
 name: Release.
 
 # A tag like v7.3.3-aigram.1 builds the clients and publishes a GitHub
-# release; a manual run builds them as workflow artifacts only.
+# release. Pushes to dev build only to keep the compiler cache warm, so a
+# tag build is mostly cache hits; a manual run also keeps the archive.
 on:
   push:
+    branches:
+      - dev
     tags:
       - 'v*-aigram*'
+    paths-ignore:
+      - 'docs/**'
+      - '**.md'
+      - 'changelog.txt'
+      - 'LEGAL'
+      - 'LICENSE'
+      - '.github/**'
+      - '!.github/workflows/release.yml'
+      - 'snap/**'
+      - 'Telegram/build/**'
+      - '!Telegram/build/docker/centos_env/**'
+      - 'Telegram/Resources/uwp/**'
+      - 'Telegram/Resources/winrc/**'
+      - 'Telegram/SourceFiles/platform/win/**'
+      - 'Telegram/SourceFiles/platform/mac/**'
+      - 'Telegram/Telegram/**'
+      - 'Telegram/configure.bat'
+      - 'Telegram/Telegram.plist'
   workflow_dispatch:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
 
 jobs:
 
@@ -19,6 +44,7 @@ jobs:
 
     env:
       IMAGE_TAG: tdesktop:centos_env
+      PUBLISH: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Check credentials.
@@ -40,6 +66,7 @@ jobs:
         run: |
           sudo apt update
           curl -sSL https://install.python-poetry.org | python3 -
+          echo "CCACHE_DIR=$RUNNER_TEMP/.release-cache" >> $GITHUB_ENV
           cd Telegram/build/docker/centos_env
           poetry install
           DOCKERFILE=$(DEBUG= LTO= poetry run gen_dockerfile)
@@ -75,6 +102,8 @@ jobs:
 
       - name: Libraries.
         uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: Telegram/build/docker/centos_env
           load: true
@@ -87,24 +116,57 @@ jobs:
           rm -rf ${{ runner.temp }}/.buildx-cache
           mv ${{ runner.temp }}/.buildx-cache{-new,}
 
+      - name: Restore Telegram Desktop cache.
+        id: cache-tdesktop
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.OS }}-release-${{ github.run_id }}
+          restore-keys: ${{ runner.OS }}-release-
+
       - name: Telegram Desktop build.
+        id: build
         env:
           API_ID: ${{ secrets.TDESKTOP_API_ID }}
           API_HASH: ${{ secrets.TDESKTOP_API_HASH }}
         run: |
+          mkdir -p $CCACHE_DIR
           docker run --rm \
           -u $(id -u) \
           -v $PWD:/usr/src/tdesktop \
+          -v $CCACHE_DIR:/var/cache/ccache \
           -e CONFIG=Release \
+          -e CCACHE_SLOPPINESS=pch_defines,time_macros \
+          -e CCACHE_COMPRESS=1 \
           $IMAGE_TAG \
-          /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh \
+          bash -c 'ccache -M 2G > /dev/null; ccache -z > /dev/null
+            env -u CCACHE_DISABLE /usr/src/tdesktop/Telegram/build/docker/centos_env/build.sh "$@"
+            CODE=$?
+            ccache -s | awk "/^cache miss/ { print \$3 }" > /usr/src/tdesktop/out/ccache-misses
+            exit $CODE' _ \
           -D CMAKE_CONFIGURATION_TYPES=Release \
+          -D CMAKE_C_FLAGS_RELEASE="-O3 -DNDEBUG -fpch-preprocess" \
+          -D CMAKE_CXX_FLAGS_RELEASE="-O3 -DNDEBUG -fpch-preprocess" \
           -D TDESKTOP_API_ID=$API_ID \
           -D TDESKTOP_API_HASH=$API_HASH \
           -D DESKTOP_APP_DISABLE_AUTOUPDATE=ON \
           -D DESKTOP_APP_DISABLE_CRASH_REPORTS=ON
+          MISSES=$(cat out/ccache-misses)
+          case "$MISSES" in (*[!0-9]*|'') MISSES=0;; esac
+          echo "ccache misses this run: $MISSES"
+          echo "misses=$MISSES" >> $GITHUB_OUTPUT
+
+      - name: Save Telegram Desktop cache.
+        if: >
+          github.ref_type == 'branch'
+            && fromJSON(steps.build.outputs.misses) > 300
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.cache-tdesktop.outputs.cache-primary-key }}
 
       - name: Package.
+        if: env.PUBLISH == 'true'
         run: |
           if [ "$GITHUB_REF_TYPE" = tag ]; then
             VERSION=$GITHUB_REF_NAME
@@ -118,6 +180,7 @@ jobs:
           echo "PACKAGE=$PACKAGE" >> $GITHUB_ENV
 
       - uses: actions/upload-artifact@v7
+        if: env.PUBLISH == 'true'
         name: Upload artifact.
         with:
           name: ${{ env.PACKAGE }}
