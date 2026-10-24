@@ -23,5 +23,10 @@ so those merges stay clean.
   CI builds with warnings as errors, so keep agent code warning-free.
 - An upstream merge keeps every fork-side hunk; check the hooks listed in
   `Telegram/SourceFiles/agent/AGENTS.md` after it.
+- `.github` holds only `linux.yml`, `mac.yml`, `win.yml` (one x64 job) and
+  `release.yml`; the rest of upstream's CI and repository automation is
+  deleted. When a merge brings changes to a deleted file, keep it deleted.
+  Releases are `v<upstream version>-aigram.<n>` tags; upstream's tags are not
+  pushed to the fork.
 - The repository is public: no local paths, keys, tokens or private session
   details in tracked files.
