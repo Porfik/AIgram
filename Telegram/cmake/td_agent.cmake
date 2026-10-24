@@ -149,3 +149,11 @@ set_target_properties(td_agent_test PROPERTIES
     EXCLUDE_FROM_ALL TRUE
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
 )
+
+# Upstream's harness copies loop variables (GCC -Werror in CI); drop once fixed.
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(${src_loc}/test/test_menu.cpp
+    PROPERTIES
+        COMPILE_OPTIONS -Wno-error=range-loop-construct
+    )
+endif()
